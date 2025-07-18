@@ -37,14 +37,13 @@ export async function acceptQuery(rootDir: string) {
 }
 
 async function processQueryandShowLoader(query: string, processor: Processor) {
-  const spinner = new DynamicSpinner("Starting query processing...");
+  const spinner = new DynamicSpinner("🚀 Starting query processing...");
 
   try {
     await processor.processQuery(query, spinner);
-
-    spinner.succeed("Query processed successfully!");
+    // Spinner completion is handled in processor during streaming
   } catch (error) {
-    spinner.fail("Failed to process query");
+    spinner.fail("❌ Failed to process query");
     console.error(chalk.red("Error:"), error);
   }
 }

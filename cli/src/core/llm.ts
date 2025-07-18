@@ -8,13 +8,22 @@ export class LLM {
     this.model = google(`models/${model}`);
   }
 
-  async StreamResponse(prompt: string) {
+  async StreamResponse(prompt: string, onChunk?: (chunk: string) => void) {
     const { textStream } = await streamText({
       model: this.model,
       prompt: prompt,
     });
+    
+    let fullResponse = '';
     for await (const textPart of textStream) {
-      console.log(textPart);
+      fullResponse += textPart;
+      if (onChunk) {
+        onChunk(textPart);
+      } else {
+        process.stdout.write(textPart);
+      }
     }
+    
+    return fullResponse;
   }
 }
