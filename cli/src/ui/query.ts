@@ -1,6 +1,6 @@
 import { text } from "@clack/prompts";
 import chalk from "chalk";
-import { Processor } from "../core";
+import { Processor } from "../core/processor";
 import { DynamicSpinner } from "./spinner";
 
 export async function acceptQuery(rootDir: string) {

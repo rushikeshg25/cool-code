@@ -34,10 +34,14 @@ export class Processor {
     this.currentDir = rootDir;
   }
 
-  async processQuery(query: string, spinner:DynamicSpinner)  {
+   async processQuery(query: string, spinner:DynamicSpinner)  {
     spinner.updateText("Processing query...");
     // Simulate processing time
     await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  private async getEnvironment(){
+    
   }
 }
 

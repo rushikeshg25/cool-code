@@ -2,7 +2,7 @@ import cfonts from "cfonts";
 import chalk from "chalk";
 import { text, confirm } from "@clack/prompts";
 import ora from "ora";
-import { Processor } from "../core";
+import { Processor } from "../core/processor";
 
 export async function showLanding() {
   // Handle Ctrl+C gracefully
