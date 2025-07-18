@@ -5,6 +5,7 @@ import { DynamicSpinner } from "./spinner";
 
 export async function acceptQuery(rootDir: string) {
   const processor = new Processor(rootDir);
+
   while (true) {
     try {
       const query = await text({

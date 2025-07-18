@@ -1,3 +1,4 @@
+import path from "path";
 import { DynamicSpinner } from "../ui/spinner";
 import { createGitIgnoreChecker } from "./tools";
 
