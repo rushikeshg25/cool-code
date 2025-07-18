@@ -1,10 +1,20 @@
-import { generateText } from 'ai';
-import { google } from '@ai-sdk/google';
+import { LanguageModelV1, streamText } from "ai";
+import { google } from "@ai-sdk/google";
 
-export async function generateTexta() {
-  const { text } = await generateText({
-    model: google('models/gemini-2.5-flash'),
-    prompt: '',
-  });
-  console.log(text);
+export class LLM {
+  private model: LanguageModelV1;
+
+  constructor(model: string) {
+    this.model = google(`models/${model}`);
+  }
+
+  async StreamResponse(prompt: string) {
+    const { textStream } = await streamText({
+      model: this.model,
+      prompt: prompt,
+    });
+    for await (const textPart of textStream) {
+      console.log(textPart);
+    }
+  }
 }
