@@ -1,68 +1,49 @@
-import { text } from '@clack/prompts';
-import chalk from 'chalk';
-import ora from 'ora';
-import { AIDBProcessor } from '../core';
+import { text } from "@clack/prompts";
+import chalk from "chalk";
+import { Processor } from "../core";
+import { DynamicSpinner } from "./spinner";
 
-export async function acceptQuery() {
+export async function acceptQuery(rootDir: string) {
+  const processor = new Processor(rootDir);
   while (true) {
     try {
       const query = await text({
-        message: 'Enter your query:',
+        message: "Enter your query:",
         placeholder:
           'e.g., "Create a users table with email and password fields"',
         validate: (value) => {
           if (!value || value.trim().length === 0) {
-            return 'Please enter a query';
+            return "Please enter a query";
           }
         },
       });
 
-      if (typeof query === 'symbol') {
-        console.log(chalk.yellow('\nExiting...'));
+      if (typeof query === "symbol") {
+        console.log(chalk.yellow("\nExiting..."));
         process.exit(0);
       }
 
-      if (typeof query === 'string' && query.trim()) {
-        await processQuery(query.trim());
+      if (typeof query === "string" && query.trim()) {
+        await processQueryandShowLoader(query.trim(), processor);
       }
 
       console.log();
     } catch (error) {
-      console.log(chalk.red('Error:'), error);
+      console.log(chalk.red("Error:"), error);
       process.exit(0);
     }
   }
 }
 
-async function processQuery(query: string) {
-  const loadingSpinner = ora('Processing your query...').start();
-  const processor = new AIDBProcessor();
+async function processQueryandShowLoader(query: string, processor: Processor) {
+  const spinner = new DynamicSpinner("Starting query processing...");
 
   try {
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await processor.processQuery(query, spinner);
 
-    const result = await processor.processQuery(query);
-
-    loadingSpinner.succeed('Query processed successfully!');
-
-    console.log(chalk.blue('\n📝 Query:'), result.query);
-    console.log(chalk.green('✨ Response:'), result.response);
-
-    if (result.suggestions && result.suggestions.length > 0) {
-      console.log(chalk.yellow('💡 Suggestions:'));
-      result.suggestions.forEach((suggestion) => {
-        console.log(chalk.yellow(`  • ${suggestion}`));
-      });
-    }
-
-    console.log(
-      chalk.gray(
-        `\n⏰ Processed at: ${result.timestamp.toLocaleTimeString()}\n`
-      )
-    );
+    spinner.succeed("Query processed successfully!");
   } catch (error) {
-    loadingSpinner.fail('Failed to process query');
-    console.error(chalk.red('Error:'), error);
+    spinner.fail("Failed to process query");
+    console.error(chalk.red("Error:"), error);
   }
 }

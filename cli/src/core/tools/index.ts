@@ -1,0 +1,1 @@
+export { createGitIgnoreChecker } from './ignoreGitIgnoreFileTool';
