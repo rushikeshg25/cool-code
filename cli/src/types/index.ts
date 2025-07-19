@@ -1,4 +1,9 @@
-export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'mongodb' | 'redis';
+export type DatabaseType =
+  | "mysql"
+  | "postgresql"
+  | "sqlite"
+  | "mongodb"
+  | "redis";
 
 export interface DatabaseConfig {
   type: DatabaseType;
@@ -11,7 +16,7 @@ export interface DatabaseConfig {
 
 export interface CLIOptions {
   verbose?: boolean;
-  output?: 'json' | 'table' | 'raw';
+  output?: "json" | "table" | "raw";
   config?: string;
 }
 
@@ -19,4 +24,9 @@ export interface QueryContext {
   database?: DatabaseConfig;
   options: CLIOptions;
   history: string[];
+}
+
+export interface ToolResult {
+  LLMresult: string;
+  DisplayResult: string;
 }
