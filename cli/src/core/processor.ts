@@ -1,7 +1,7 @@
-import path from "path";
 import chalk from "chalk";
 import { DynamicSpinner, StreamingSpinner } from "../ui/spinner";
 import { createGitIgnoreChecker } from "./tools";
+import { getFolderStructure } from "./utils";
 import { LLM } from "./llm";
 
 export interface QueryResult {
@@ -26,7 +26,7 @@ interface configType {
 export type SpinnerUpdateCallback = (text: string) => void;
 
 export class Processor {
-  private config: configType;
+  public config: configType;
   private currentDir: string | null;
   private LLM: LLM;
 
@@ -44,56 +44,62 @@ export class Processor {
 
   async processQuery(query: string, spinner: DynamicSpinner) {
     spinner.updateText("🤖 Connecting to AI model...");
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
     spinner.updateText("📝 Preparing to generate response...");
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     try {
       // Stop the initial spinner
       spinner.stop();
-      
+
       // Display query and response header
       console.log(chalk.blue("\n📝 Query:"), query);
       console.log(chalk.green("✨ Response:"));
       console.log(); // Empty line before response
-      
+
       // Create streaming spinner that stays at bottom
       const streamingSpinner = new StreamingSpinner();
       streamingSpinner.start("🔄 Generating response...");
-      
+
       let wordCount = 0;
       let charCount = 0;
-      
+
       // Stream the response with real-time status updates
       const response = await this.LLM.StreamResponse(query, (chunk: string) => {
         // Clear the spinner line before writing content
-        process.stdout.write('\r\x1b[K');
-        
+        process.stdout.write("\r\x1b[K");
+
         // Write the chunk
         process.stdout.write(chunk);
-        
+
         // Update stats
         charCount += chunk.length;
-        if (chunk.includes(' ')) {
-          wordCount += chunk.split(' ').length - 1;
+        if (chunk.includes(" ")) {
+          wordCount += chunk.split(" ").length - 1;
         }
-        
+
         // If chunk doesn't end with newline, add one for spinner
-        if (!chunk.endsWith('\n')) {
-          process.stdout.write('\n');
+        if (!chunk.endsWith("\n")) {
+          process.stdout.write("\n");
         }
-        
+
         // Update spinner text with stats
-        streamingSpinner.updateText(`Generated ${wordCount} words, ${charCount} characters...`);
+        streamingSpinner.updateText(
+          `Generated ${wordCount} words, ${charCount} characters...`
+        );
       });
-      
+
       // Complete the streaming
       streamingSpinner.succeed("Response completed!");
-      
-      console.log(chalk.gray(`⏰ Completed at: ${new Date().toLocaleTimeString()}`));
-      console.log(chalk.dim(`📊 Total: ${wordCount} words, ${charCount} characters\n`));
-      
+
+      console.log(
+        chalk.gray(`⏰ Completed at: ${new Date().toLocaleTimeString()}`)
+      );
+      console.log(
+        chalk.dim(`📊 Total: ${wordCount} words, ${charCount} characters\n`)
+      );
+
       return response;
     } catch (error) {
       spinner.fail("❌ Failed to generate response");
@@ -101,8 +107,21 @@ export class Processor {
     }
   }
 
-  private async getEnvironment() {}
-}
+  async getEnvironment() {
+    const platform = process.platform;
+    const folderStructure = await getFolderStructure({
+      gitIgnoreChecker: this.config.doesExistInGitIgnore,
+      rootDir: this.config.rootDir,
+    });
 
-// Export tools
-export * from "./tools";
+    const context = `
+  This is the AI DB CLI. We are setting up the context for our chat.
+  My operating system is: ${platform}
+  I'm currently working in the directory: ${this.config.rootDir}
+  ${folderStructure}`.trim();
+
+    return context;
+  }
+
+
+}
