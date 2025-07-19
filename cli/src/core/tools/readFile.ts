@@ -35,15 +35,13 @@ export function readFile(
     };
   }
   try {
+    const content = fs.readFileSync(absolutePath, "utf-8");
     if (!startLine && !endLine) {
-      const content = fs.readFileSync(absolutePath, "utf-8");
-
       return {
         DisplayResult: "Reading " + path.relative(rootPath, absolutePath),
         LLMresult: content,
       };
     } else {
-      const content = fs.readFileSync(absolutePath, "utf-8");
       const lines = content.split("\n");
       const totalLines = lines.length;
 
