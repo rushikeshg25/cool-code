@@ -17,7 +17,7 @@ export interface LLMConfig {
   maxTokens?: number;
 }
 
-interface configType {
+export interface configType {
   LLMConfig: LLMConfig;
   rootDir: string;
   doesExistInGitIgnore: (rootDir: string) => boolean | null;
@@ -122,6 +122,4 @@ export class Processor {
 
     return context;
   }
-
-
 }
