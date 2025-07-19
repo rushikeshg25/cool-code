@@ -1,3 +1,4 @@
+import { toolRegistery } from './tools/tool-registery';
 import { getFolderStructure } from './utils';
 
 export interface Message {
@@ -20,7 +21,7 @@ interface ToolCall {
 }
 
 export class ContextManager {
-  systemPrompt = ``;
+  systemPrompt = basePrompt;
   private gitIgnoreChecker: (a: string) => boolean | null;
   private conversations: Message[];
   private projectState: ProjectStateType;
@@ -48,6 +49,7 @@ export class ContextManager {
     sections.push(this.buildSystemSection());
     sections.push(this.buildProjectStateSection());
     sections.push(this.buildConversationSection());
+    sections.push(this.buildToolInfoSection());
     return sections.filter(Boolean).join('\n\n');
   }
 
@@ -76,6 +78,11 @@ export class ContextManager {
       }
     }
     return section;
+  }
+
+  private buildToolInfoSection(): string {
+    const toolInfo = toolRegistery.map((tool) => tool.name).join('\n');
+    return `These are your Tools and what they expect:\n${toolInfo} the response I am expecting in the form of objects which i mentioned in the tool infos and here are the examples:\n${examples}`;
   }
 
   updateProjectCWD(cwd: string) {
