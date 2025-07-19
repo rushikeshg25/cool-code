@@ -1,3 +1,4 @@
+import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT } from './prompts';
 import { toolRegistery } from './tools/tool-registery';
 import { getFolderStructure } from './utils';
 
@@ -21,7 +22,7 @@ interface ToolCall {
 }
 
 export class ContextManager {
-  systemPrompt = basePrompt;
+  systemPrompt = BASE_PROMPT;
   private gitIgnoreChecker: (a: string) => boolean | null;
   private conversations: Message[];
   private projectState: ProjectStateType;
@@ -82,7 +83,7 @@ export class ContextManager {
 
   private buildToolInfoSection(): string {
     const toolInfo = toolRegistery.map((tool) => tool.name).join('\n');
-    return `These are your Tools and what they expect:\n${toolInfo} the response I am expecting in the form of objects which i mentioned in the tool infos and here are the examples:\n${examples}`;
+    return `These are your Tools and what they expect:\n${toolInfo} here are some examples:\n${EXAMPLES} and the response I am expecting is like \n${TOOL_SELECTION_PROMPT}`;
   }
 
   updateProjectCWD(cwd: string) {

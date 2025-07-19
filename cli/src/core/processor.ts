@@ -3,6 +3,7 @@ import { DynamicSpinner, StreamingSpinner } from '../ui/spinner';
 import { createGitIgnoreChecker } from './tools';
 import { LLM } from './llm';
 import { ContextManager } from './contextManager';
+import dotenv from 'dotenv';
 
 export interface QueryResult {
   query: string;
@@ -31,6 +32,7 @@ export class Processor {
   private contextManager: ContextManager;
 
   constructor(rootDir: string) {
+    dotenv.config();
     this.config = {
       LLMConfig: {
         model: 'gemini-2.5-flash',
@@ -46,12 +48,6 @@ export class Processor {
   }
 
   async processQuery(query: string, spinner: DynamicSpinner) {
-    spinner.updateText('🤖 Connecting to AI model...');
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    spinner.updateText('📝 Preparing to generate response...');
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
     try {
       // Stop the initial spinner
       spinner.stop();
@@ -69,29 +65,36 @@ export class Processor {
       let charCount = 0;
 
       // Stream the response with real-time status updates
-      const response = await this.LLM.StreamResponse(query, (chunk: string) => {
-        // Clear the spinner line before writing content
-        process.stdout.write('\r\x1b[K');
+      // const response = await this.LLM.StreamResponse(
+      //   (await this.contextManager.buildPrompt()) + query,
+      //   (chunk: string) => {
+      //     // Clear the spinner line before writing content
+      //     process.stdout.write('\r\x1b[K');
 
-        // Write the chunk
-        process.stdout.write(chunk);
+      //     // Write the chunk
+      //     process.stdout.write(chunk);
 
-        // Update stats
-        charCount += chunk.length;
-        if (chunk.includes(' ')) {
-          wordCount += chunk.split(' ').length - 1;
-        }
+      //     // Update stats
+      //     charCount += chunk.length;
+      //     if (chunk.includes(' ')) {
+      //       wordCount += chunk.split(' ').length - 1;
+      //     }
 
-        // If chunk doesn't end with newline, add one for spinner
-        if (!chunk.endsWith('\n')) {
-          process.stdout.write('\n');
-        }
+      //     // If chunk doesn't end with newline, add one for spinner
+      //     if (!chunk.endsWith('\n')) {
+      //       process.stdout.write('\n');
+      //     }
 
-        // Update spinner text with stats
-        streamingSpinner.updateText(
-          `Generated ${wordCount} words, ${charCount} characters...`
-        );
-      });
+      //     // Update spinner text with stats
+      //     streamingSpinner.updateText(
+      //       `Generated ${wordCount} words, ${charCount} characters...`
+      //     );
+      //   }
+      // );
+      const response = await this.LLM.generateTextAns(
+        (await this.contextManager.buildPrompt()) + query
+      );
+      console.log(response);
 
       // Complete the streaming
       streamingSpinner.succeed('Response completed!');
