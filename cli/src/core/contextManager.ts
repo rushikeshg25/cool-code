@@ -1,3 +1,5 @@
+import { getFolderStructure } from './utils';
+
 export interface Message {
   role: 'user' | 'model';
   content: string;
@@ -7,6 +9,7 @@ export interface Message {
 }
 
 interface ProjectStateType {
+  rootDir: string;
   cwd: string;
   fileTree: string;
 }
@@ -18,16 +21,22 @@ interface ToolCall {
 
 export class ContextManager {
   systemPrompt = ``;
+  private gitIgnoreChecker: (a: string) => boolean | null;
   private conversations: Message[];
   private projectState: ProjectStateType;
   private currentQuery: string;
-  constructor(cwd: string, fileTree: string) {
+  constructor(cwd: string, gitIgnoreChecker: (a: string) => boolean | null) {
     this.projectState = {
+      rootDir: cwd,
       cwd,
-      fileTree,
+      fileTree: getFolderStructure({
+        gitIgnoreChecker,
+        rootDir: cwd,
+      }),
     };
     this.conversations = [];
     this.currentQuery = '';
+    this.gitIgnoreChecker = gitIgnoreChecker;
   }
 
   addResponse(message: Message) {
@@ -79,5 +88,12 @@ export class ContextManager {
       content: query,
     });
     this.currentQuery = query;
+  }
+
+  async updateProjectStateTree() {
+    this.projectState.fileTree = await getFolderStructure({
+      gitIgnoreChecker: this.gitIgnoreChecker,
+      rootDir: this.projectState.rootDir,
+    });
   }
 }
