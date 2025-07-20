@@ -1,9 +1,9 @@
-import chalk from 'chalk';
-import { DynamicSpinner, StreamingSpinner } from '../ui/spinner';
-import { createGitIgnoreChecker } from './tools';
-import { LLM } from './llm';
-import { ContextManager } from './contextManager';
-import dotenv from 'dotenv';
+import chalk from "chalk";
+import { StreamingSpinner } from "../ui/spinner";
+import { createGitIgnoreChecker } from "./tools";
+import { LLM } from "./llm";
+import { ContextManager } from "./contextManager";
+import dotenv from "dotenv";
 
 export interface QueryResult {
   query: string;
@@ -35,7 +35,7 @@ export class Processor {
     dotenv.config();
     this.config = {
       LLMConfig: {
-        model: 'gemini-2.5-flash',
+        model: "gemini-2.5-flash",
       },
       rootDir,
       doesExistInGitIgnore: createGitIgnoreChecker(rootDir),
@@ -47,22 +47,16 @@ export class Processor {
     );
   }
 
-  async processQuery(query: string, spinner: DynamicSpinner) {
+  async processQuery(query: string) {
     try {
-      // Stop the initial spinner
-      spinner.stop();
-
       // Display query and response header
-      console.log(chalk.blue('\n📝 Query:'), query);
-      console.log(chalk.green('✨ Response:'));
-      console.log(); // Empty line before response
+      console.log(chalk.blue("\n📝 Query:"), query);
+      console.log(chalk.green("✨ Response:"));
+      console.log();
 
       // Create streaming spinner that stays at bottom
       const streamingSpinner = new StreamingSpinner();
-      streamingSpinner.start('🔄 Generating response...');
-
-      let wordCount = 0;
-      let charCount = 0;
+      streamingSpinner.start("🔄 Generating response...");
 
       const prompt =
         (await this.contextManager.buildPrompt()) +
@@ -72,43 +66,27 @@ export class Processor {
         prompt,
         (chunk: string) => {
           // Clear the spinner line before writing content
-          process.stdout.write('\r\x1b[K');
+          process.stdout.write("\r\x1b[K");
 
           // Write the chunk
           process.stdout.write(chunk);
 
-          // Update stats
-          charCount += chunk.length;
-          if (chunk.includes(' ')) {
-            wordCount += chunk.split(' ').length - 1;
-          }
-
           // If chunk doesn't end with newline, add one for spinner
-          if (!chunk.endsWith('\n')) {
-            process.stdout.write('\n');
+          if (!chunk.endsWith("\n")) {
+            process.stdout.write("\n");
           }
-
-          // Update spinner text with stats
-          streamingSpinner.updateText(
-            `Generated ${wordCount} words, ${charCount} characters...`
-          );
         }
       );
 
-      // Complete the streaming
-      streamingSpinner.succeed('Response completed!');
+      streamingSpinner.succeed("Response completed!");
 
       console.log(
-        chalk.gray(`⏰ Completed at: ${new Date().toLocaleTimeString()}`)
-      );
-      console.log(
-        chalk.dim(`📊 Total: ${wordCount} words, ${charCount} characters\n`)
+        chalk.gray(`Completed at: ${new Date().toLocaleTimeString()}`)
       );
 
       return response;
     } catch (error) {
-      spinner.fail('❌ Failed to generate response');
-      throw new Error('Error processing query: ' + error);
+      throw new Error("Error processing query: " + error);
     }
   }
 }

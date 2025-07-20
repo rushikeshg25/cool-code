@@ -1,7 +1,6 @@
 import { text } from "@clack/prompts";
 import chalk from "chalk";
 import { Processor } from "../core/processor";
-import { DynamicSpinner } from "./spinner";
 
 export async function acceptQuery(rootDir: string) {
   const processor = new Processor(rootDir);
@@ -37,13 +36,10 @@ export async function acceptQuery(rootDir: string) {
 }
 
 async function processQueryandShowLoader(query: string, processor: Processor) {
-  const spinner = new DynamicSpinner("🚀 Starting query processing...");
-
   try {
-    await processor.processQuery(query, spinner);
+    await processor.processQuery(query);
     // Spinner completion is handled in processor during streaming
   } catch (error) {
-    spinner.fail("❌ Failed to process query");
     console.error(chalk.red("Error:"), error);
   }
 }
