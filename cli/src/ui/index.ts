@@ -1,11 +1,9 @@
 import { showLanding } from './landing';
 import { acceptQuery } from './query';
 
-import { PrismaClient } from '@prisma/client';
-
-export async function runCli(prisma: PrismaClient) {
+export async function runCli() {
   const rootDir = process.cwd();
 
   await showLanding();
-  await acceptQuery(rootDir, prisma);
+  await acceptQuery(rootDir);
 }

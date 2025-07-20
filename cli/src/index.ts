@@ -2,7 +2,6 @@
 
 import { program } from 'commander';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
 import { runCli } from './ui';
 
 async function main() {
@@ -12,10 +11,8 @@ async function main() {
     .description('AI Database CLI Tool')
     .version('1.0.0');
 
-  const prisma = new PrismaClient();
-
   program.action(async () => {
-    await runCli(prisma);
+    await runCli();
   });
 
   program.parse();

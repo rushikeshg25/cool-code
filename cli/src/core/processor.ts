@@ -4,7 +4,6 @@ import { ContextManager } from './contextManager';
 import dotenv from 'dotenv';
 import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
 import { validateAndRunToolCall } from './tools/toolValidator';
-import { PrismaClient } from '@prisma/client';
 export interface QueryResult {
   query: string;
   response: string;
@@ -30,9 +29,8 @@ export class Processor {
   public config: configType;
   private LLM: LLM;
   private contextManager: ContextManager;
-  private prisma: PrismaClient;
 
-  constructor(rootDir: string, prisma: PrismaClient) {
+  constructor(rootDir: string) {
     dotenv.config();
     this.config = {
       LLMConfig: {
@@ -46,7 +44,6 @@ export class Processor {
       rootDir,
       this.config.doesExistInGitIgnore
     );
-    this.prisma = prisma;
   }
 
   isFinalMessage(response: any): boolean {
@@ -97,8 +94,7 @@ export class Processor {
             const result = await validateAndRunToolCall(
               toolCall,
               this.config,
-              this.config.rootDir,
-              this.prisma
+              this.config.rootDir
             );
             this.contextManager.addResponse(
               result.result?.LLMresult as string,

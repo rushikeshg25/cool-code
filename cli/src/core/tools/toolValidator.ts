@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
-
 import type { configType } from '../processor';
 import type { ToolResult } from '../../types';
 import { readFile } from './readFileTool';
@@ -80,8 +78,7 @@ export interface FileValidationResult {
 export async function validateAndRunToolCall(
   jsonData: unknown,
   config: configType,
-  rootPath: string,
-  prisma: PrismaClient
+  rootPath: string
 ): Promise<{
   success: boolean;
   data?: any;
