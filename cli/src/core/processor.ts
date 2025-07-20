@@ -64,12 +64,14 @@ export class Processor {
       const prompt = this.contextManager.buildPrompt();
       console.log(prompt);
       const response = await this.LLM.StreamResponse(prompt);
-
-      console.log('[DEBUG] Raw LLM response:', response, typeof response);
+      // if (toolCall && typeof toolCall === 'object' && 'text' in toolCall) {
+      //   streamingSpinner.succeed('Response completed!');
+      //   console.log('\n[FINAL MESSAGE]\n' + toolCall.text + '\n');
+      //   return;
+      // }
 
       let toolCalls;
       try {
-        // Remove markdown code block markers if present
         let cleanResponse = response.trim();
         if (cleanResponse.startsWith('```')) {
           cleanResponse = cleanResponse
@@ -78,8 +80,12 @@ export class Processor {
             .trim();
         }
         toolCalls = JSON.parse(cleanResponse);
-        console.log('TOOLCALLS', toolCalls);
-        // If toolCalls is a string (double-encoded), parse again
+        if (this.isFinalMessage(toolCalls)) {
+          streamingSpinner.succeed('Response completed!');
+          console.log('\n[FINAL MESSAGE]\n' + response + '\n');
+          break;
+        }
+        console.log('{TOOLCALLS}', toolCalls);
         if (typeof toolCalls === 'string') {
           toolCalls = JSON.parse(toolCalls);
         }
@@ -88,8 +94,7 @@ export class Processor {
         console.log('\n[FINAL MESSAGE]\n' + response + '\n');
         break;
       }
-      console.log('[DEBUG] Parsed toolCalls:', toolCalls, typeof toolCalls);
-      console.log('[DEBUG] Is toolCalls an array?', Array.isArray(toolCalls));
+
       for (const toolCall of toolCalls) {
         console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);
         if (toolCall && typeof toolCall === 'object' && 'tool' in toolCall) {
@@ -100,7 +105,10 @@ export class Processor {
               this.config,
               this.config.rootDir
             );
-            // this.contextManager.addToolResult(toolCall, result);
+            this.contextManager.addResponse(
+              result.result?.LLMresult as string,
+              toolCall
+            );
             if (result.result?.LLMresult) {
               streamingSpinner.updateText(result.result.LLMresult);
             } else if (result.error) {
@@ -123,14 +131,6 @@ export class Processor {
             );
             console.error('[AGENT ERROR]', err);
           }
-        } else if (
-          toolCall &&
-          typeof toolCall === 'object' &&
-          'text' in toolCall
-        ) {
-          streamingSpinner.succeed('Response completed!');
-          console.log('\n[FINAL MESSAGE]\n' + toolCall.text + '\n');
-          return;
         } else {
           console.log(
             '[DEBUG] Unhandled toolCall structure:',
