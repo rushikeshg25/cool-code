@@ -16,6 +16,7 @@
     "@ai-sdk/google": "^1.2.22",
     "@clack/prompts": "^0.7.0",
     "@esm2cjs/execa": "6.1.1-cjs.1",
+    "@google/genai": "^1.10.0",
     "@types/ejs": "^3.1.5",
     "@types/node": "^20.11.24",
     "ai": "^4.3.19",

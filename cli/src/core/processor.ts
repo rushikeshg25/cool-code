@@ -64,37 +64,36 @@ export class Processor {
       let wordCount = 0;
       let charCount = 0;
 
-      // Stream the response with real-time status updates
-      // const response = await this.LLM.StreamResponse(
-      //   (await this.contextManager.buildPrompt()) + query,
-      //   (chunk: string) => {
-      //     // Clear the spinner line before writing content
-      //     process.stdout.write('\r\x1b[K');
+      const prompt =
+        (await this.contextManager.buildPrompt()) +
+        "User's current prompt: " +
+        query;
+      const response = await this.LLM.StreamResponse(
+        prompt,
+        (chunk: string) => {
+          // Clear the spinner line before writing content
+          process.stdout.write('\r\x1b[K');
 
-      //     // Write the chunk
-      //     process.stdout.write(chunk);
+          // Write the chunk
+          process.stdout.write(chunk);
 
-      //     // Update stats
-      //     charCount += chunk.length;
-      //     if (chunk.includes(' ')) {
-      //       wordCount += chunk.split(' ').length - 1;
-      //     }
+          // Update stats
+          charCount += chunk.length;
+          if (chunk.includes(' ')) {
+            wordCount += chunk.split(' ').length - 1;
+          }
 
-      //     // If chunk doesn't end with newline, add one for spinner
-      //     if (!chunk.endsWith('\n')) {
-      //       process.stdout.write('\n');
-      //     }
+          // If chunk doesn't end with newline, add one for spinner
+          if (!chunk.endsWith('\n')) {
+            process.stdout.write('\n');
+          }
 
-      //     // Update spinner text with stats
-      //     streamingSpinner.updateText(
-      //       `Generated ${wordCount} words, ${charCount} characters...`
-      //     );
-      //   }
-      // );
-      const response = await this.LLM.generateTextAns(
-        (await this.contextManager.buildPrompt()) + query
+          // Update spinner text with stats
+          streamingSpinner.updateText(
+            `Generated ${wordCount} words, ${charCount} characters...`
+          );
+        }
       );
-      console.log(response);
 
       // Complete the streaming
       streamingSpinner.succeed('Response completed!');
