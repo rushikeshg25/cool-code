@@ -26,78 +26,92 @@ AI-DB-CLI is a powerful tool that combines the capabilities of large language mo
 ### Setup
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/rushikeshg25/ai-db-cli.git
 cd cli
 ```
 
 2. Install dependencies:
+
 ```bash
 bun install
 ```
 
 3. Set up environment variables:
+
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env` and add your Google AI API key:
+
 ```
 GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
 ```
 
 4. Build the project:
+
 ```bash
 bun run build
 ```
 
 5. Install globally:
+
 ```bash
 npm link
+//so that the api key is available to the cli
+export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
 ```
-
 
 ## 🎯 Usage
 
 ### Starting the CLI
 
 Navigate to your project's dir
+
 ```bash
 ai-db-cli
 ```
-
 
 ## 🏗 Architecture
 
 ### Core Components
 
 #### 1. Entry Point (`src/index.ts`)
+
 The main entry point that initializes the CLI using Commander.js and starts the interactive session.
 
 #### 2. UI Layer (`src/ui/`)
+
 - **Landing (`landing.ts`)**: Displays the welcome screen with ASCII art
 - **Query Handler (`query.ts`)**: Manages user input and query processing
 - **Spinner (`spinner.ts`)**: Provides visual feedback during processing
 
 #### 3. Core Engine (`src/core/`)
+
 - **Processor (`processor.ts`)**: Main orchestrator that handles query processing
 - **LLM (`llm.ts`)**: Manages communication with Google's Gemini AI model
 - **Context Manager (`contextManager.ts`)**: Maintains conversation history and project state
 - **Prompts (`prompts.ts`)**: Contains system prompts and examples for the AI
 
 #### 4. Tool System (`src/core/tools/`)
+
 A comprehensive set of tools that the AI can use:
 
 - **File Operations**:
+
   - `readFileTool.ts`: Read file contents
   - `editTool.ts`: Edit existing files
   - `newFileTool.ts`: Create new files
 
 - **Search & Discovery**:
+
   - `globTool.ts`: Find files using glob patterns
   - `grepTool.ts`: Search file contents using regex
 
 - **System Operations**:
+
   - `shellTool.ts`: Execute shell commands
   - `ignoreGitIgnoreFileTool.ts`: Handle .gitignore patterns
 
@@ -108,11 +122,13 @@ A comprehensive set of tools that the AI can use:
 ## 🔄 How It Works
 
 ### 1. Initialization
+
 ```
 User starts CLI → Landing screen → Query input prompt
 ```
 
 ### 2. Query Processing Flow
+
 ```
 User Query → Context Manager → LLM Processing → Tool Selection → Tool Execution → Response
 ```
@@ -138,22 +154,23 @@ The AI uses a sophisticated tool selection system:
 // Example tool call structure
 [
   {
-    "tool": "read_file",
-    "description": "Reading current server configuration",
-    "toolOptions": {
-      "absolutePath": "/src/server.js"
-    }
+    tool: 'read_file',
+    description: 'Reading current server configuration',
+    toolOptions: {
+      absolutePath: '/src/server.js',
+    },
   },
   {
-    "tool": "edit_file", 
-    "description": "Adding new middleware",
-    "toolOptions": {
-      "filePath": "/src/server.js",
-      "oldString": "const express = require('express');\nconst app = express();",
-      "newString": "const express = require('express');\nconst auth = require('./auth');\nconst app = express();"
-    }
-  }
-]
+    tool: 'edit_file',
+    description: 'Adding new middleware',
+    toolOptions: {
+      filePath: '/src/server.js',
+      oldString: "const express = require('express');\nconst app = express();",
+      newString:
+        "const express = require('express');\nconst auth = require('./auth');\nconst app = express();",
+    },
+  },
+];
 ```
 
 ## 🔧 Configuration
@@ -203,6 +220,3 @@ ai-db-cli/cli/
 ├── tsconfig.json
 └── README.md
 ```
-
-
-
