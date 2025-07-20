@@ -4,10 +4,7 @@ import { getFolderStructure } from './utils';
 
 export interface Message {
   role: 'user' | 'model';
-  content: string;
-  metadata?: {
-    toolCalls?: ToolCall[];
-  };
+  content: string; //user's query for user and LLMresponse for model with whatever the toolCall is
 }
 
 interface ProjectStateType {
@@ -18,7 +15,7 @@ interface ProjectStateType {
 
 interface ToolCall {
   tool: string;
-  parameters: any;
+  toolOptions: any;
 }
 
 export class ContextManager {
@@ -26,7 +23,6 @@ export class ContextManager {
   private gitIgnoreChecker: (a: string) => boolean | null;
   private conversations: Message[];
   private projectState: ProjectStateType;
-  private currentQuery: string;
   constructor(cwd: string, gitIgnoreChecker: (a: string) => boolean | null) {
     this.projectState = {
       rootDir: cwd,
@@ -37,20 +33,30 @@ export class ContextManager {
       }),
     };
     this.conversations = [];
-    this.currentQuery = '';
     this.gitIgnoreChecker = gitIgnoreChecker;
   }
 
-  addResponse(message: Message) {
+  addResponse(LLMresponse: string, toolCall: ToolCall) {
+    const message: Message = {
+      role: 'model',
+      content: `Output of ${JSON.stringify(toolCall)}:\n${LLMresponse}`,
+    };
     this.conversations.push(message);
+  }
+
+  addUserMessage(query: string) {
+    this.conversations.push({
+      role: 'user',
+      content: query,
+    });
   }
 
   buildPrompt(): string {
     const sections = [];
     sections.push(this.buildSystemSection());
     sections.push(this.buildProjectStateSection());
-    sections.push(this.buildConversationSection());
     sections.push(this.buildToolInfoSection());
+    sections.push(this.buildConversationSection());
     return sections.filter(Boolean).join('\n\n');
   }
 
@@ -71,31 +77,17 @@ export class ContextManager {
     let section = '--- Recent Conversation ---\n';
     for (const msg of recentMessages) {
       section += `${msg.role}: ${msg.content}\n`;
-
-      if (msg.metadata?.toolCalls) {
-        for (const tool of msg.metadata.toolCalls.slice(-2)) {
-          section += `Tool: ${tool}\n`;
-        }
-      }
     }
     return section;
   }
 
   private buildToolInfoSection(): string {
-    const toolInfo = toolRegistery.map((tool) => tool.name).join('\n');
+    const toolInfo = JSON.stringify(toolRegistery);
     return `These are your Tools and what they expect:\n${toolInfo} here are some examples:\n${EXAMPLES} and the response I am expecting is like \n${TOOL_SELECTION_PROMPT}`;
   }
 
   updateProjectCWD(cwd: string) {
     this.projectState.cwd = cwd;
-  }
-
-  updateCurrentQuery(query: string) {
-    this.conversations.push({
-      role: 'user',
-      content: query,
-    });
-    this.currentQuery = query;
   }
 
   async updateProjectStateTree() {

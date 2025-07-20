@@ -1,48 +1,63 @@
 import { z } from 'zod';
 
+import type { configType } from '../processor';
+import type { ToolResult } from '../../types';
+import { readFile } from './readFileTool';
+import { editFile } from './editTool';
+import { execCommand } from './shellTool';
+import { globFiles } from './globTool';
+import { grepTool } from './grepTool';
+import { newFile } from './newFileTool';
+
 export const ReadFileSchema = z.object({
   tool: z.literal('read_file'),
-  parameters: z.object({
-    absolute_path: z.string().min(1, 'File path cannot be empty'),
-    startLine: z.number().int().positive().optional(),
-    endLine: z.number().int().positive().optional(),
+  toolOptions: z.object({
+    absolutePath: z.string().min(1, 'File path cannot be empty'),
+    startLine: z.number().int().nonnegative().optional(), // Changed to nonnegative (0-based indexing)
+    endLine: z.number().int().nonnegative().optional(), // Changed to nonnegative
   }),
 });
 
 export const EditFileSchema = z.object({
   tool: z.literal('edit_file'),
-  parameters: z.object({
-    absolute_path: z.string().min(1, 'File path cannot be empty'),
-    content: z.string(),
-    backup: z.boolean().optional(),
+  toolOptions: z.object({
+    filePath: z.string().min(1, 'File path cannot be empty'),
+    oldString: z.string(),
+    newString: z.string(),
+    expected_replacements: z.number().int().positive().optional(), // Added int() and positive()
   }),
 });
 
 export const ShellCommandSchema = z.object({
   tool: z.literal('shell_command'),
-  parameters: z.object({
+  toolOptions: z.object({
     command: z.string().min(1, 'Command cannot be empty'),
-    cwd: z.string().optional(),
-    timeout: z.number().positive().optional(),
+    description: z.string().optional(),
+    directory: z.string().optional(),
   }),
 });
 
 export const GlobSchema = z.object({
   tool: z.literal('glob'),
-  parameters: z.object({
+  toolOptions: z.object({
     pattern: z.string().min(1, 'Pattern cannot be empty'),
-    rootDir: z.string().optional(),
-    recursive: z.boolean().optional(),
-    includeDirectories: z.boolean().optional(),
   }),
 });
 
 export const GrepSchema = z.object({
   tool: z.literal('grep'),
-  parameters: z.object({
+  toolOptions: z.object({
     pattern: z.string().min(1, 'Pattern cannot be empty'),
     path: z.string().optional(),
     include: z.string().optional(),
+  }),
+});
+
+export const NewFileSchema = z.object({
+  tool: z.literal('new_file'),
+  toolOptions: z.object({
+    filePath: z.string().min(1, 'File path cannot be empty'),
+    content: z.string(), // Fixed property name from 'Content' to 'content' and removed min(1) to allow empty files
   }),
 });
 
@@ -50,13 +65,9 @@ export type ToolCall =
   | z.infer<typeof ReadFileSchema>
   | z.infer<typeof EditFileSchema>
   | z.infer<typeof ShellCommandSchema>
-  | z.infer<typeof GlobSchema>;
-
-export interface ValidationResult {
-  success: boolean;
-  error?: string;
-  data?: ToolCall;
-}
+  | z.infer<typeof GlobSchema>
+  | z.infer<typeof GrepSchema> // Added missing GrepSchema
+  | z.infer<typeof NewFileSchema>;
 
 export interface FileValidationResult {
   exists: boolean;
@@ -65,10 +76,16 @@ export interface FileValidationResult {
   error?: string;
 }
 
-/**
- * Validate JSON tool call structure
- */
-export function validateToolCall(jsonData: unknown): ValidationResult {
+export async function validateAndRunToolCall(
+  jsonData: unknown,
+  config: configType,
+  rootPath: string
+): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+  result?: ToolResult;
+}> {
   try {
     if (!jsonData || typeof jsonData !== 'object' || !('tool' in jsonData)) {
       return {
@@ -80,71 +97,130 @@ export function validateToolCall(jsonData: unknown): ValidationResult {
     const data = jsonData as any;
 
     switch (data.tool) {
-      case 'read_file':
+      case 'read_file': {
         const readFileResult = ReadFileSchema.safeParse(data);
         if (!readFileResult.success) {
           return {
             success: false,
-            error: `Invalid read_file parameters: ${readFileResult.error.message}`,
+            error: `Invalid read_file toolOptions: ${readFileResult.error.message}`,
           };
         }
-        return { success: true, data: readFileResult.data };
 
-      case 'edit_file':
+        // Add validation for startLine/endLine consistency
+        const { startLine, endLine } = readFileResult.data.toolOptions;
+        if (
+          startLine !== undefined &&
+          endLine !== undefined &&
+          startLine > endLine
+        ) {
+          return {
+            success: false,
+            error: 'startLine cannot be greater than endLine',
+          };
+        }
+
+        const result = readFile(readFileResult.data.toolOptions, rootPath);
+        return { success: true, data: readFileResult.data, result };
+      }
+
+      case 'edit_file': {
         const editFileResult = EditFileSchema.safeParse(data);
         if (!editFileResult.success) {
           return {
             success: false,
-            error: `Invalid edit_file parameters: ${editFileResult.error.message}`,
+            error: `Invalid edit_file toolOptions: ${editFileResult.error.message}`,
           };
         }
-        return { success: true, data: editFileResult.data };
 
-      case 'shell_command':
+        // Ensure expected_replacements is always a number
+        const toolOptions = {
+          ...editFileResult.data.toolOptions,
+          expected_replacements:
+            editFileResult.data.toolOptions.expected_replacements ?? 1,
+        };
+
+        const result = editFile(toolOptions);
+        return { success: true, data: editFileResult.data, result };
+      }
+
+      case 'shell_command': {
         const shellResult = ShellCommandSchema.safeParse(data);
         if (!shellResult.success) {
           return {
             success: false,
-            error: `Invalid shell_command parameters: ${shellResult.error.message}`,
+            error: `Invalid shell_command toolOptions: ${shellResult.error.message}`,
           };
         }
-        return { success: true, data: shellResult.data };
 
-      case 'glob':
+        const shellExecResult = await execCommand(shellResult.data.toolOptions);
+
+        const result: ToolResult = {
+          LLMresult:
+            shellExecResult.stdout +
+            (shellExecResult.stderr
+              ? `\nSTDERR:\n${shellExecResult.stderr}`
+              : ''),
+          DisplayResult: shellExecResult.success
+            ? `Command executed successfully${shellExecResult.exitCode !== null ? ` (exit code: ${shellExecResult.exitCode})` : ''}`
+            : `Command failed${shellExecResult.exitCode !== null ? ` (exit code: ${shellExecResult.exitCode})` : ''}${shellExecResult.error ? `: ${shellExecResult.error}` : ''}`,
+        };
+
+        return { success: true, data: shellResult.data, result };
+      }
+
+      case 'glob': {
         const globResult = GlobSchema.safeParse(data);
         if (!globResult.success) {
           return {
             success: false,
-            error: `Invalid glob parameters: ${globResult.error.message}`,
+            error: `Invalid glob toolOptions: ${globResult.error.message}`,
           };
         }
-        return { success: true, data: globResult.data };
+
+        const result = await globFiles(globResult.data.toolOptions, config);
+        return { success: true, data: globResult.data, result };
+      }
+
+      case 'grep': {
+        const grepResult = GrepSchema.safeParse(data);
+        if (!grepResult.success) {
+          return {
+            success: false,
+            error: `Invalid grep toolOptions: ${grepResult.error.message}`,
+          };
+        }
+
+        const result = await grepTool(grepResult.data.toolOptions);
+        return { success: true, data: grepResult.data, result };
+      }
+
+      case 'new_file': {
+        const newFileResult = NewFileSchema.safeParse(data);
+        if (!newFileResult.success) {
+          return {
+            success: false,
+            error: `Invalid new_file toolOptions: ${newFileResult.error.message}`,
+          };
+        }
+
+        // Call the tool (async)
+        const result = await newFile({
+          filePath: newFileResult.data.toolOptions.filePath,
+          content: newFileResult.data.toolOptions.content,
+        });
+        return { success: true, data: newFileResult.data, result };
+      }
 
       default:
         return {
           success: false,
-          error: `Unknown tool: ${data.tool}. Supported tools: read_file, edit_file, shell_command, glob`,
+          error: `Unknown tool: ${data.tool}. Supported tools: read_file, edit_file, shell_command, glob, grep, new_file`,
         };
     }
   } catch (error) {
     return {
       success: false,
       error: `Failed to parse tool call: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-}
-
-/**
- * Parse JSON tool call from string
- */
-export function parseToolCall(jsonString: string): ValidationResult {
-  try {
-    const parsed = JSON.parse(jsonString);
-    return validateToolCall(parsed);
-  } catch (error) {
-    return {
-      success: false,
-      error: `Invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

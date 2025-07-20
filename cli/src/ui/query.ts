@@ -38,7 +38,6 @@ export async function acceptQuery(rootDir: string) {
 async function processQueryandShowLoader(query: string, processor: Processor) {
   try {
     await processor.processQuery(query);
-    // Spinner completion is handled in processor during streaming
   } catch (error) {
     console.error(chalk.red("Error:"), error);
   }

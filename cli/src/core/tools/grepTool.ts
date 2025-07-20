@@ -1,8 +1,8 @@
-import { ToolResult } from "../../types";
-import { getErrorMessage } from "../utils";
-import { GrepSchema } from "./toolValidator";
-import * as fs from "fs";
-import * as path from "path";
+import { ToolResult } from '../../types';
+import { getErrorMessage } from '../utils';
+import { GrepSchema } from './toolValidator';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface GrepToolOptions {
   pattern: string;
@@ -21,7 +21,7 @@ export async function grepTool(options: GrepToolOptions): Promise<ToolResult> {
   if (validationResult) {
     return {
       LLMresult: validationResult,
-      DisplayResult: "Fixing Errors while finding files",
+      DisplayResult: 'Fixing Errors while finding files',
     };
   }
 
@@ -31,7 +31,7 @@ export async function grepTool(options: GrepToolOptions): Promise<ToolResult> {
   const matches: GrepMatch[] = [];
 
   function searchFile(filePath: string) {
-    const lines = fs.readFileSync(filePath, "utf-8").split("\n");
+    const lines = fs.readFileSync(filePath, 'utf-8').split('\n');
     lines.forEach((line, idx) => {
       if (regex.test(line)) {
         matches.push({ filePath: filePath, lineNumber: idx + 1, line });
@@ -63,27 +63,27 @@ export async function grepTool(options: GrepToolOptions): Promise<ToolResult> {
       walkDir(searchPath);
     } else {
       return {
-        LLMresult: "Provided path is neither a file nor a directory.",
-        DisplayResult: "Invalid path",
+        LLMresult: 'Provided path is neither a file nor a directory.',
+        DisplayResult: 'Invalid path',
       };
     }
   } catch (error) {
     return {
       LLMresult: `Error reading path: ${getErrorMessage(error)}`,
-      DisplayResult: "Error while searching",
+      DisplayResult: 'Error while searching',
     };
   }
 
   if (matches.length === 0) {
     return {
-      LLMresult: "No matches found.",
-      DisplayResult: "No matches found",
+      LLMresult: 'No matches found.',
+      DisplayResult: 'No matches found',
     };
   }
 
   const resultString = matches
     .map((m) => `${m.filePath}:${m.lineNumber}: ${m.line}`)
-    .join("\n");
+    .join('\n');
 
   return {
     LLMresult: resultString,
@@ -94,7 +94,7 @@ export async function grepTool(options: GrepToolOptions): Promise<ToolResult> {
 function validateToolParams(options: GrepToolOptions): string | null {
   const result = GrepSchema.safeParse(options);
   if (!result.success) {
-    return `Invalid grep parameters: ${result.error.message}`;
+    return `Invalid grep toolOptions: ${result.error.message}`;
   }
 
   try {

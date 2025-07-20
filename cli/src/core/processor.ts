@@ -1,10 +1,9 @@
-import chalk from "chalk";
-import { StreamingSpinner } from "../ui/spinner";
-import { createGitIgnoreChecker } from "./tools";
-import { LLM } from "./llm";
-import { ContextManager } from "./contextManager";
-import dotenv from "dotenv";
-
+import { StreamingSpinner } from '../ui/spinner';
+import { LLM } from './llm';
+import { ContextManager } from './contextManager';
+import dotenv from 'dotenv';
+import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
+import { validateAndRunToolCall } from './tools/toolValidator';
 export interface QueryResult {
   query: string;
   response: string;
@@ -35,7 +34,7 @@ export class Processor {
     dotenv.config();
     this.config = {
       LLMConfig: {
-        model: "gemini-2.5-flash",
+        model: 'gemini-2.5-flash',
       },
       rootDir,
       doesExistInGitIgnore: createGitIgnoreChecker(rootDir),
@@ -47,46 +46,99 @@ export class Processor {
     );
   }
 
+  isFinalMessage(response: any): boolean {
+    return (
+      !Array.isArray(response) &&
+      typeof response === 'object' &&
+      'text' in response
+    );
+  }
+
   async processQuery(query: string) {
-    try {
-      // Display query and response header
-      console.log(chalk.blue("\n📝 Query:"), query);
-      console.log(chalk.green("✨ Response:"));
-      console.log();
+    this.contextManager.addUserMessage(query);
 
-      // Create streaming spinner that stays at bottom
-      const streamingSpinner = new StreamingSpinner();
-      streamingSpinner.start("🔄 Generating response...");
+    const streamingSpinner = new StreamingSpinner();
+    streamingSpinner.start('🔄 Generating response...');
 
-      const prompt =
-        (await this.contextManager.buildPrompt()) +
-        "User's current prompt: " +
-        query;
-      const response = await this.LLM.StreamResponse(
-        prompt,
-        (chunk: string) => {
-          // Clear the spinner line before writing content
-          process.stdout.write("\r\x1b[K");
+    while (true) {
+      const prompt = this.contextManager.buildPrompt();
+      console.log(prompt);
+      const response = await this.LLM.StreamResponse(prompt);
 
-          // Write the chunk
-          process.stdout.write(chunk);
+      console.log('[DEBUG] Raw LLM response:', response, typeof response);
 
-          // If chunk doesn't end with newline, add one for spinner
-          if (!chunk.endsWith("\n")) {
-            process.stdout.write("\n");
-          }
+      let toolCalls;
+      try {
+        // Remove markdown code block markers if present
+        let cleanResponse = response.trim();
+        if (cleanResponse.startsWith('```')) {
+          cleanResponse = cleanResponse
+            .replace(/^```[a-zA-Z]*\n?/, '')
+            .replace(/```$/, '')
+            .trim();
         }
-      );
-
-      streamingSpinner.succeed("Response completed!");
-
-      console.log(
-        chalk.gray(`Completed at: ${new Date().toLocaleTimeString()}`)
-      );
-
-      return response;
-    } catch (error) {
-      throw new Error("Error processing query: " + error);
+        toolCalls = JSON.parse(cleanResponse);
+        console.log('TOOLCALLS', toolCalls);
+        // If toolCalls is a string (double-encoded), parse again
+        if (typeof toolCalls === 'string') {
+          toolCalls = JSON.parse(toolCalls);
+        }
+      } catch {
+        streamingSpinner.succeed('Response completed!');
+        console.log('\n[FINAL MESSAGE]\n' + response + '\n');
+        break;
+      }
+      console.log('[DEBUG] Parsed toolCalls:', toolCalls, typeof toolCalls);
+      console.log('[DEBUG] Is toolCalls an array?', Array.isArray(toolCalls));
+      for (const toolCall of toolCalls) {
+        console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);
+        if (toolCall && typeof toolCall === 'object' && 'tool' in toolCall) {
+          console.log('\n[TOOL CALL]', JSON.stringify(toolCall, null, 2));
+          try {
+            const result = await validateAndRunToolCall(
+              toolCall,
+              this.config,
+              this.config.rootDir
+            );
+            // this.contextManager.addToolResult(toolCall, result);
+            if (result.result?.LLMresult) {
+              streamingSpinner.updateText(result.result.LLMresult);
+            } else if (result.error) {
+              streamingSpinner.updateText(result.error);
+            }
+            if (result.success) {
+              console.log(
+                '[TOOL RESULT]',
+                result.result?.DisplayResult ||
+                  result.result?.LLMresult ||
+                  'No display result.'
+              );
+            } else {
+              console.error('[TOOL ERROR]', result.error);
+            }
+          } catch (err) {
+            streamingSpinner.updateText(
+              '[AGENT ERROR] ' +
+                (err instanceof Error ? err.message : String(err))
+            );
+            console.error('[AGENT ERROR]', err);
+          }
+        } else if (
+          toolCall &&
+          typeof toolCall === 'object' &&
+          'text' in toolCall
+        ) {
+          streamingSpinner.succeed('Response completed!');
+          console.log('\n[FINAL MESSAGE]\n' + toolCall.text + '\n');
+          return;
+        } else {
+          console.log(
+            '[DEBUG] Unhandled toolCall structure:',
+            toolCall,
+            typeof toolCall
+          );
+        }
+      }
     }
   }
 }
