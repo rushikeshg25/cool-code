@@ -4,6 +4,7 @@ import { ContextManager } from './contextManager';
 import dotenv from 'dotenv';
 import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
 import { validateAndRunToolCall } from './tools/toolValidator';
+import { spinner } from '@clack/prompts';
 export interface QueryResult {
   query: string;
   response: string;
@@ -58,12 +59,12 @@ export class Processor {
     this.contextManager.addUserMessage(query);
 
     const streamingSpinner = new StreamingSpinner();
-    streamingSpinner.start('🔄 Generating response...');
+    streamingSpinner.start('Thinking out loud...');
 
     while (true) {
       const prompt = this.contextManager.buildPrompt();
       const response = await this.LLM.StreamResponse(prompt);
-
+      // console.log('[RAW RESPONSE]', response);
       let toolCalls;
       try {
         let cleanResponse = response.trim();
@@ -78,19 +79,25 @@ export class Processor {
           streamingSpinner.succeed('Response completed!');
           break;
         }
-        console.log('{TOOLCALLS}', toolCalls);
         if (typeof toolCalls === 'string') {
           toolCalls = JSON.parse(toolCalls);
         }
-      } catch {
+      } catch (error) {
+        console.log(error);
         streamingSpinner.succeed('Response completed!');
         break;
       }
 
       for (const toolCall of toolCalls) {
-        console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);
+        // console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);
         if (toolCall && typeof toolCall === 'object' && 'tool' in toolCall) {
+          if (toolCall.description) {
+            streamingSpinner.updateText(toolCall.description);
+          } else {
+            streamingSpinner.updateText('Thinking out loud...');
+          }
           try {
+            // console.log(toolCall);
             const result = await validateAndRunToolCall(
               toolCall,
               this.config,
@@ -100,21 +107,6 @@ export class Processor {
               result.result?.LLMresult as string,
               toolCall
             );
-            if (result.result?.LLMresult) {
-              streamingSpinner.updateText(result.result.LLMresult);
-            } else if (result.error) {
-              streamingSpinner.updateText(result.error);
-            }
-            if (result.success) {
-              console.log(
-                '[TOOL RESULT]',
-                result.result?.DisplayResult ||
-                  result.result?.LLMresult ||
-                  'No display result.'
-              );
-            } else {
-              console.error('[TOOL ERROR]', result.error);
-            }
           } catch (err) {
             streamingSpinner.updateText(
               '[AGENT ERROR] ' +
@@ -123,11 +115,6 @@ export class Processor {
             console.error('[AGENT ERROR]', err);
           }
         } else {
-          console.log(
-            '[DEBUG] Unhandled toolCall structure:',
-            toolCall,
-            typeof toolCall
-          );
         }
       }
     }

@@ -1,26 +1,26 @@
-import { z } from 'zod';
-import type { configType } from '../processor';
-import type { ToolResult } from '../../types';
-import { readFile } from './readFileTool';
-import { editFile } from './editTool';
-import { execCommand } from './shellTool';
-import { globFiles } from './globTool';
-import { grepTool } from './grepTool';
-import { newFile } from './newFileTool';
+import { z } from "zod";
+import type { configType } from "../processor";
+import type { ToolResult } from "../../types";
+import { readFile } from "./readFileTool";
+import { editFile } from "./editTool";
+import { execCommand } from "./shellTool";
+import { globFiles } from "./globTool";
+import { grepTool } from "./grepTool";
+import { newFile } from "./newFileTool";
 
 export const ReadFileSchema = z.object({
-  tool: z.literal('read_file'),
+  tool: z.literal("read_file"),
   toolOptions: z.object({
-    absolutePath: z.string().min(1, 'File path cannot be empty'),
+    absolutePath: z.string().min(1, "File path cannot be empty"),
     startLine: z.number().int().nonnegative().optional(), // Changed to nonnegative (0-based indexing)
     endLine: z.number().int().nonnegative().optional(), // Changed to nonnegative
   }),
 });
 
 export const EditFileSchema = z.object({
-  tool: z.literal('edit_file'),
+  tool: z.literal("edit_file"),
   toolOptions: z.object({
-    filePath: z.string().min(1, 'File path cannot be empty'),
+    filePath: z.string().min(1, "File path cannot be empty"),
     oldString: z.string(),
     newString: z.string(),
     expected_replacements: z.number().int().positive().optional(),
@@ -28,34 +28,34 @@ export const EditFileSchema = z.object({
 });
 
 export const ShellCommandSchema = z.object({
-  tool: z.literal('shell_command'),
+  tool: z.literal("shell_command"),
   toolOptions: z.object({
-    command: z.string().min(1, 'Command cannot be empty'),
+    command: z.string().min(1, "Command cannot be empty"),
     description: z.string().optional(),
     directory: z.string().optional(),
   }),
 });
 
 export const GlobSchema = z.object({
-  tool: z.literal('glob'),
+  tool: z.literal("glob"),
   toolOptions: z.object({
-    pattern: z.string().min(1, 'Pattern cannot be empty'),
+    pattern: z.string().min(1, "Pattern cannot be empty"),
   }),
 });
 
 export const GrepSchema = z.object({
-  tool: z.literal('grep'),
+  tool: z.literal("grep"),
   toolOptions: z.object({
-    pattern: z.string().min(1, 'Pattern cannot be empty'),
+    pattern: z.string().min(1, "Pattern cannot be empty"),
     path: z.string().optional(),
     include: z.string().optional(),
   }),
 });
 
 export const NewFileSchema = z.object({
-  tool: z.literal('new_file'),
+  tool: z.literal("new_file"),
   toolOptions: z.object({
-    filePath: z.string().min(1, 'File path cannot be empty'),
+    filePath: z.string().min(1, "File path cannot be empty"),
     content: z.string(),
   }),
 });
@@ -86,7 +86,7 @@ export async function validateAndRunToolCall(
   result?: ToolResult;
 }> {
   try {
-    if (!jsonData || typeof jsonData !== 'object' || !('tool' in jsonData)) {
+    if (!jsonData || typeof jsonData !== "object" || !("tool" in jsonData)) {
       return {
         success: false,
         error: 'Invalid tool call format. Expected object with "tool" property',
@@ -96,7 +96,7 @@ export async function validateAndRunToolCall(
     const data = jsonData as any;
 
     switch (data.tool) {
-      case 'read_file': {
+      case "read_file": {
         const readFileResult = ReadFileSchema.safeParse(data);
         if (!readFileResult.success) {
           return {
@@ -113,7 +113,7 @@ export async function validateAndRunToolCall(
         ) {
           return {
             success: false,
-            error: 'startLine cannot be greater than endLine',
+            error: "startLine cannot be greater than endLine",
           };
         }
 
@@ -121,7 +121,7 @@ export async function validateAndRunToolCall(
         return { success: true, data: readFileResult.data, result };
       }
 
-      case 'edit_file': {
+      case "edit_file": {
         const editFileResult = EditFileSchema.safeParse(data);
         if (!editFileResult.success) {
           return {
@@ -140,7 +140,7 @@ export async function validateAndRunToolCall(
         return { success: true, data: editFileResult.data, result };
       }
 
-      case 'shell_command': {
+      case "shell_command": {
         const shellResult = ShellCommandSchema.safeParse(data);
         if (!shellResult.success) {
           return {
@@ -156,16 +156,16 @@ export async function validateAndRunToolCall(
             shellExecResult.stdout +
             (shellExecResult.stderr
               ? `\nSTDERR:\n${shellExecResult.stderr}`
-              : ''),
+              : ""),
           DisplayResult: shellExecResult.success
-            ? `Command executed successfully${shellExecResult.exitCode !== null ? ` (exit code: ${shellExecResult.exitCode})` : ''}`
-            : `Command failed${shellExecResult.exitCode !== null ? ` (exit code: ${shellExecResult.exitCode})` : ''}${shellExecResult.error ? `: ${shellExecResult.error}` : ''}`,
+            ? `Command executed successfully${shellExecResult.exitCode !== null ? ` (exit code: ${shellExecResult.exitCode})` : ""}`
+            : `Command failed${shellExecResult.exitCode !== null ? ` (exit code: ${shellExecResult.exitCode})` : ""}${shellExecResult.error ? `: ${shellExecResult.error}` : ""}`,
         };
 
         return { success: true, data: shellResult.data, result };
       }
 
-      case 'glob': {
+      case "glob": {
         const globResult = GlobSchema.safeParse(data);
         if (!globResult.success) {
           return {
@@ -178,7 +178,7 @@ export async function validateAndRunToolCall(
         return { success: true, data: globResult.data, result };
       }
 
-      case 'grep': {
+      case "grep": {
         const grepResult = GrepSchema.safeParse(data);
         if (!grepResult.success) {
           return {
@@ -191,7 +191,7 @@ export async function validateAndRunToolCall(
         return { success: true, data: grepResult.data, result };
       }
 
-      case 'new_file': {
+      case "new_file": {
         const newFileResult = NewFileSchema.safeParse(data);
         if (!newFileResult.success) {
           return {
