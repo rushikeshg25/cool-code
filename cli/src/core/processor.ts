@@ -4,6 +4,7 @@ import { ContextManager } from './contextManager';
 import dotenv from 'dotenv';
 import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
 import { validateAndRunToolCall } from './tools/toolValidator';
+import { PrismaClient } from '@prisma/client';
 export interface QueryResult {
   query: string;
   response: string;
@@ -29,8 +30,9 @@ export class Processor {
   public config: configType;
   private LLM: LLM;
   private contextManager: ContextManager;
+  private prisma: PrismaClient;
 
-  constructor(rootDir: string) {
+  constructor(rootDir: string, prisma: PrismaClient) {
     dotenv.config();
     this.config = {
       LLMConfig: {
@@ -44,6 +46,7 @@ export class Processor {
       rootDir,
       this.config.doesExistInGitIgnore
     );
+    this.prisma = prisma;
   }
 
   isFinalMessage(response: any): boolean {
@@ -62,13 +65,7 @@ export class Processor {
 
     while (true) {
       const prompt = this.contextManager.buildPrompt();
-      console.log(prompt);
       const response = await this.LLM.StreamResponse(prompt);
-      // if (toolCall && typeof toolCall === 'object' && 'text' in toolCall) {
-      //   streamingSpinner.succeed('Response completed!');
-      //   console.log('\n[FINAL MESSAGE]\n' + toolCall.text + '\n');
-      //   return;
-      // }
 
       let toolCalls;
       try {
@@ -82,7 +79,6 @@ export class Processor {
         toolCalls = JSON.parse(cleanResponse);
         if (this.isFinalMessage(toolCalls)) {
           streamingSpinner.succeed('Response completed!');
-          console.log('\n[FINAL MESSAGE]\n' + response + '\n');
           break;
         }
         console.log('{TOOLCALLS}', toolCalls);
@@ -91,19 +87,18 @@ export class Processor {
         }
       } catch {
         streamingSpinner.succeed('Response completed!');
-        console.log('\n[FINAL MESSAGE]\n' + response + '\n');
         break;
       }
 
       for (const toolCall of toolCalls) {
         console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);
         if (toolCall && typeof toolCall === 'object' && 'tool' in toolCall) {
-          console.log('\n[TOOL CALL]', JSON.stringify(toolCall, null, 2));
           try {
             const result = await validateAndRunToolCall(
               toolCall,
               this.config,
-              this.config.rootDir
+              this.config.rootDir,
+              this.prisma
             );
             this.contextManager.addResponse(
               result.result?.LLMresult as string,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PrismaClient } from '@prisma/client';
 
 import type { configType } from '../processor';
 import type { ToolResult } from '../../types';
@@ -24,7 +25,7 @@ export const EditFileSchema = z.object({
     filePath: z.string().min(1, 'File path cannot be empty'),
     oldString: z.string(),
     newString: z.string(),
-    expected_replacements: z.number().int().positive().optional(), // Added int() and positive()
+    expected_replacements: z.number().int().positive().optional(),
   }),
 });
 
@@ -57,7 +58,7 @@ export const NewFileSchema = z.object({
   tool: z.literal('new_file'),
   toolOptions: z.object({
     filePath: z.string().min(1, 'File path cannot be empty'),
-    content: z.string(), // Fixed property name from 'Content' to 'content' and removed min(1) to allow empty files
+    content: z.string(),
   }),
 });
 
@@ -66,7 +67,7 @@ export type ToolCall =
   | z.infer<typeof EditFileSchema>
   | z.infer<typeof ShellCommandSchema>
   | z.infer<typeof GlobSchema>
-  | z.infer<typeof GrepSchema> // Added missing GrepSchema
+  | z.infer<typeof GrepSchema>
   | z.infer<typeof NewFileSchema>;
 
 export interface FileValidationResult {
@@ -79,17 +80,8 @@ export interface FileValidationResult {
 export async function validateAndRunToolCall(
   jsonData: unknown,
   config: configType,
-  rootPath: string
-): Promise<{
-  success: boolean;
-  data?: any;
-  error?: string;
-  result?: ToolResult;
-}> {
-export async function validateAndRunToolCall(
-  jsonData: unknown,
-  config: configType,
-  rootPath: string
+  rootPath: string,
+  prisma: PrismaClient
 ): Promise<{
   success: boolean;
   data?: any;
@@ -97,7 +89,7 @@ export async function validateAndRunToolCall(
   result?: ToolResult;
 }> {
   try {
-    if (!jsonData || typeof jsonData !== "object" || !("tool" in jsonData)) {
+    if (!jsonData || typeof jsonData !== 'object' || !('tool' in jsonData)) {
       return {
         success: false,
         error: 'Invalid tool call format. Expected object with "tool" property',
@@ -113,11 +105,9 @@ export async function validateAndRunToolCall(
           return {
             success: false,
             error: `Invalid read_file toolOptions: ${readFileResult.error.message}`,
-            error: `Invalid read_file toolOptions: ${readFileResult.error.message}`,
           };
         }
 
-        // Add validation for startLine/endLine consistency
         const { startLine, endLine } = readFileResult.data.toolOptions;
         if (
           startLine !== undefined &&
@@ -140,11 +130,9 @@ export async function validateAndRunToolCall(
           return {
             success: false,
             error: `Invalid edit_file toolOptions: ${editFileResult.error.message}`,
-            error: `Invalid edit_file toolOptions: ${editFileResult.error.message}`,
           };
         }
 
-        // Ensure expected_replacements is always a number
         const toolOptions = {
           ...editFileResult.data.toolOptions,
           expected_replacements:
@@ -160,7 +148,6 @@ export async function validateAndRunToolCall(
         if (!shellResult.success) {
           return {
             success: false,
-            error: `Invalid shell_command toolOptions: ${shellResult.error.message}`,
             error: `Invalid shell_command toolOptions: ${shellResult.error.message}`,
           };
         }
@@ -216,7 +203,6 @@ export async function validateAndRunToolCall(
           };
         }
 
-        // Call the tool (async)
         const result = await newFile({
           filePath: newFileResult.data.toolOptions.filePath,
           content: newFileResult.data.toolOptions.content,

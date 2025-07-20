@@ -1,9 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-interface getFolderStructureType{
-    gitIgnoreChecker: (filePath: string) => boolean | null;
-    rootDir:string;
+interface getFolderStructureType {
+  gitIgnoreChecker: (filePath: string) => boolean | null;
+  rootDir: string;
 }
 
 interface TreeNode {
@@ -12,24 +12,30 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-export function getFolderStructure({gitIgnoreChecker,rootDir}:getFolderStructureType): string {
-
-  if(!gitIgnoreChecker){
-    gitIgnoreChecker=(filePath:string)=>{
-        return false
-    }
+export function getFolderStructure({
+  gitIgnoreChecker,
+  rootDir,
+}: getFolderStructureType): string {
+  if (!gitIgnoreChecker) {
+    gitIgnoreChecker = (filePath: string) => {
+      return false;
+    };
   }
   const tree = buildTree(rootDir, gitIgnoreChecker);
   return formatTree(tree, rootDir);
 }
 
-function buildTree(dirPath: string, gitIgnoreChecker: (filePath: string) => boolean | null, basePath?: string): TreeNode[] {
+function buildTree(
+  dirPath: string,
+  gitIgnoreChecker: (filePath: string) => boolean | null,
+  basePath?: string
+): TreeNode[] {
   const baseDir = basePath || dirPath;
   const nodes: TreeNode[] = [];
 
   try {
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
-    
+
     // Sort items: directories first, then files, both alphabetically
     items.sort((a, b) => {
       if (a.isDirectory() && !b.isDirectory()) return -1;
@@ -40,7 +46,7 @@ function buildTree(dirPath: string, gitIgnoreChecker: (filePath: string) => bool
     for (const item of items) {
       const fullPath = path.join(dirPath, item.name);
       const relativePath = path.relative(baseDir, fullPath);
-      
+
       // Skip if file/folder should be ignored according to gitignore
       if (gitIgnoreChecker(relativePath)) {
         continue;
@@ -48,7 +54,7 @@ function buildTree(dirPath: string, gitIgnoreChecker: (filePath: string) => bool
 
       const node: TreeNode = {
         name: item.name,
-        isDirectory: item.isDirectory()
+        isDirectory: item.isDirectory(),
       };
 
       if (item.isDirectory()) {
@@ -66,9 +72,14 @@ function buildTree(dirPath: string, gitIgnoreChecker: (filePath: string) => bool
   return nodes;
 }
 
-function formatTree(nodes: TreeNode[], rootDir: string, prefix: string = '', isLast: boolean = true): string {
+function formatTree(
+  nodes: TreeNode[],
+  rootDir: string,
+  prefix: string = '',
+  isLast: boolean = true
+): string {
   let result = '';
-  
+
   // Add root directory name at the beginning
   if (prefix === '') {
     result += `${path.basename(rootDir)}/\n`;
@@ -91,47 +102,3 @@ function formatTree(nodes: TreeNode[], rootDir: string, prefix: string = '', isL
 
   return result;
 }
-
-
-// export function getFolderStructureCompact(rootDir: string): string {
-//   const gitIgnoreChecker = createGitIgnoreChecker(rootDir);
-//   const result: string[] = [];
-  
-//   function traverse(dirPath: string, depth: number = 0, basePath?: string) {
-//     const baseDir = basePath || dirPath;
-    
-//     try {
-//       const items = fs.readdirSync(dirPath, { withFileTypes: true });
-      
-//       items.sort((a, b) => {
-//         if (a.isDirectory() && !b.isDirectory()) return -1;
-//         if (!a.isDirectory() && b.isDirectory()) return 1;
-//         return a.name.localeCompare(b.name);
-//       });
-
-//       for (const item of items) {
-//         const fullPath = path.join(dirPath, item.name);
-//         const relativePath = path.relative(baseDir, fullPath);
-        
-//         if (gitIgnoreChecker(relativePath)) {
-//           continue;
-//         }
-
-//         const indent = '  '.repeat(depth);
-//         const marker = item.isDirectory() ? '📁' : '📄';
-//         result.push(`${indent}${marker} ${item.name}`);
-
-//         if (item.isDirectory()) {
-//           traverse(fullPath, depth + 1, baseDir);
-//         }
-//       }
-//     } catch (error) {
-//       console.warn(`Warning: Could not read directory ${dirPath}: ${error}`);
-//     }
-//   }
-
-//   result.push(`📁 ${path.basename(rootDir)}`);
-//   traverse(rootDir, 1);
-  
-//   return result.join('\n');
-// }

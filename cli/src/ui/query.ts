@@ -1,9 +1,10 @@
 import { text } from "@clack/prompts";
 import chalk from "chalk";
 import { Processor } from "../core/processor";
+import { PrismaClient } from '@prisma/client';
 
-export async function acceptQuery(rootDir: string) {
-  const processor = new Processor(rootDir);
+export async function acceptQuery(rootDir: string, prisma: PrismaClient) {
+  const processor = new Processor(rootDir, prisma);
 
   while (true) {
     try {

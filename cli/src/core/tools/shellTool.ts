@@ -1,6 +1,6 @@
-import { spawn, exec } from "child_process";
-import { promisify } from "util";
-import path from "path";
+import { spawn, exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
 
 const execAsync = promisify(exec);
 
@@ -38,8 +38,8 @@ export async function execCommand(options: ShellOptions): Promise<ShellResult> {
   } catch (error) {
     const execError = error as any;
     return {
-      stdout: execError.stdout?.toString() || "",
-      stderr: execError.stderr?.toString() || "",
+      stdout: execError.stdout?.toString() || '',
+      stderr: execError.stderr?.toString() || '',
       exitCode: execError.code || null,
       success: false,
       error: execError.message,
@@ -54,15 +54,15 @@ export async function spawnCommand(
   const { command, directory } = options;
 
   return new Promise((resolve) => {
-    const child = spawn("bash", ["-c", command], {
+    const child = spawn('bash', ['-c', command], {
       cwd: directory ? path.resolve(directory) : process.cwd(),
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    let stdout = "";
-    let stderr = "";
+    let stdout = '';
+    let stderr = '';
 
-    child.stdout?.on("data", (data) => {
+    child.stdout?.on('data', (data) => {
       const output = data.toString();
       stdout += output;
       if (onOutput) {
@@ -70,7 +70,7 @@ export async function spawnCommand(
       }
     });
 
-    child.stderr?.on("data", (data) => {
+    child.stderr?.on('data', (data) => {
       const output = data.toString();
       stderr += output;
       if (onOutput) {
@@ -78,7 +78,7 @@ export async function spawnCommand(
       }
     });
 
-    child.on("close", (code) => {
+    child.on('close', (code) => {
       resolve({
         stdout,
         stderr,
@@ -88,7 +88,7 @@ export async function spawnCommand(
       });
     });
 
-    child.on("error", (error) => {
+    child.on('error', (error) => {
       resolve({
         stdout,
         stderr,
@@ -99,21 +99,3 @@ export async function spawnCommand(
     });
   });
 }
-
-// Usage examples:
-
-// Simple execution
-// const result = await execCommand({
-//   command: 'ls -la',
-//   directory: '/home/user'
-// });
-
-// With streaming output
-// const result = await spawnCommand(
-//   { command: 'npm install' },
-//   (output) => console.log('Output:', output)
-// );
-
-// Real-time output example
-// await spawnCommand(
-//   { command: 'npm run build',

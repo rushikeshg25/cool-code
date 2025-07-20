@@ -1,13 +1,13 @@
-import chalk from "chalk";
+import chalk from 'chalk';
 
 export class StreamingSpinner {
   private interval: NodeJS.Timeout | null = null;
-  private spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  private spinnerChars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   private currentFrame = 0;
-  private statusText = "";
+  private statusText = '';
   private isActive = false;
 
-  start(initialText: string = "Processing...") {
+  start(initialText: string = 'Processing...') {
     this.statusText = initialText;
     this.isActive = true;
     this.showSpinner();
@@ -29,7 +29,7 @@ export class StreamingSpinner {
 
   private showSpinner() {
     // Clear current line and show spinner
-    process.stdout.write("\r\x1b[K"); // Clear line
+    process.stdout.write('\r\x1b[K');
     process.stdout.write(
       chalk.cyan(`${this.spinnerChars[this.currentFrame]} ${this.statusText}`)
     );
@@ -42,16 +42,16 @@ export class StreamingSpinner {
     }
     this.isActive = false;
     // Clear the spinner line
-    process.stdout.write("\r\x1b[K");
+    process.stdout.write('\r\x1b[K');
   }
 
   succeed(text?: string) {
     this.stop();
-    console.log(chalk.green(`✅ ${text || "Success!"}`));
+    console.log(chalk.green(`✅ ${text || 'Success!'}`));
   }
 
   fail(text?: string) {
     this.stop();
-    console.log(chalk.red(`❌ ${text || "Failed!"}`));
+    console.log(chalk.red(`❌ ${text || 'Failed!'}`));
   }
 }
