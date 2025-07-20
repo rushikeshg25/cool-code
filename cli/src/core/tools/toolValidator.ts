@@ -86,8 +86,18 @@ export async function validateAndRunToolCall(
   error?: string;
   result?: ToolResult;
 }> {
+export async function validateAndRunToolCall(
+  jsonData: unknown,
+  config: configType,
+  rootPath: string
+): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+  result?: ToolResult;
+}> {
   try {
-    if (!jsonData || typeof jsonData !== 'object' || !('tool' in jsonData)) {
+    if (!jsonData || typeof jsonData !== "object" || !("tool" in jsonData)) {
       return {
         success: false,
         error: 'Invalid tool call format. Expected object with "tool" property',
@@ -102,6 +112,7 @@ export async function validateAndRunToolCall(
         if (!readFileResult.success) {
           return {
             success: false,
+            error: `Invalid read_file toolOptions: ${readFileResult.error.message}`,
             error: `Invalid read_file toolOptions: ${readFileResult.error.message}`,
           };
         }
@@ -129,6 +140,7 @@ export async function validateAndRunToolCall(
           return {
             success: false,
             error: `Invalid edit_file toolOptions: ${editFileResult.error.message}`,
+            error: `Invalid edit_file toolOptions: ${editFileResult.error.message}`,
           };
         }
 
@@ -148,6 +160,7 @@ export async function validateAndRunToolCall(
         if (!shellResult.success) {
           return {
             success: false,
+            error: `Invalid shell_command toolOptions: ${shellResult.error.message}`,
             error: `Invalid shell_command toolOptions: ${shellResult.error.message}`,
           };
         }
