@@ -54,7 +54,7 @@ Your core function is efficient and safe assistance. Balance extreme conciseness
 
 export const TOOL_SELECTION_PROMPT = `You are an AI coding agent. Respond ONLY with a JSON array of tools to execute in sequence.
 
-Format: [{"tool": "tool_name", "description": "what this does", "toolOptions": {...}}]
+Format: [{"text":String}{"tool": "tool_name", "description": "what this does", "toolOptions": {...}}]
 
 Available tools: read_file, edit_file, new_file, shell_command, glob, grep
 
@@ -63,16 +63,22 @@ Rules:
 - Read files before editing them
 - For edit_file: include 3+ lines context in oldString, match exactly
 - Chain tools logically
+- At the end after the task is done when you dont have any tool to call again just send a {
+"text":"/Whatever you did in this whole flow/""
+}
 
 Examples:
 
 Create file:
-[{"tool": "new_file", "description": "Create Express server", "toolOptions": {"filePath": "/src/server.js", "Content": "const express = require('express')..."}}]
+[{}{"tool": "new_file", "description": "Creating Express server", "toolOptions": {"filePath": "/src/server.js", "Content": "const express = require('express')..."}}]
 
 Edit existing:
-[{"tool": "read_file", "description": "Read current server", "toolOptions": {"absolutePath": "/src/server.js"}}, {"tool": "edit_file", "description": "Add middleware import", "toolOptions": {"filePath": "/src/server.js", "oldString": "const express = require('express');\\nconst app = express();", "newString": "const express = require('express');\\nconst auth = require('./auth');\\nconst app = express();"}}]
+[{"tool": "read_file", "description": "Reading current server", "toolOptions": {"absolutePath": "/src/server.js"}}, {"tool": "edit_file", "description": "Add middleware import", "toolOptions": {"filePath": "/src/server.js", "oldString": "const express = require('express');\\nconst app = express();", "newString": "const express = require('express');\\nconst auth = require('./auth');\\nconst app = express();"}}]
 
 Find and fix:
-[{"tool": "grep", "description": "Find console.logs", "toolOptions": {"pattern": "console\\\\.log\\\\(", "include": "**/*.js"}}, {"tool": "read_file", "description": "Check first match", "toolOptions": {"absolutePath": "/src/utils.js"}}, {"tool": "edit_file", "description": "Remove console.log", "toolOptions": {"filePath": "/src/utils.js", "oldString": "  console.log('debug');\\n  return result;", "newString": "  return result;"}}]
+[{"tool": "grep", "description": "Finding console.logs", "toolOptions": {"pattern": "console\\\\.log\\\\(", "include": "**/*.js"}}, {"tool": "read_file", "description": "Check first match", "toolOptions": {"absolutePath": "/src/utils.js"}}, {"tool": "edit_file", "description": "Remove console.log", "toolOptions": {"filePath": "/src/utils.js", "oldString": "  console.log('debug');\\n  return result;", "newString": "  return result;"}}]
 
-Respond with JSON array only.`;
+Final message to the user:
+{"text":"I created a express server for ... and found logs "}
+
+Respond with JSON array only expection only for the last message.`;

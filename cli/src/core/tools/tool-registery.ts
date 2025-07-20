@@ -53,7 +53,7 @@ Expectation for required parameters:
           "Optional: For text files, the 0-based line number to start reading from. Requires 'endLine' to be set. Use for paginating through large files.",
         type: Number,
       },
-      EndLine: {
+      endLine: {
         description:
           "Optional: For text files, Line number till which to read. Use with 'Endline' to paginate through large files.",
         type: Number,

@@ -1,10 +1,9 @@
 import chalk from "chalk";
 import { StreamingSpinner } from "../ui/spinner";
-import { createGitIgnoreChecker } from "./tools";
+import { createGitIgnoreChecker, validateAndRunToolCall } from "./tools";
 import { LLM } from "./llm";
 import { ContextManager } from "./contextManager";
 import dotenv from "dotenv";
-
 export interface QueryResult {
   query: string;
   response: string;
@@ -47,46 +46,61 @@ export class Processor {
     );
   }
 
+  isFinalMessage(response: any): boolean {
+    return (
+      !Array.isArray(response) &&
+      typeof response === "object" &&
+      "text" in response
+    );
+  }
+
   async processQuery(query: string) {
-    try {
-      // Display query and response header
-      console.log(chalk.blue("\n📝 Query:"), query);
-      console.log(chalk.green("✨ Response:"));
-      console.log();
+    // 1. Add user message to context
+    this.contextManager.addUserMessage(query);
 
-      // Create streaming spinner that stays at bottom
-      const streamingSpinner = new StreamingSpinner();
-      streamingSpinner.start("🔄 Generating response...");
+    const streamingSpinner = new StreamingSpinner();
+    streamingSpinner.start("🔄 Generating response...");
+    while (true) {
+      // 2. Build prompt and get LLM response
+      const prompt = this.contextManager.buildPrompt();
+      const response = await this.LLM.StreamResponse(prompt);
 
-      const prompt =
-        (await this.contextManager.buildPrompt()) +
-        "User's current prompt: " +
-        query;
-      const response = await this.LLM.StreamResponse(
-        prompt,
-        (chunk: string) => {
-          // Clear the spinner line before writing content
-          process.stdout.write("\r\x1b[K");
+      // 3. Try to parse as JSON array of tool calls
+      let toolCalls;
+      try {
+        toolCalls = JSON.parse(response);
+      } catch {
+        // If not JSON, treat as final message
+        streamingSpinner.succeed("Response completed!");
+        console.log(response);
+        break;
+      }
 
-          // Write the chunk
-          process.stdout.write(chunk);
-
-          // If chunk doesn't end with newline, add one for spinner
-          if (!chunk.endsWith("\n")) {
-            process.stdout.write("\n");
+      // 4. If tool calls, execute them
+      for (const toolCall of toolCalls) {
+        if (toolCall.tool) {
+          const result = await validateAndRunToolCall(
+            toolCall,
+            this.config,
+            this.config.rootDir
+          );
+          // Add tool result to context
+          this.contextManager.addToolResult(toolCall, result);
+          // Update spinner text to LLMresult if available
+          if (result.result?.LLMresult) {
+            streamingSpinner.updateText(result.result.LLMresult);
+          } else if (result.error) {
+            streamingSpinner.updateText(result.error);
           }
+          // Print/display result
+          console.log(result.result?.DisplayResult || result.error);
+        } else if (toolCall.text) {
+          // Final message
+          streamingSpinner.succeed("Response completed!");
+          console.log(toolCall.text);
+          return;
         }
-      );
-
-      streamingSpinner.succeed("Response completed!");
-
-      console.log(
-        chalk.gray(`Completed at: ${new Date().toLocaleTimeString()}`)
-      );
-
-      return response;
-    } catch (error) {
-      throw new Error("Error processing query: " + error);
+      }
     }
   }
 }

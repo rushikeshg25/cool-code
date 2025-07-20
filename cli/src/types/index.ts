@@ -30,3 +30,7 @@ export interface ToolResult {
   LLMresult: string;
   DisplayResult: string;
 }
+
+export interface FinalMessageType {
+  text: string;
+}

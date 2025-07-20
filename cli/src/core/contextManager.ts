@@ -1,9 +1,9 @@
-import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT } from './prompts';
-import { toolRegistery } from './tools/tool-registery';
-import { getFolderStructure } from './utils';
+import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT } from "./prompts";
+import { toolRegistery } from "./tools/tool-registery";
+import { getFolderStructure } from "./utils";
 
 export interface Message {
-  role: 'user' | 'model';
+  role: "user" | "model";
   content: string;
   metadata?: {
     toolCalls?: ToolCall[];
@@ -37,12 +37,32 @@ export class ContextManager {
       }),
     };
     this.conversations = [];
-    this.currentQuery = '';
+    this.currentQuery = "";
     this.gitIgnoreChecker = gitIgnoreChecker;
   }
 
   addResponse(message: Message) {
-    this.conversations.push(message);
+    this.conversations.push();
+  }
+
+  // Add a user message to the conversation
+  addUserMessage(query: string) {
+    this.conversations.push({
+      role: "user",
+      content: query,
+    });
+    this.currentQuery = query;
+  }
+
+  // Add a tool result to the conversation
+  addToolResult(toolCall: any, result: any) {
+    this.conversations.push({
+      role: "model",
+      content: result.result?.DisplayResult || result.error || "",
+      metadata: {
+        toolCalls: [toolCall],
+      },
+    });
   }
 
   buildPrompt(): string {
@@ -51,7 +71,7 @@ export class ContextManager {
     sections.push(this.buildProjectStateSection());
     sections.push(this.buildConversationSection());
     sections.push(this.buildToolInfoSection());
-    return sections.filter(Boolean).join('\n\n');
+    return sections.filter(Boolean).join("\n\n");
   }
 
   private buildSystemSection(): string {
@@ -62,13 +82,13 @@ export class ContextManager {
     const projectParts = [];
     projectParts.push(`CWD: ${this.projectState.cwd}`);
     projectParts.push(`File Tree: ${this.projectState.fileTree}`);
-    return projectParts.join('\n');
+    return projectParts.join("\n");
   }
 
   private buildConversationSection(): string {
     const recentMessages = this.conversations.slice(-10);
 
-    let section = '--- Recent Conversation ---\n';
+    let section = "--- Recent Conversation ---\n";
     for (const msg of recentMessages) {
       section += `${msg.role}: ${msg.content}\n`;
 
@@ -82,7 +102,7 @@ export class ContextManager {
   }
 
   private buildToolInfoSection(): string {
-    const toolInfo = toolRegistery.map((tool) => tool.name).join('\n');
+    const toolInfo = toolRegistery.map((tool) => tool.name).join("\n");
     return `These are your Tools and what they expect:\n${toolInfo} here are some examples:\n${EXAMPLES} and the response I am expecting is like \n${TOOL_SELECTION_PROMPT}`;
   }
 
@@ -92,7 +112,7 @@ export class ContextManager {
 
   updateCurrentQuery(query: string) {
     this.conversations.push({
-      role: 'user',
+      role: "user",
       content: query,
     });
     this.currentQuery = query;
