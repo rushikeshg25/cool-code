@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import SpotifySidebar from '@/components/spotify-sidebar'
 import SpotifyMainContent from '@/components/spotify-main-content'
 import SpotifyPlayer from '@/components/spotify-player'
@@ -28,6 +28,83 @@ export default function SpotifyApp() {
   const [navigationHistory, setNavigationHistory] = useState<string[]>(['home'])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
+  const [recentlyPlayedSongs, setRecentlyPlayedSongs] = useState<Track[]>([]);
+  const [madeForYouAlbums, setMadeForYouAlbums] = useState<Track[]>([]);
+  const [popularAlbums, setPopularAlbums] = useState<Track[]>([]);
+
+  useEffect(() => {
+    const fetchRecentlyPlayed = async () => {
+      try {
+        const response = await fetch('/api/recently-played');
+        if (response.ok) {
+          const data = await response.json();
+          setRecentlyPlayedSongs(data);
+        } else {
+          console.error('Failed to fetch recently played songs:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error fetching recently played songs:', error);
+      }
+    };
+
+    const fetchMadeForYouAlbums = async () => {
+      try {
+        const response = await fetch('/api/made-for-you');
+        if (response.ok) {
+          const data = await response.json();
+          setMadeForYouAlbums(data);
+        } else {
+          console.error('Failed to fetch Made For You albums:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error fetching Made For You albums:', error);
+      }
+    };
+
+    const fetchPopularAlbums = async () => {
+      try {
+        const response = await fetch('/api/popular-albums');
+        if (response.ok) {
+          const data = await response.json();
+          setPopularAlbums(data);
+        } else {
+          console.error('Failed to fetch Popular albums:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error fetching Popular albums:', error);
+      }
+    };
+
+    fetchRecentlyPlayed();
+    fetchMadeForYouAlbums();
+    fetchPopularAlbums();
+  }, []);
+
+  const recordRecentlyPlayed = useCallback(async () => {
+    if (currentTrack) {
+      try {
+        await fetch('/api/recently-played', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            album: currentTrack.album,
+          }),
+        });
+      } catch (error) {
+        console.error('Failed to record recently played song:', error);
+      }
+    }
+  }, [currentTrack]);
+
+  useEffect(() => {
+    if (currentTrack && isPlaying) {
+      recordRecentlyPlayed();
+    }
+  }, [currentTrack, isPlaying, recordRecentlyPlayed]);
 
   const handlePlayTrack = (track: Track) => {
     setCurrentTrack(track)
@@ -142,6 +219,7 @@ export default function SpotifyApp() {
           onLibraryToggle={handleLibraryToggle}
           onPlaylistClick={handlePlaylistClick}
           onPlayTrack={handlePlayTrack}
+          recentlyPlayedSongs={recentlyPlayedSongs}
         />
 
         {/* Main Content Area */}
@@ -161,7 +239,7 @@ export default function SpotifyApp() {
 
           {/* Main Content */}
           <div className="flex-1 overflow-y-auto pb-24">
-            {currentView === 'home' && <SpotifyMainContent onPlayTrack={handlePlayTrack} />}
+            {currentView === 'home' && <SpotifyMainContent onPlayTrack={handlePlayTrack} madeForYouAlbums={madeForYouAlbums} popularAlbums={popularAlbums} />}
             {currentView === 'search' && (
               <div className="p-6">
                 <h1 className="text-2xl font-bold mb-6">Search</h1>

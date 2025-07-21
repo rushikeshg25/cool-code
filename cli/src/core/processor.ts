@@ -1,10 +1,9 @@
-import { StreamingSpinner } from "../ui/spinner";
-import { LLM } from "./llm";
-import { ContextManager } from "./contextManager";
-import dotenv from "dotenv";
-import { createGitIgnoreChecker } from "./tools/ignoreGitIgnoreFileTool";
-import { validateAndRunToolCall } from "./tools/toolValidator";
-import { spinner } from "@clack/prompts";
+import { StreamingSpinner } from '../ui/spinner';
+import { LLM } from './llm';
+import { ContextManager } from './contextManager';
+import dotenv from 'dotenv';
+import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
+import { validateAndRunToolCall } from './tools/toolValidator';
 export interface QueryResult {
   query: string;
   response: string;
@@ -35,7 +34,7 @@ export class Processor {
     dotenv.config();
     this.config = {
       LLMConfig: {
-        model: "gemini-2.5-flash",
+        model: 'gemini-2.5-flash',
       },
       rootDir,
       doesExistInGitIgnore: createGitIgnoreChecker(rootDir),
@@ -50,8 +49,8 @@ export class Processor {
   isFinalMessage(response: any): boolean {
     return (
       !Array.isArray(response) &&
-      typeof response === "object" &&
-      "text" in response
+      typeof response === 'object' &&
+      'text' in response
     );
   }
 
@@ -59,7 +58,7 @@ export class Processor {
     this.contextManager.addUserMessage(query);
 
     const streamingSpinner = new StreamingSpinner();
-    streamingSpinner.start("Thinking out loud...");
+    streamingSpinner.start('Thinking out loud...');
 
     while (true) {
       const prompt = this.contextManager.buildPrompt();
@@ -68,10 +67,16 @@ export class Processor {
       let toolCalls;
       try {
         let cleanResponse = response.trim();
-        if (cleanResponse.startsWith("```")) {
+        if (cleanResponse.startsWith('```')) {
           cleanResponse = cleanResponse
-            .replace(/^```[a-zA-Z]*\n?/, "")
-            .replace(/```$/, "")
+            .replace(/^```[a-zA-Z]*\n?/, '')
+            .replace(/```$/, '')
+            .trim();
+        }
+        if (cleanResponse.startsWith('```json')) {
+          cleanResponse = cleanResponse
+            .replace(/^```json\n?/, '')
+            .replace(/```$/, '')
             .trim();
         }
         toolCalls = JSON.parse(cleanResponse);
@@ -79,20 +84,20 @@ export class Processor {
           streamingSpinner.succeed(toolCalls.text);
           break;
         }
-        if (typeof toolCalls === "string") {
+        if (typeof toolCalls === 'string') {
           toolCalls = JSON.parse(toolCalls);
         }
       } catch (error) {
         console.log(error);
-        streamingSpinner.succeed("Response completed!");
+        streamingSpinner.succeed('Response completed!');
         break;
       }
 
       for (const toolCall of toolCalls) {
         // console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);
-        if (toolCall && typeof toolCall === "object" && "tool" in toolCall) {
+        if (toolCall && typeof toolCall === 'object' && 'tool' in toolCall) {
           streamingSpinner.updateText(
-            toolCall.description || "Thinking out loud..."
+            toolCall.description || 'Thinking out loud...'
           );
           try {
             // console.log(toolCall);
@@ -114,10 +119,10 @@ export class Processor {
             // }
           } catch (err) {
             streamingSpinner.updateText(
-              "[AGENT ERROR] " +
+              '[AGENT ERROR] ' +
                 (err instanceof Error ? err.message : String(err))
             );
-            console.error("[AGENT ERROR]", err);
+            console.error('[AGENT ERROR]', err);
           }
         } else {
         }

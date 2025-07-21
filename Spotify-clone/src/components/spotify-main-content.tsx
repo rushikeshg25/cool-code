@@ -76,7 +76,9 @@ function MusicCard({ title, artist, image, size = "medium", className = "", onPl
 }
 
 interface SpotifyMainContentProps {
-  onPlayTrack?: (track: Track) => void
+  onPlayTrack?: (track: Track) => void;
+  madeForYouAlbums: Track[];
+  popularAlbums: Track[];
 }
 
 export default function SpotifyMainContent({ onPlayTrack }: SpotifyMainContentProps) {
@@ -302,7 +304,7 @@ export default function SpotifyMainContent({ onPlayTrack }: SpotifyMainContentPr
           </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-          {madeForYou.map((item, index) => (
+          {madeForYouAlbums.map((item, index) => (
             <MusicCard 
               key={index}
               title={item.title} 

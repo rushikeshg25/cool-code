@@ -28,6 +28,7 @@ interface SpotifySidebarProps {
   onLibraryToggle?: () => void
   onPlaylistClick?: (playlistId: string) => void
   onPlayTrack?: (track: Track) => void
+  recentlyPlayedSongs?: PlaylistItem[];
 }
 
 export default function SpotifySidebar({
@@ -37,56 +38,12 @@ export default function SpotifySidebar({
   onSearchClick,
   onLibraryToggle,
   onPlaylistClick,
-  onPlayTrack
+  onPlayTrack,
+  recentlyPlayedSongs = []
 }: SpotifySidebarProps) {
   const [isLibraryExpanded, setIsLibraryExpanded] = useState(true)
   const [hoveredPlaylist, setHoveredPlaylist] = useState<string | null>(null)
   
-  const recentlyPlayed: PlaylistItem[] = [
-    {
-      id: '1',
-      title: 'Liked Songs',
-      subtitle: 'Playlist • 127 songs',
-      image: 'https://v3.fal.media/files/panda/kvQ0deOgoUWHP04ajVH3A_output.png',
-      duration: 180
-    },
-    {
-      id: '2',
-      title: 'Discover Weekly',
-      subtitle: 'Made for you',
-      image: 'https://v3.fal.media/files/kangaroo/HRayeBi01JIqfkCjjoenp_output.png',
-      duration: 210
-    },
-    {
-      id: '3',
-      title: 'Daily Mix 1',
-      subtitle: 'Indie Rock, Alternative',
-      image: 'https://v3.fal.media/files/elephant/N5qDbXOpqAlIcK7kJ4BBp_output.png',
-      duration: 225
-    },
-    {
-      id: '4',
-      title: 'Chill Hits',
-      subtitle: 'Spotify • 147 songs',
-      image: 'https://v3.fal.media/files/rabbit/tAQ6AzJJdlEZW-y4eNdxO_output.png',
-      duration: 240
-    },
-    {
-      id: '5',
-      title: 'My Playlist #1',
-      subtitle: 'Playlist • 23 songs',
-      image: 'https://v3.fal.media/files/elephant/C_rLsEbIUdbn6nQ0wz14S_output.png',
-      duration: 195
-    },
-    {
-      id: '6',
-      title: 'Rock Classics',
-      subtitle: 'Spotify • 89 songs',
-      image: 'https://v3.fal.media/files/rabbit/b11V_uidRMsa2mTr5mCfz_output.png',
-      duration: 250
-    },
-  ]
-
   const handleLibraryToggle = () => {
     setIsLibraryExpanded(!isLibraryExpanded)
     onLibraryToggle?.()
@@ -179,7 +136,7 @@ export default function SpotifySidebar({
               <h3 className="text-sm font-medium text-[#b3b3b3]">Recently played</h3>
             </div>
             
-            {recentlyPlayed.map((item) => (
+            {recentlyPlayedSongs.map((item) => (
               <div
                 key={item.id}
                 className="relative w-full flex items-center gap-3 p-2 rounded-md hover:bg-[#2a2a2a] transition-all duration-200 group border border-transparent hover:border-gray-600/50"
