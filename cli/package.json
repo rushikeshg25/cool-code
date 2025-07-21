@@ -17,19 +17,14 @@
     "@clack/prompts": "^0.7.0",
     "@esm2cjs/execa": "6.1.1-cjs.1",
     "@google/genai": "^1.10.0",
-    "@types/ejs": "^3.1.5",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.11.24",
     "ai": "^4.3.19",
     "cfonts": "^3.3.0",
     "chalk": "^4.0.0",
     "commander": "^12.1.0",
     "dotenv": "^17.2.0",
-    "ejs": "^3.1.10",
-    "express": "^5.1.0",
     "fs-extra": "^11.2.0",
     "glob": "^11.0.3",
-    "jsonwebtoken": "^9.0.2",
     "prettier": "^3.2.5",
     "tsup": "^8.5.0",
     "type-fest": "^4.26.1",
@@ -37,7 +32,11 @@
     "zod": "^4.0.5"
   },
   "devDependencies": {},
-  "keywords": ["ai", "database", "cli"],
+  "keywords": [
+    "ai",
+    "database",
+    "cli"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs"
