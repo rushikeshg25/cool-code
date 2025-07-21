@@ -12,8 +12,8 @@ export const ReadFileSchema = z.object({
   tool: z.literal("read_file"),
   toolOptions: z.object({
     absolutePath: z.string().min(1, "File path cannot be empty"),
-    startLine: z.number().int().nonnegative().optional(), // Changed to nonnegative (0-based indexing)
-    endLine: z.number().int().nonnegative().optional(), // Changed to nonnegative
+    startLine: z.number().int().nonnegative().optional(),
+    endLine: z.number().int().nonnegative().optional(),
   }),
 });
 

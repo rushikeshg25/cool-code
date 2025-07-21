@@ -5,7 +5,9 @@ import dotenv from 'dotenv';
 import { runCli } from './ui';
 
 async function main() {
-  dotenv.config();
+  dotenv.config({
+    quiet: true,
+  });
   program
     .name('ai-db-cli')
     .description('AI Database CLI Tool')
