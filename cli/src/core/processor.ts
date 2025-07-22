@@ -110,13 +110,6 @@ export class Processor {
               result.result?.LLMresult as string,
               toolCall
             );
-            // if (result.result?.DisplayResult) {
-            //   streamingSpinner.updateText(
-            //     result.result?.DisplayResult as string
-            //   );
-            // } else {
-            //   streamingSpinner.updateText("Calling required tool...");
-            // }
           } catch (err) {
             streamingSpinner.updateText(
               '[AGENT ERROR] ' +
@@ -124,7 +117,6 @@ export class Processor {
             );
             console.error('[AGENT ERROR]', err);
           }
-        } else {
         }
       }
     }
