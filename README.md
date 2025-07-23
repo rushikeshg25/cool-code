@@ -29,7 +29,6 @@ AI-DB-CLI is a powerful tool that combines the capabilities of large language mo
 
 ```bash
 git clone https://github.com/rushikeshg25/ai-db-cli.git
-cd cli
 ```
 
 2. Install dependencies:
@@ -60,7 +59,7 @@ bun run build
 
 ```bash
 npm link
-//so that the api key is available to the cli
+//set as global var inside so that the api key is available to the cli
 export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
 ```
 
@@ -100,18 +99,15 @@ The main entry point that initializes the CLI using Commander.js and starts the 
 A comprehensive set of tools that the AI can use:
 
 - **File Operations**:
-
   - `readFileTool.ts`: Read file contents
   - `editTool.ts`: Edit existing files
   - `newFileTool.ts`: Create new files
 
 - **Search & Discovery**:
-
   - `globTool.ts`: Find files using glob patterns
   - `grepTool.ts`: Search file contents using regex
 
 - **System Operations**:
-
   - `shellTool.ts`: Execute shell commands
   - `ignoreGitIgnoreFileTool.ts`: Handle .gitignore patterns
 
@@ -203,7 +199,7 @@ this.config = {
 ## 📁 Project Structure
 
 ```
-ai-db-cli/cli/
+ai-db-cli/
 ├── src/
 │   ├── core/                 # Core engine
 │   │   ├── tools/           # Tool implementations
