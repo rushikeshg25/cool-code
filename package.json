@@ -4,7 +4,7 @@
   "description": "AI Database CLI Tool",
   "main": "dist/index.js",
   "bin": {
-    "ai-db-cli": "dist/index.js"
+    "cool-cli": "dist/index.js"
   },
   "scripts": {
     "build": "tsup",
