@@ -1,4 +1,4 @@
-# AI Database CLI Tool
+# Cool-Code:Cli coding Ai agent
 
 An intelligent command-line interface that leverages AI to help you interact with codebases and work on them similar to Gemini cli and Claude code.
 
