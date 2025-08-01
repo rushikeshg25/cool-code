@@ -4,7 +4,7 @@ An intelligent command-line interface that leverages AI to help you interact wit
 
 ## 🚀 Overview
 
-AI-DB-CLI is a powerful tool that combines the capabilities of large language models with a comprehensive set of development tools to provide an interactive database and code management experience. Simply describe what you want to accomplish, and the AI agent will understand your intent and execute the necessary operations.
+Cool-Code is a powerful tool that combines the capabilities of large language models with a comprehensive set of development tools to provide an interactive database and code management experience. Simply describe what you want to accomplish, and the AI agent will understand your intent and execute the necessary operations.
 
 ## ✨ Features
 
@@ -28,7 +28,7 @@ AI-DB-CLI is a powerful tool that combines the capabilities of large language mo
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/rushikeshg25/ai-db-cli.git
+git clone https://github.com/rushikeshg25/cool-code.git
 ```
 
 2. Install dependencies:
@@ -70,7 +70,7 @@ export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
 Navigate to your project's dir
 
 ```bash
-ai-db-cli
+cool-code
 ```
 
 ## 🏗 Architecture
@@ -199,7 +199,7 @@ this.config = {
 ## 📁 Project Structure
 
 ```
-ai-db-cli/
+cool-code/
 ├── src/
 │   ├── core/                 # Core engine
 │   │   ├── tools/           # Tool implementations

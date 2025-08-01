@@ -1,10 +1,10 @@
 {
-  "name": "ai-db-cli",
+  "name": "cool-code",
   "version": "1.0.0",
-  "description": "AI Database CLI Tool",
+  "description": "Cli coding Ai agent like Claude Code and Gemini Cli",
   "main": "dist/index.js",
   "bin": {
-    "cool-cli": "dist/index.js"
+    "cool-code": "dist/index.js"
   },
   "scripts": {
     "build": "tsup",
@@ -35,7 +35,8 @@
   "keywords": [
     "ai",
     "database",
-    "cli"
+    "cli",
+    "cool-code"
   ],
   "author": "",
   "license": "ISC",

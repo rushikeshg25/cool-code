@@ -9,8 +9,8 @@ async function main() {
     quiet: true,
   });
   program
-    .name('ai-db-cli')
-    .description('AI Database CLI Tool')
+    .name('cool-code')
+    .description('Cli coding Ai agent like Claude Code and Gemini Cli')
     .version('1.0.0');
 
   program.action(async () => {
