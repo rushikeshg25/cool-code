@@ -6,6 +6,13 @@ An intelligent command-line interface that leverages AI to help you interact wit
 
 Cool-Code is a powerful tool that combines the capabilities of large language models with a comprehensive set of development tools to provide an interactive database and code management experience. Simply describe what you want to accomplish, and the AI agent will understand your intent and execute the necessary operations.
 
+Demo of it spinning up a Node Express server with Prisma:
+
+
+https://github.com/user-attachments/assets/ee557c3c-81b4-496d-bc07-1b71efb362bc
+
+
+
 ## ✨ Features
 
 - **Natural Language Processing**: Interact with your codebase using plain English
