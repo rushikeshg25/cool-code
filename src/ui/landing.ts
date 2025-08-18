@@ -21,6 +21,5 @@ export async function showLanding() {
     maxLength: '0',
   });
 
-  console.log(chalk.gray('Welcome to AI Database CLI - Your database Agent'));
   console.log(chalk.gray('Press Ctrl+C to exit at any time\n'));
 }
