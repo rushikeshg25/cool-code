@@ -1,7 +1,6 @@
 import { StreamingSpinner } from '../ui/spinner';
 import { LLM } from './llm';
 import { ContextManager } from './contextManager';
-import dotenv from 'dotenv';
 import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
 import { validateAndRunToolCall } from './tools/toolValidator';
 export interface QueryResult {
@@ -31,7 +30,6 @@ export class Processor {
   private contextManager: ContextManager;
 
   constructor(rootDir: string) {
-    dotenv.config();
     this.config = {
       LLMConfig: {
         model: 'gemini-2.5-flash',

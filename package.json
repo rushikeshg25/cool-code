@@ -1,6 +1,6 @@
 {
   "name": "cool-code",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Cli coding Ai agent like Claude Code and Gemini Cli",
   "main": "dist/index.js",
   "bin": {
@@ -12,8 +12,7 @@
     "dev": "tsup --watch --onSuccess \"node dist/index.js\"",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
-    "prepublishOnly": "npm run clean && npm run build",
-    "test": "echo \"No tests specified\" && exit 0"
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
