@@ -10,7 +10,10 @@
     "build": "tsup",
     "clean": "rm -rf ./dist",
     "dev": "tsup --watch --onSuccess \"node dist/index.js\"",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.22",
@@ -34,11 +37,29 @@
   "devDependencies": {},
   "keywords": [
     "ai",
-    "database",
     "cli",
-    "cool-code"
+    "coding-assistant",
+    "gemini",
+    "code-generation",
+    "developer-tools"
   ],
   "author": "",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rushikeshg25/cool-code.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rushikeshg25/cool-code/issues"
+  },
+  "homepage": "https://github.com/rushikeshg25/cool-code#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "commonjs"
 }

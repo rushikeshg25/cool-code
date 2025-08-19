@@ -27,21 +27,35 @@ https://github.com/user-attachments/assets/ee557c3c-81b4-496d-bc07-1b71efb362bc
 ### Prerequisites
 
 - Node.js (v16 or higher)
-- bun (preferred) or any package manager
 - A Google AI API key for Gemini
 
-### Setup
+### Quick Install (Recommended)
+
+Install globally from npm:
+
+```bash
+npm install -g cool-code
+```
+
+Set your Google AI API key:
+
+```bash
+export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
+```
+
+### Development Setup
 
 1. Clone the repository:
 
 ```bash
 git clone https://github.com/rushikeshg25/cool-code.git
+cd cool-code
 ```
 
 2. Install dependencies:
 
 ```bash
-bun install
+npm install
 ```
 
 3. Set up environment variables:
@@ -59,15 +73,13 @@ GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
 4. Build the project:
 
 ```bash
-bun run build
+npm run build
 ```
 
-5. Install globally:
+5. Link for local development:
 
 ```bash
 npm link
-//set as global var inside so that the api key is available to the cli
-export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
 ```
 
 ## 🎯 Usage
