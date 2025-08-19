@@ -1,6 +1,6 @@
 {
   "name": "cool-code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cli coding Ai agent like Claude Code and Gemini Cli",
   "main": "dist/index.js",
   "bin": {
@@ -32,7 +32,7 @@
     "tsup": "^8.5.0",
     "type-fest": "^4.26.1",
     "typescript": "^5.8.3",
-    "zod": "^4.0.5"
+    "zod": "^3.23.8"
   },
   "devDependencies": {},
   "keywords": [
