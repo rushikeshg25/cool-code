@@ -1,6 +1,6 @@
 {
   "name": "cool-code",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Cli coding Ai agent like Claude Code and Gemini Cli",
   "main": "dist/index.js",
   "bin": {
