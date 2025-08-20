@@ -8,10 +8,7 @@ Cool-Code is a powerful tool that combines the capabilities of large language mo
 
 Demo of it spinning up a Node Express server with Prisma:
 
-
-https://github.com/user-attachments/assets/ee557c3c-81b4-496d-bc07-1b71efb362bc
-
-
+https://github.com/user-attachments/assets/b1b59602-f118-4bbe-8b38-e4be0f39119f
 
 ## ✨ Features
 
