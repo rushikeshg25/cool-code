@@ -1,29 +1,32 @@
-# Cool-Code:Cli coding Ai agent
+# Cool-Code: CLI Coding AI Agent
 
-An intelligent command-line interface that leverages AI to help you interact with codebases and work on them similar to Gemini cli and Claude code.
+An intelligent command-line interface that leverages AI to help you interact with codebases and work on them similar to Gemini CLI and Claude Code.
 
-## 🚀 Overview
+## Overview
 
-Cool-Code is a powerful tool that combines the capabilities of large language models with a comprehensive set of development tools to provide an interactive database and code management experience. Simply describe what you want to accomplish, and the AI agent will understand your intent and execute the necessary operations.
+Cool-Code is a powerful tool that combines the capabilities of large language models with a comprehensive set of development tools to provide an interactive development experience. Simply describe what you want to accomplish, and the AI agent will understand your intent and execute the necessary operations.
 
 Demo of it spinning up a Node Express server with Prisma:
 
 https://github.com/user-attachments/assets/b1b59602-f118-4bbe-8b38-e4be0f39119f
 
-## ✨ Features
+## Features
 
-- **Natural Language Processing**: Interact with your codebase using plain English
-- **Intelligent Code Analysis**: Understands your project structure and coding patterns. No vector Dbs needed.
-- **File Operations**: Read, create, edit and search files with AI assistance
-- **Shell Command Execution**: Run system commands through the AI agent
-- **Real-time Streaming**: Get live feedback as the AI processes your requests
-- **Context-Aware**: Maintains conversation history and project context.
+- **Agent Modes**: Switch between Planning, Agent, and Ask modes for different interaction styles.
+- **Task Tracking**: Real-time checklists for complex, multi-step operations.
+- **Input Queuing**: Send new instructions while the agent is still processing a previous request.
+- **Natural Language Processing**: Interact with your codebase using plain English.
+- **Intelligent Code Analysis**: Understands your project structure and coding patterns without needing vector databases.
+- **File Operations**: Read, create, edit, and search files with AI assistance.
+- **Shell Command Execution**: Run system commands safely through the AI agent.
+- **Real-time Streaming**: Get live feedback as the AI processes your requests.
+- **Context-Aware**: Maintains conversation history and project context automatically.
 
-## 🛠 Setup Guide
+## Setup Guide
 
 ### Prerequisites
 
-- Node.js (v16 or higher)
+- Node.js
 - A Google AI API key for Gemini
 
 ### Quick Install (Recommended)
@@ -79,140 +82,148 @@ npm run build
 npm link
 ```
 
-## 🎯 Usage
+## Usage
 
 ### Starting the CLI
 
-Navigate to your project's dir
+Navigate to your project's directory and run:
 
 ```bash
 cool-code
 ```
 
-## 🏗 Architecture
+On startup, the CLI will ask to initialize in the current directory before building context.
+
+### Command Line Options
+
+```bash
+# Auto-initialize in current dir
+cool-code --yes
+
+# Exit without initializing
+cool-code --no-init
+
+# Reduce UI output for automation
+cool-code --quiet
+
+# Allow dangerous actions without prompts
+cool-code --allow-dangerous
+
+# Copy final response to clipboard
+cool-code --copy
+```
+
+### Agent Modes
+
+Cool-Code supports three distinct modes of operation:
+
+1. **Planning Mode**: Analyzes your request and generates a Task List (TODOs) without touching your code. Useful for architecting changes before execution.
+2. **Agent Mode**: The default mode. Executes tasks autonomously, applying code changes and running commands.
+3. **Ask Mode**: Read-only mode for questions and explanations. Mutating tools (like shell or write_file) are blocked.
+
+Switch modes mid-session using the `:mode` command:
+- `:mode planning`
+- `:mode agent`
+- `:mode ask`
+
+### Advanced CLI Commands
+
+```bash
+# Project summary and framework detection
+cool-code scan
+
+# Force refresh the scan cache
+cool-code scan --refresh
+
+# JSON output
+cool-code scan --json
+
+# Task planning
+cool-code task "Add user authentication and password reset"
+
+# Config management
+cool-code config get llm.model
+cool-code config set llm.model "gemini-2.5-flash"
+cool-code config set llm.maxTokens 2048
+```
+
+### Interactive Commands
+
+Inside the CLI prompt:
+
+- `:help` Show interactive commands
+- `:mode` Show or switch current mode
+- `:context` Preview the prompt context
+- `:clear` Clear the screen
+- `:exit` or `:quit` Exit
+
+### Non-blocking Input
+
+You can type and send new messages even while the agent is processing tool calls. These messages will be queued and processed immediately after the current step is completed, allowing you to pivot or provide feedback mid-task.
+
+## Architecture
 
 ### Core Components
 
 #### 1. Entry Point (`src/index.ts`)
-
 The main entry point that initializes the CLI using Commander.js and starts the interactive session.
 
 #### 2. UI Layer (`src/ui/`)
-
-- **Landing (`landing.ts`)**: Displays the welcome screen with ASCII art
-- **Query Handler (`query.ts`)**: Manages user input and query processing
-- **Spinner (`spinner.ts`)**: Provides visual feedback during processing
+- **Landing (`landing.ts`)**: Displays a compact, professional welcome screen.
+- **Query Handler (`query.ts`)**: Manages the main input loop, status bar, and task rendering.
+- **Spinner (`spinner.ts`)**: Provides visual feedback with synchronized status messages.
 
 #### 3. Core Engine (`src/core/`)
-
-- **Processor (`processor.ts`)**: Main orchestrator that handles query processing
-- **LLM (`llm.ts`)**: Manages communication with Google's Gemini AI model
-- **Context Manager (`contextManager.ts`)**: Maintains conversation history and project state
-- **Prompts (`prompts.ts`)**: Contains system prompts and examples for the AI
+- **Processor (`processor.ts`)**: Main orchestrator handling query turns, tool execution, and message queuing.
+- **LLM (`llm.ts`)**: Manages communication with Google's Gemini models.
+- **Context Manager (`contextManager.ts`)**: Maintains project state, file trees, and mode-specific prompt building.
+- **Prompts (`prompts.ts`)**: Contains high-level system logic, mode definitions, and tool instructions.
 
 #### 4. Tool System (`src/core/tools/`)
+- **File Operations**: `readFileTool`, `editTool`, `newFileTool`, `deleteFileTool`.
+- **Search & Discovery**: `globTool`, `grepTool`.
+- **System Operations**: `shellTool`, `ignoreGitIgnoreFileTool`.
 
-A comprehensive set of tools that the AI can use:
-
-- **File Operations**:
-  - `readFileTool.ts`: Read file contents
-  - `editTool.ts`: Edit existing files
-  - `newFileTool.ts`: Create new files
-
-- **Search & Discovery**:
-  - `globTool.ts`: Find files using glob patterns
-  - `grepTool.ts`: Search file contents using regex
-
-- **System Operations**:
-  - `shellTool.ts`: Execute shell commands
-  - `ignoreGitIgnoreFileTool.ts`: Handle .gitignore patterns
-
-- **Tool Management**:
-  - `tool-registery.ts`: Registry of all available tools
-  - `toolValidator.ts`: Validates and executes tool calls
-
-## 🔄 How It Works
-
-### 1. Initialization
-
-```
-User starts CLI → Landing screen → Query input prompt
-```
-
-### 2. Query Processing Flow
-
-```
-User Query → Context Manager → LLM Processing → Tool Selection → Tool Execution → Response
-```
-
-### 3. Detailed Flow
-
-1. **User Input**: User enters a natural language query
-2. **Context Building**: The Context Manager builds a comprehensive prompt including:
-   - System instructions
-   - Project file structure
-   - Available tools
-   - Conversation history
-3. **AI Processing**: The LLM (Gemini) processes the prompt and decides which tools to use
-4. **Tool Execution**: Selected tools are validated and executed in sequence
-5. **Response Generation**: Results are formatted and presented to the user
-6. **Context Update**: The conversation history is updated for future queries
-
-### 4. Tool Selection Process
-
-The AI uses a sophisticated tool selection system:
-
-```typescript
-// Example tool call structure
-[
-  {
-    tool: 'read_file',
-    description: 'Reading current server configuration',
-    toolOptions: {
-      absolutePath: '/src/server.js',
-    },
-  },
-  {
-    tool: 'edit_file',
-    description: 'Adding new middleware',
-    toolOptions: {
-      filePath: '/src/server.js',
-      oldString: "const express = require('express');\nconst app = express();",
-      newString:
-        "const express = require('express');\nconst auth = require('./auth');\nconst app = express();",
-    },
-  },
-];
-```
-
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
+- `GOOGLE_GENERATIVE_AI_API_KEY`: Your Gemini API key.
 
-- `GOOGLE_GENERATIVE_AI_API_KEY`: Your Google AI API key for Gemini
+### Project Config (.coolcode.json)
 
-### LLM Configuration
-
-The system uses Google's Gemini 2.5 Flash model by default. You can modify the configuration in `src/core/processor.ts`:
-
-```typescript
-this.config = {
-  LLMConfig: {
-    model: 'gemini-2.5-flash',
+```json
+{
+  "llm": {
+    "model": "gemini-2.5-flash",
+    "temperature": 0.2,
+    "maxTokens": 2048
   },
-  // ... other config
-};
+  "features": {
+    "scanCache": true,
+    "fileTreeMaxDepth": 4,
+    "allowDangerous": false,
+    "confirmEdits": false
+  },
+  "guardrails": {
+    "blockReadPatterns": [
+      ".env",
+      "*.pem",
+      "*.key",
+      "id_rsa"
+    ]
+  }
+}
 ```
 
-## 🛡 Safety Features
+## Safety Features
 
-- **Path Validation**: All file operations use absolute paths to prevent directory traversal
-- **Git Integration**: Respects .gitignore patterns to avoid sensitive files
-- **Tool Validation**: All tool calls are validated before execution
-- **Context Limits**: Conversation history is limited to prevent token overflow
-- **Error Handling**: Comprehensive error handling with user-friendly messages
+- **Path Validation**: Operations are restricted to the project root.
+- **Git Integration**: Automatically respects .gitignore patterns.
+- **Dangerous Action Prompts**: Requires explicit confirmation for potentially destructive shell commands.
+- **Edit Confirmations**: Configurable prompts for code edits.
+- **Ask Mode**: Strict read-only enforcement for safer exploration.
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 cool-code/
@@ -224,11 +235,10 @@ cool-code/
 │   │   ├── llm.ts
 │   │   ├── processor.ts
 │   │   └── prompts.ts
-│   ├── types/               # TypeScript type definitions
-│   ├── ui/                  # User interface components
+│   ├── types/               # TypeScript definitions
+│   ├── ui/                  # UI components
 │   └── index.ts            # Entry point
 ├── dist/                   # Compiled output
 ├── package.json
-├── tsconfig.json
 └── README.md
 ```
