@@ -9,17 +9,14 @@ export async function showLanding() {
   });
 
   console.clear();
-
-  cfonts.say('Cool-Code', {
-    font: 'block',
-    align: 'center',
+ 
+  cfonts.say('COOLCODE', {
+    font: 'tiny',
+    align: 'left',
     colors: ['cyan', 'magenta'],
-    background: 'transparent',
-    letterSpacing: 1,
-    lineHeight: 1,
-    space: true,
-    maxLength: '0',
   });
 
-  console.log(chalk.gray('Press Ctrl+C to exit at any time\n'));
+  const version = require('../../package.json').version;
+  console.log(chalk.gray(`  v${version}`));
+  console.log(chalk.gray('  Press ') + chalk.white.bold(':help') + chalk.gray(' for commands, ') + chalk.white.bold(':mode') + chalk.gray(' to switch modes, or ') + chalk.white.bold('Ctrl+C') + chalk.gray(' to exit\n'));
 }
