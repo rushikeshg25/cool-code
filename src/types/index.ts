@@ -34,3 +34,23 @@ export interface ToolResult {
 export interface FinalMessageType {
   text: string;
 }
+
+export interface LLMConfig {
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface TaskItem {
+  id: string;
+  title: string;
+  status: 'todo' | 'in-progress' | 'done' | 'failed';
+  detail?: string;
+}
+
+export interface TaskList {
+  goal: string;
+  items: TaskItem[];
+}
+
+export type AgentMode = 'planning' | 'agent' | 'ask';
