@@ -4,6 +4,7 @@ import * as path from 'path';
 interface getFolderStructureType {
   gitIgnoreChecker: (filePath: string) => boolean | null;
   rootDir: string;
+  maxDepth?: number;
 }
 
 interface TreeNode {
@@ -15,20 +16,23 @@ interface TreeNode {
 export function getFolderStructure({
   gitIgnoreChecker,
   rootDir,
+  maxDepth,
 }: getFolderStructureType): string {
   if (!gitIgnoreChecker) {
     gitIgnoreChecker = (filePath: string) => {
       return false;
     };
   }
-  const tree = buildTree(rootDir, gitIgnoreChecker);
+  const tree = buildTree(rootDir, gitIgnoreChecker, rootDir, 0, maxDepth);
   return formatTree(tree, rootDir);
 }
 
 function buildTree(
   dirPath: string,
   gitIgnoreChecker: (filePath: string) => boolean | null,
-  basePath?: string
+  basePath?: string,
+  depth: number = 0,
+  maxDepth?: number
 ): TreeNode[] {
   const baseDir = basePath || dirPath;
   const nodes: TreeNode[] = [];
@@ -59,7 +63,17 @@ function buildTree(
 
       if (item.isDirectory()) {
         // Recursively build children for directories
-        node.children = buildTree(fullPath, gitIgnoreChecker, baseDir);
+        if (maxDepth === undefined || depth < maxDepth) {
+          node.children = buildTree(
+            fullPath,
+            gitIgnoreChecker,
+            baseDir,
+            depth + 1,
+            maxDepth
+          );
+        } else {
+          node.children = [];
+        }
       }
 
       nodes.push(node);

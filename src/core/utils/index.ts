@@ -1,4 +1,5 @@
 export * from './getFolderStructure';
+export * from './scanProject';
 
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
