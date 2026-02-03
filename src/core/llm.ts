@@ -1,11 +1,15 @@
 import { LanguageModelV1, streamText } from "ai";
 import { google } from "@ai-sdk/google";
 import chalk from "chalk";
+import type { LLMConfig } from "../types";
 
 export class LLM {
   private model: LanguageModelV1;
 
-  constructor(model: string) {
+  private config: LLMConfig;
+
+  constructor(config: LLMConfig) {
+    this.config = config;
     // Validate API key before initializing the model
     if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
       console.error(chalk.red("❌ Missing API Key!"));
@@ -24,7 +28,7 @@ export class LLM {
       process.exit(1);
     }
 
-    this.model = google(`models/${model}`);
+    this.model = google(`models/${config.model}`);
   }
 
   async StreamResponse(prompt: string, onChunk?: (chunk: string) => void) {
@@ -32,6 +36,8 @@ export class LLM {
       const { textStream } = await streamText({
         model: this.model,
         prompt: prompt,
+        temperature: this.config.temperature,
+        maxTokens: this.config.maxTokens,
       });
 
       let fullResponse = "";
