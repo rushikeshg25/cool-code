@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ToolResult } from "../../types";
+import { loadConfig } from "../config";
 
 export interface ReadFileOptions {
   absolutePath: string;
@@ -22,11 +23,18 @@ export interface ReadFileResult {
   };
 }
 
-export function readFile(
+export async function readFile(
   options: ReadFileOptions,
   rootPath: string
-): ToolResult {
+): Promise<ToolResult> {
   const { absolutePath, startLine, endLine } = options;
+  const blocked = isBlockedPath(absolutePath, rootPath);
+  if (blocked) {
+    return {
+      DisplayResult: "Fixing Issues",
+      LLMresult: blocked,
+    };
+  }
   const validation = validateFileForReading(absolutePath);
   if (validation) {
     return {
@@ -35,16 +43,13 @@ export function readFile(
     };
   }
   try {
-    const content = fs.readFileSync(absolutePath, "utf-8");
     if (!startLine && !endLine) {
+      const content = fs.readFileSync(absolutePath, "utf-8");
       return {
         DisplayResult: "Reading " + path.relative(rootPath, absolutePath),
         LLMresult: content,
       };
     } else {
-      const lines = content.split("\n");
-      const totalLines = lines.length;
-
       if (startLine === undefined || endLine === undefined) {
         return {
           DisplayResult: "Fixing Issues",
@@ -63,13 +68,37 @@ export function readFile(
           LLMresult: "endLine must be greater than or equal to startLine.",
         };
       }
-      if (totalLines < endLine) {
+
+      // Memory efficient reading for specific lines
+      const readline = require('readline');
+      const instream = fs.createReadStream(absolutePath);
+      const rl = readline.createInterface({
+        input: instream,
+        terminal: false
+      });
+
+      let currentLine = 0;
+      const selectedLines: string[] = [];
+
+      for await (const line of rl) {
+        currentLine++;
+        if (currentLine >= startLine && currentLine <= endLine) {
+          selectedLines.push(line);
+        }
+        if (currentLine > endLine) {
+          rl.close();
+          instream.destroy();
+          break;
+        }
+      }
+
+      if (currentLine < startLine) {
         return {
           DisplayResult: "Fixing Issues",
-          LLMresult: `File only has ${totalLines} lines, but endLine is ${endLine}.`,
+          LLMresult: `File only has ${currentLine} lines, but startLine is ${startLine}.`,
         };
       }
-      const selectedLines = lines.slice(startLine - 1, endLine);
+
       const finalContent = selectedLines.join("\n");
       return {
         DisplayResult:
@@ -106,6 +135,32 @@ export function validateFileForReading(filePath: string): string | null {
     fs.accessSync(filePath, fs.constants.R_OK);
   } catch {
     return `File is not readable: ${filePath}`;
+  }
+  return null;
+}
+
+function isBlockedPath(filePath: string, rootPath: string): string | null {
+  const config = loadConfig(rootPath);
+  const patterns = config.guardrails?.blockReadPatterns || [];
+  if (patterns.length === 0) return null;
+
+  const base = path.basename(filePath);
+  for (const pattern of patterns) {
+    if (pattern === base) {
+      return `Reading blocked for "${base}" by guardrails.`;
+    }
+    if (pattern.startsWith('.') && pattern.endsWith('.*')) {
+      const prefix = pattern.slice(0, -2);
+      if (base.startsWith(prefix)) {
+        return `Reading blocked for "${base}" by guardrails.`;
+      }
+    }
+    if (pattern.startsWith('*.')) {
+      const ext = pattern.slice(1);
+      if (base.endsWith(ext)) {
+        return `Reading blocked for "${base}" by guardrails.`;
+      }
+    }
   }
   return null;
 }
