@@ -54,6 +54,7 @@ export async function spawnCommand(
   const { command, directory } = options;
 
   return new Promise((resolve) => {
+    const timeout = options.timeout || 60000;
     const child = spawn('bash', ['-c', command], {
       cwd: directory ? path.resolve(directory) : process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -61,10 +62,24 @@ export async function spawnCommand(
 
     let stdout = '';
     let stderr = '';
+    const maxBuffer = 1024 * 1024 * 10; // 10MB limit
+
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({
+        stdout,
+        stderr: stderr + '\n[Error] Command timed out',
+        exitCode: null,
+        success: false,
+        error: `Command timed out after ${timeout}ms`,
+      });
+    }, timeout);
 
     child.stdout?.on('data', (data) => {
       const output = data.toString();
-      stdout += output;
+      if (stdout.length + output.length < maxBuffer) {
+        stdout += output;
+      }
       if (onOutput) {
         onOutput(output);
       }
@@ -72,13 +87,16 @@ export async function spawnCommand(
 
     child.stderr?.on('data', (data) => {
       const output = data.toString();
-      stderr += output;
+      if (stderr.length + output.length < maxBuffer) {
+        stderr += output;
+      }
       if (onOutput) {
         onOutput(output);
       }
     });
 
     child.on('close', (code) => {
+      clearTimeout(timer);
       resolve({
         stdout,
         stderr,

@@ -152,4 +152,276 @@ Process Group PGID: Process group started or \`(none)\``,
     required: ['filePath', 'content'],
     type: Object,
   },
+  {
+    name: 'list_recent_files',
+    description:
+      'Lists recently modified files in the project, sorted by most recent first.',
+    toolOptions: {
+      limit: {
+        description: 'Maximum number of files to return. Defaults to 20.',
+        type: Number,
+      },
+      include: {
+        description:
+          'Optional glob to include files (e.g., "src/**/*.ts"). Defaults to all files.',
+        type: String,
+      },
+      exclude: {
+        description:
+          'Optional glob to exclude files (e.g., "**/*.test.ts").',
+        type: String,
+      },
+    },
+    required: [],
+    type: Object,
+  },
+  {
+    name: 'project_summary',
+    description:
+      'Summarizes the project (entrypoints, frameworks, scripts, languages).',
+    toolOptions: {},
+    required: [],
+    type: Object,
+  },
+  {
+    name: 'open_file_at',
+    description:
+      'Reads a file or a specific line range. Line numbers are 1-based.',
+    toolOptions: {
+      absolutePath: {
+        description: 'Absolute path to the file to read.',
+        type: String,
+      },
+      startLine: {
+        description: 'Start line (1-based). Use with endLine.',
+        type: Number,
+      },
+      endLine: {
+        description: 'End line (1-based). Use with startLine.',
+        type: Number,
+      },
+    },
+    required: ['absolutePath'],
+    type: Object,
+  },
+  {
+    name: 'run_tests',
+    description:
+      'Runs project tests. Uses package.json test script if command is not provided.',
+    toolOptions: {
+      command: {
+        description: 'Optional command to run tests.',
+        type: String,
+      },
+    },
+    required: [],
+    type: Object,
+  },
+  {
+    name: 'lint_fix',
+    description:
+      'Runs lint/format with auto-fix. Uses lint:fix, lint, or format scripts if available.',
+    toolOptions: {
+      command: {
+        description: 'Optional command to run lint/format.',
+        type: String,
+      },
+    },
+    required: [],
+    type: Object,
+  },
+  {
+    name: 'format_file',
+    description: 'Formats a file with prettier.',
+    toolOptions: {
+      absolutePath: {
+        description: 'Absolute path to the file to format.',
+        type: String,
+      },
+    },
+    required: ['absolutePath'],
+    type: Object,
+  },
+  {
+    name: 'git_status',
+    description: 'Shows git status summary.',
+    toolOptions: {},
+    required: [],
+    type: Object,
+  },
+  {
+    name: 'git_diff',
+    description:
+      'Shows git diff. Optionally specify a file path and/or staged diff.',
+    toolOptions: {
+      filePath: {
+        description: 'Absolute path to file to diff (optional).',
+        type: String,
+      },
+      staged: {
+        description: 'If true, show staged diff.',
+        type: Boolean,
+      },
+    },
+    required: [],
+    type: Object,
+  },
+  {
+    name: 'git_commit',
+    description:
+      'Stages files and creates a git commit.',
+    toolOptions: {
+      message: {
+        description: 'Commit message.',
+        type: String,
+      },
+      all: {
+        description: 'If true, stage all changes.',
+        type: Boolean,
+      },
+      files: {
+        description: 'Array of absolute file paths to stage.',
+        type: Array,
+      },
+    },
+    required: ['message'],
+    type: Object,
+  },
+  {
+    name: 'find_symbol',
+    description:
+      'Searches for a symbol or pattern using ripgrep.',
+    toolOptions: {
+      pattern: {
+        description: 'Regex or string pattern to search for.',
+        type: String,
+      },
+      include: {
+        description: 'Optional glob filter for files.',
+        type: String,
+      },
+      path: {
+        description: 'Optional path to search (absolute).',
+        type: String,
+      },
+    },
+    required: ['pattern'],
+    type: Object,
+  },
+  {
+    name: 'replace_in_files',
+    description:
+      'Replaces text across files. Supports dry run and regex mode.',
+    toolOptions: {
+      pattern: {
+        description: 'Text or regex pattern to replace.',
+        type: String,
+      },
+      replacement: {
+        description: 'Replacement text.',
+        type: String,
+      },
+      include: {
+        description: 'Optional glob to include files.',
+        type: String,
+      },
+      exclude: {
+        description: 'Optional glob to exclude files.',
+        type: String,
+      },
+      useRegex: {
+        description: 'If true, treat pattern as regex.',
+        type: Boolean,
+      },
+      dryRun: {
+        description: 'If true, do not write changes.',
+        type: Boolean,
+      },
+    },
+    required: ['pattern', 'replacement'],
+    type: Object,
+  },
+  {
+    name: 'rename_file',
+    description: 'Renames or moves a file.',
+    toolOptions: {
+      fromPath: {
+        description: 'Absolute path to the source file.',
+        type: String,
+      },
+      toPath: {
+        description: 'Absolute path to the destination.',
+        type: String,
+      },
+      overwrite: {
+        description: 'If true, overwrite destination if it exists.',
+        type: Boolean,
+      },
+    },
+    required: ['fromPath', 'toPath'],
+    type: Object,
+  },
+  {
+    name: 'new_module',
+    description:
+      'Scaffolds a new module folder with index export.',
+    toolOptions: {
+      moduleName: {
+        description: 'Module name (folder name).',
+        type: String,
+      },
+      baseDir: {
+        description: 'Base directory relative to project root (default: src).',
+        type: String,
+      },
+      exportFromRootIndex: {
+        description: 'If true, export from baseDir/index.ts.',
+        type: Boolean,
+      },
+    },
+    required: ['moduleName'],
+    type: Object,
+  },
+  {
+    name: 'add_script',
+    description:
+      'Adds a script to package.json.',
+    toolOptions: {
+      name: {
+        description: 'Script name.',
+        type: String,
+      },
+      command: {
+        description: 'Script command.',
+        type: String,
+      },
+      overwrite: {
+        description: 'If true, overwrite existing script.',
+        type: Boolean,
+      },
+    },
+    required: ['name', 'command'],
+    type: Object,
+  },
+  {
+    name: 'generate_readme_section',
+    description:
+      'Appends a section to README.md.',
+    toolOptions: {
+      title: {
+        description: 'Section title.',
+        type: String,
+      },
+      bullets: {
+        description: 'Optional bullet list.',
+        type: Array,
+      },
+      content: {
+        description: 'Optional raw content.',
+        type: String,
+      },
+    },
+    required: ['title'],
+    type: Object,
+  },
 ];
