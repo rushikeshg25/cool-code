@@ -6,10 +6,6 @@ An intelligent command-line interface that leverages AI to help you interact wit
 
 Cool-Code combines large language models with a comprehensive set of development tools to provide an interactive development experience. Describe what you want to accomplish, and the agent understands your intent and executes the necessary operations. It works with multiple model providers (Google, OpenAI, Anthropic) and finds context live through search and read tools, so no vector database is required.
 
-Demo of it spinning up a Node Express server with Prisma:
-
-https://github.com/user-attachments/assets/b1b59602-f118-4bbe-8b38-e4be0f39119f
-
 ## Features
 
 - **Multiple Model Providers**: Use Google, OpenAI, or Anthropic models. Set the model and provide the matching API key.
