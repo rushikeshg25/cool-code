@@ -1,9 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { LLMProvider } from '../types';
 
 export interface CoolCodeConfig {
   llm: {
     model: string;
+    provider?: LLMProvider;
     temperature?: number;
     maxTokens?: number;
   };
@@ -120,6 +122,7 @@ function mergeConfig(base: CoolCodeConfig, overrides: Partial<CoolCodeConfig> | 
   const merged: CoolCodeConfig = {
     llm: {
       model: overrides?.llm?.model ?? base.llm.model,
+      provider: overrides?.llm?.provider ?? base.llm.provider,
       temperature:
         overrides?.llm?.temperature ?? base.llm.temperature ?? undefined,
       maxTokens: overrides?.llm?.maxTokens ?? base.llm.maxTokens ?? undefined,

@@ -37,6 +37,7 @@ export async function createTaskPlan(
 ): Promise<TaskPlan | null> {
   const llm = new LLM({
     model: config.llm.model,
+    provider: config.llm.provider,
     temperature: config.llm.temperature,
     maxTokens: config.llm.maxTokens,
   });

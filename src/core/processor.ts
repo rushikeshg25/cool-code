@@ -78,6 +78,7 @@ export class Processor {
     this.config = {
       LLMConfig: {
         model: config?.llm?.model ?? 'gemini-2.5-flash',
+        provider: config?.llm?.provider,
         temperature: config?.llm?.temperature,
         maxTokens: config?.llm?.maxTokens,
       },

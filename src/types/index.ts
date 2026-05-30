@@ -35,8 +35,11 @@ export interface FinalMessageType {
   text: string;
 }
 
+export type LLMProvider = 'google' | 'openai' | 'anthropic';
+
 export interface LLMConfig {
   model: string;
+  provider?: LLMProvider;
   temperature?: number;
   maxTokens?: number;
 }
