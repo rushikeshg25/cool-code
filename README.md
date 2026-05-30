@@ -201,6 +201,21 @@ Step-by-step instructions the agent should follow when this skill applies...
 
 The agent sees a catalog of available skill names and descriptions, and calls the `use_skill` tool to load a skill's full instructions into context when it is relevant.
 
+**Installing skills.** You can install skills (including ones authored for Claude Code) from a local path or a git URL. A source may be a single `SKILL.md`, a skill directory, or a repository containing several skills.
+
+```bash
+# From the CLI
+cool-code skill install ./path/to/skill
+cool-code skill install https://github.com/user/some-skill.git
+cool-code skill install ./skill --global    # install to ~/.coolcode/skills
+
+# Or from inside the interactive session
+:install-skill ./path/to/skill
+:install-skill https://github.com/user/some-skill.git --global
+```
+
+Installed skills are copied into `.coolcode/skills/` (or `~/.coolcode/skills/` with `--global`) and become available immediately.
+
 ### Web Access
 
 The agent can reach the web through two tools:
@@ -231,6 +246,10 @@ cool-code task "Add user authentication and password reset"
 cool-code config get llm.model
 cool-code config set llm.model "gemini-2.5-flash"
 cool-code config set llm.maxTokens 2048
+
+# Install a skill (local path or git URL)
+cool-code skill install ./path/to/skill
+cool-code skill install https://github.com/user/some-skill.git --global
 ```
 
 ### Interactive Commands
@@ -243,6 +262,7 @@ Inside the CLI prompt:
 - `:unpin` Unpin a file (or list pinned files)
 - `:context` Preview the prompt context, pinned files, and token usage
 - `:sessions` List saved sessions for this directory
+- `:install-skill` Install a skill from a local path or git URL (add `--global`)
 - `:clear` Clear the screen
 - `:exit` or `:quit` Exit
 
@@ -269,7 +289,7 @@ Initializes the CLI using Commander.js, wires up flags (including `--continue` /
 - **LLM (`llm.ts`)**: Resolves the model provider (Google / OpenAI / Anthropic) and streams responses.
 - **Context Manager (`contextManager.ts`)**: Builds the prompt (system, tools, skills, project state, conversation), manages the token budget, summarization, and pinned files.
 - **Project Memory (`projectMemory.ts`)**: Loads `COOLCODE.md`.
-- **Skills (`skills.ts`)**: Discovers and parses `SKILL.md` files.
+- **Skills (`skills.ts`, `skillInstaller.ts`)**: Discovers/parses `SKILL.md` files and installs skills from local paths or git URLs.
 - **Session (`session.ts`)**: Persists and restores conversations.
 - **Prompts (`prompts.ts`)**: System prompt, mode definitions, and tool instructions.
 
@@ -362,6 +382,7 @@ cool-code/
 │   │   ├── processor.ts
 │   │   ├── projectMemory.ts
 │   │   ├── skills.ts
+│   │   ├── skillInstaller.ts
 │   │   ├── session.ts
 │   │   └── prompts.ts
 │   ├── types/                # TypeScript definitions
