@@ -13,7 +13,8 @@ https://github.com/user-attachments/assets/b1b59602-f118-4bbe-8b38-e4be0f39119f
 ## Features
 
 - **Multiple Model Providers**: Use Google, OpenAI, or Anthropic models. Set the model and provide the matching API key.
-- **Agent Modes**: Switch between Planning, Agent, and Ask modes for different interaction styles.
+- **Interactive TUI**: An Ink-based terminal UI with `/` slash commands, an autocomplete dropdown, and Shift+Tab to switch modes.
+- **Agent Modes**: Switch between Plan, Agent, and Ask modes. After Plan mode produces a plan, pick "Start implementation" to jump straight into Agent mode.
 - **Project Memory (`COOLCODE.md`)**: Persistent project instructions automatically loaded into context.
 - **Skills**: Discoverable, model-invoked instruction modules under `.coolcode/skills/`.
 - **Web Access**: `web_fetch` and `web_search` tools for reading pages and searching the web.
@@ -165,15 +166,15 @@ cool-code --resume <session-id>
 
 Cool-Code supports three distinct modes of operation:
 
-1. **Planning Mode**: Analyzes your request and generates a Task List (TODOs) without touching your code. Useful for architecting changes before execution.
+1. **Plan Mode**: Investigates the codebase with read-only tools and produces a detailed, file-level plan (with a per-task breakdown) without touching your code. When the plan is ready, it offers next-step actions: **Start implementation** (switches to Agent mode and proceeds) or **Keep planning** (stay in Plan mode to refine).
 2. **Agent Mode**: The default mode. Executes tasks autonomously, applying code changes and running commands.
 3. **Ask Mode**: Read-only mode for questions and explanations. Mutating tools (edit, new file, shell, rename, replace) are blocked.
 
-The mode chosen at startup is applied to the system prompt, and you can switch mid-session using the `:mode` command:
+The mode chosen at startup is applied to the system prompt. Switch mid-session with **Shift+Tab** (cycles Plan -> Agent -> Ask) or the `/mode` command:
 
-- `:mode planning`
-- `:mode agent`
-- `:mode ask`
+- `/mode plan`
+- `/mode agent`
+- `/mode ask`
 
 ### Project Memory (COOLCODE.md)
 
@@ -210,8 +211,8 @@ cool-code skill install https://github.com/user/some-skill.git
 cool-code skill install ./skill --global    # install to ~/.coolcode/skills
 
 # Or from inside the interactive session
-:install-skill ./path/to/skill
-:install-skill https://github.com/user/some-skill.git --global
+/install-skill ./path/to/skill
+/install-skill https://github.com/user/some-skill.git --global
 ```
 
 Installed skills are copied into `.coolcode/skills/` (or `~/.coolcode/skills/` with `--global`) and become available immediately.
@@ -225,7 +226,7 @@ The agent can reach the web through two tools:
 
 ### Sessions
 
-Conversations (messages, summary, pinned files, and mode) are saved automatically to `~/.coolcode/sessions/<id>.json` after each turn. Resume them with `--continue` (most recent for the current directory) or `--resume <id>`, and list saved sessions inside the CLI with `:sessions`.
+Conversations (messages, summary, pinned files, and mode) are saved automatically to `~/.coolcode/sessions/<id>.json` after each turn. Resume them with `--continue` (most recent for the current directory) or `--resume <id>`, and list saved sessions inside the CLI with `/sessions`.
 
 ### Advanced CLI Commands
 
@@ -254,17 +255,19 @@ cool-code skill install https://github.com/user/some-skill.git --global
 
 ### Interactive Commands
 
-Inside the CLI prompt:
+Inside the CLI prompt, type `/` to open an autocomplete dropdown of commands; press Tab to complete the highlighted one.
 
-- `:help` Show interactive commands
-- `:mode` Show or switch the current mode
-- `:pin` Pin a file's contents into context (e.g. `:pin src/index.ts`)
-- `:unpin` Unpin a file (or list pinned files)
-- `:context` Preview the prompt context, pinned files, and token usage
-- `:sessions` List saved sessions for this directory
-- `:install-skill` Install a skill from a local path or git URL (add `--global`)
-- `:clear` Clear the screen
-- `:exit` or `:quit` Exit
+- `/help` Show available commands
+- `/mode` Show or switch the current mode (`/mode plan|agent|ask`)
+- `/pin` Pin a file's contents into context (e.g. `/pin src/index.ts`)
+- `/unpin` Unpin a file (or list pinned files)
+- `/context` Preview the prompt context, pinned files, and token usage
+- `/sessions` List saved sessions for this directory
+- `/install-skill` Install a skill from a local path or git URL (add `--global`)
+- `/clear` Clear the screen
+- `/exit` Exit
+
+Press **Shift+Tab** at any time to cycle the mode (Plan -> Agent -> Ask).
 
 ### Non-blocking Input
 
@@ -278,11 +281,13 @@ You can type and send new messages even while the agent is processing tool calls
 Initializes the CLI using Commander.js, wires up flags (including `--continue` / `--resume`), and starts the interactive session.
 
 #### 2. UI Layer (`src/ui/`)
+- **App (`app.tsx`)**: The Ink (React) terminal UI — header, output log, input with the `/` autocomplete dropdown, Shift+Tab mode cycling, command dispatch, confirmations, and the post-plan action menu.
+- **Commands (`commands.ts`)**: Single source of truth for slash commands (used by the dropdown, `/help`, and the dispatcher).
 - **Landing (`landing.ts`)**: Compact welcome screen.
-- **Query Handler (`query.ts`)**: Main input loop, status bar, interactive commands, and session save/restore.
-- **Prompt (`prompt.ts`)**: Readline session with history and path completion.
-- **Spinner (`spinner.ts`)**: Visual feedback with synchronized status messages.
+- **Spinner (`spinner.ts`)**: The `StatusReporter` interface plus a console spinner used for CLI/quiet output.
 - **Clipboard / Markdown (`clipboard.ts`, `utils/markdown.ts`)**: Output helpers.
+
+The Ink/React stack is kept external in the bundle and loaded from `node_modules` at runtime (it cannot be esbuild-bundled), and is lazy-loaded so non-interactive CLI commands stay light.
 
 #### 3. Core Engine (`src/core/`)
 - **Processor (`processor.ts`)**: Orchestrates query turns, tool execution, mode handling, and message queuing.
@@ -358,7 +363,7 @@ Initializes the CLI using Commander.js, wires up flags (including `--continue` /
 Planned and candidate features for future iterations:
 
 - **Semantic codebase index (Cursor-style)**: Build a local embedding index of the codebase for natural-language code search, and keep it in sync incrementally using a **Merkle tree of file content hashes** so only changed files are re-embedded. Embeddings would reuse the configured model provider's API key, exposed to the agent as a `codebase_search` tool. This is the main planned upgrade to retrieval.
-- **Edit checkpoints and undo**: Snapshot files before mutating tools and allow `:undo` to roll back the agent's changes.
+- **Edit checkpoints and undo**: Snapshot files before mutating tools and allow `/undo` to roll back the agent's changes.
 - **Granular permission allowlist**: Rule-based allow/deny per tool and per shell command, extending the current danger prompts.
 - **Custom slash commands**: User-defined command templates under `.coolcode/commands/*.md`.
 - **MCP (Model Context Protocol) support**: Connect external tool servers.
