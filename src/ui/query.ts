@@ -152,6 +152,9 @@ function renderTasks(taskList: TaskList) {
     
     const text = item.status === 'done' ? chalk.gray.strikethrough(item.title) : item.title;
     console.log(`    ${icon} ${text}`);
+    if (item.detail) {
+      console.log(chalk.gray(`        ${item.detail}`));
+    }
   }
 }
 
