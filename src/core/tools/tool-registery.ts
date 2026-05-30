@@ -425,6 +425,32 @@ Process Group PGID: Process group started or \`(none)\``,
     type: Object,
   },
   {
+    name: 'web_fetch',
+    description:
+      'Fetches the contents of a URL over http/https and returns it as readable text (HTML is stripped to text). Use this to read documentation, articles, or API responses.',
+    toolOptions: {
+      url: {
+        description: 'The absolute http(s) URL to fetch.',
+        type: String,
+      },
+    },
+    required: ['url'],
+    type: Object,
+  },
+  {
+    name: 'web_search',
+    description:
+      'Searches the web and returns a list of result titles, URLs, and snippets. Use this to find up-to-date information or relevant pages, then web_fetch a result for details.',
+    toolOptions: {
+      query: {
+        description: 'The search query.',
+        type: String,
+      },
+    },
+    required: ['query'],
+    type: Object,
+  },
+  {
     name: 'use_skill',
     description:
       "Loads the full instructions for one of the available skills (listed in the 'Available Skills' section) into context. Call this when a skill is relevant to the task before acting on it.",

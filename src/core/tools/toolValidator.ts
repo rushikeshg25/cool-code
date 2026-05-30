@@ -23,6 +23,8 @@ import { newModule } from "./newModuleTool";
 import { addScript } from "./addScriptTool";
 import { generateReadmeSection } from "./generateReadmeSectionTool";
 import { useSkill } from "./useSkillTool";
+import { webFetch } from "./webFetchTool";
+import { webSearch } from "./webSearchTool";
 
 export const ReadFileSchema = z.object({
   tool: z.literal("read_file"),
@@ -206,6 +208,20 @@ export const UseSkillSchema = z.object({
   }),
 });
 
+export const WebFetchSchema = z.object({
+  tool: z.literal("web_fetch"),
+  toolOptions: z.object({
+    url: z.string().min(1, "URL cannot be empty"),
+  }),
+});
+
+export const WebSearchSchema = z.object({
+  tool: z.literal("web_search"),
+  toolOptions: z.object({
+    query: z.string().min(1, "Query cannot be empty"),
+  }),
+});
+
 export type ToolCall =
   | z.infer<typeof ReadFileSchema>
   | z.infer<typeof EditFileSchema>
@@ -228,7 +244,9 @@ export type ToolCall =
   | z.infer<typeof NewModuleSchema>
   | z.infer<typeof AddScriptSchema>
   | z.infer<typeof GenerateReadmeSectionSchema>
-  | z.infer<typeof UseSkillSchema>;
+  | z.infer<typeof UseSkillSchema>
+  | z.infer<typeof WebFetchSchema>
+  | z.infer<typeof WebSearchSchema>;
 
 export interface FileValidationResult {
   exists: boolean;
@@ -573,10 +591,34 @@ export async function validateAndRunToolCall(
         return { success: true, data: skillResult.data, result };
       }
 
+      case "web_fetch": {
+        const fetchResult = WebFetchSchema.safeParse(data);
+        if (!fetchResult.success) {
+          return {
+            success: false,
+            error: `Invalid web_fetch toolOptions: ${fetchResult.error.message}`,
+          };
+        }
+        const result = await webFetch(fetchResult.data.toolOptions);
+        return { success: true, data: fetchResult.data, result };
+      }
+
+      case "web_search": {
+        const searchResult = WebSearchSchema.safeParse(data);
+        if (!searchResult.success) {
+          return {
+            success: false,
+            error: `Invalid web_search toolOptions: ${searchResult.error.message}`,
+          };
+        }
+        const result = await webSearch(searchResult.data.toolOptions);
+        return { success: true, data: searchResult.data, result };
+      }
+
       default:
         return {
           success: false,
-          error: `Unknown tool: ${data.tool}. Supported tools: read_file, edit_file, shell_command, glob, grep, new_file, list_recent_files, project_summary, open_file_at, run_tests, lint_fix, format_file, git_status, git_diff, git_commit, find_symbol, replace_in_files, rename_file, new_module, add_script, generate_readme_section, use_skill`,
+          error: `Unknown tool: ${data.tool}. Supported tools: read_file, edit_file, shell_command, glob, grep, new_file, list_recent_files, project_summary, open_file_at, run_tests, lint_fix, format_file, git_status, git_diff, git_commit, find_symbol, replace_in_files, rename_file, new_module, add_script, generate_readme_section, use_skill, web_fetch, web_search`,
         };
     }
   } catch (error) {
