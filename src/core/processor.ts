@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import type { CoolCodeConfig } from './config';
 import type { LLMConfig, TaskList, AgentMode } from '../types';
 import { renderMarkdown } from '../ui/utils/markdown';
+import { debugLog } from './utils';
 export interface QueryResult {
   query: string;
   response: string;
@@ -49,6 +50,10 @@ function getRandomThinkingMessage() {
   return THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
 }
 
+// Tools that change the file-tree structure; after one runs we refresh the
+// cached project tree so the model's view does not go stale.
+const STRUCTURAL_TOOLS = ['new_file', 'rename_file', 'new_module'];
+
 export class Processor {
   public config: configType;
   private LLM: LLM;
@@ -59,6 +64,7 @@ export class Processor {
   private taskList: TaskList | null = null;
   private messageQueue: string[] = [];
   private mode: AgentMode = 'agent';
+  private projectConfig?: CoolCodeConfig;
 
   constructor(
     rootDir: string,
@@ -86,6 +92,8 @@ export class Processor {
     );
     this.contextManager.setMaxTokens(config?.features?.maxContextTokens ?? 20000);
     this.mode = options.mode ?? 'agent';
+    this.contextManager.setMode(this.mode);
+    this.projectConfig = config;
   }
 
   isFinalMessage(response: any): boolean {
@@ -139,12 +147,20 @@ export class Processor {
           toolCalls = JSON.parse(toolCalls);
         }
       } catch (error) {
-        if (!this.options.quiet) {
-          console.error(chalk.red('\n[PARSE ERROR]'), error instanceof Error ? error.message : String(error));
-          // console.log('[RAW RESPONSE WAS]', response);
-        }
+        debugLog('processQuery: failed to parse model response', error);
         streamingSpinner.succeed('Processing turn complete.');
         break;
+      }
+
+      // Normalize a single tool-call object into an array so the loop below is
+      // safe. The final-text path above already breaks, so reaching here with a
+      // non-array, non-tool value means nothing is actionable.
+      if (!Array.isArray(toolCalls)) {
+        if (toolCalls && typeof toolCalls === 'object' && 'tool' in toolCalls) {
+          toolCalls = [toolCalls];
+        } else {
+          break;
+        }
       }
 
       // Handle Task List updates from the model (internal)
@@ -157,6 +173,7 @@ export class Processor {
         }
       }
 
+      let treeDirty = false;
       for (const toolCall of toolCalls) {
         // console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);
         if (toolCall && typeof toolCall === 'object' && 'tool' in toolCall) {
@@ -224,14 +241,20 @@ export class Processor {
               result.result?.LLMresult as string,
               toolCall
             );
-          } catch (err) {
-            if (!this.options.quiet) {
-              streamingSpinner.updateText(
-                '[AGENT ERROR] ' +
-                  (err instanceof Error ? err.message : String(err))
-              );
+            if (STRUCTURAL_TOOLS.includes(toolCall.tool)) {
+              treeDirty = true;
             }
-            console.error('[AGENT ERROR]', err);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (!this.options.quiet) {
+              streamingSpinner.updateText('[AGENT ERROR] ' + message);
+            }
+            // Feed the failure back into context so the model can react to it
+            // on the next turn instead of silently continuing.
+            this.contextManager.addResponse(
+              `Tool execution failed: ${message}`,
+              toolCall
+            );
           }
         }
 
@@ -243,8 +266,14 @@ export class Processor {
             `[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n${combined}`
           );
           // break out of the current toolCalls loop to let the LLM see the new message in the next turn
-          break; 
+          break;
         }
+      }
+
+      // Refresh the cached file tree once per turn if a structural tool ran,
+      // so the model's next prompt reflects created/renamed/moved files.
+      if (treeDirty) {
+        await this.contextManager.updateProjectStateTree(this.projectConfig);
       }
     }
     // Perform periodic cleanup/summarization after the response is complete
@@ -333,10 +362,10 @@ export class Processor {
     try {
       const summary = await this.LLM.StreamResponse(prompt, () => {});
       if (summary) {
-        this.contextManager.setSummary(summary);
+        this.contextManager.applySummary(summary);
       }
     } catch (err) {
-      console.error('[SUMMARIZATION ERROR]', err);
+      debugLog('summarizeContext failed', err);
     }
   }
 }

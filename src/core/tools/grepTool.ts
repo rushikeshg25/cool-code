@@ -1,6 +1,6 @@
 import { ToolResult } from "../../types";
 import { getErrorMessage } from "../utils";
-import { GrepSchema } from "./toolValidator";
+import { globSync } from "glob";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -16,43 +16,85 @@ interface GrepMatch {
   line: string;
 }
 
+const IGNORE_GLOBS = [
+  "**/node_modules/**",
+  "**/.git/**",
+  "**/dist/**",
+  "**/build/**",
+];
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+function isBinary(buffer: Buffer): boolean {
+  const len = Math.min(buffer.length, 8000);
+  for (let i = 0; i < len; i++) {
+    if (buffer[i] === 0) return true;
+  }
+  return false;
+}
+
 export async function grepTool(options: GrepToolOptions): Promise<ToolResult> {
+  let regex: RegExp;
+  try {
+    regex = new RegExp(options.pattern);
+  } catch (error) {
+    return {
+      LLMresult: `Invalid search pattern: ${getErrorMessage(error)}`,
+      DisplayResult: "Invalid pattern",
+    };
+  }
+
+  let includePattern: RegExp | null = null;
+  if (options.include) {
+    try {
+      includePattern = new RegExp(options.include);
+    } catch (error) {
+      return {
+        LLMresult: `Invalid include pattern: ${getErrorMessage(error)}`,
+        DisplayResult: "Invalid pattern",
+      };
+    }
+  }
+
   const searchPath = options.path ? path.resolve(options.path) : process.cwd();
-  const includePattern = options.include ? new RegExp(options.include) : null;
-  const regex = new RegExp(options.pattern);
   const matches: GrepMatch[] = [];
 
-  function searchFile(filePath: string) {
-    const lines = fs.readFileSync(filePath, "utf-8").split("\n");
+  async function searchFile(filePath: string) {
+    let buffer: Buffer;
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (stat.size > MAX_FILE_SIZE) return;
+      buffer = await fs.promises.readFile(filePath);
+    } catch {
+      return;
+    }
+    if (isBinary(buffer)) return;
+    const lines = buffer.toString("utf-8").split("\n");
     lines.forEach((line, idx) => {
       if (regex.test(line)) {
-        matches.push({ filePath: filePath, lineNumber: idx + 1, line });
+        matches.push({ filePath, lineNumber: idx + 1, line });
       }
     });
   }
 
-  function walkDir(dir: string) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walkDir(fullPath);
-      } else if (entry.isFile()) {
-        if (!includePattern || includePattern.test(entry.name)) {
-          searchFile(fullPath);
-        }
-      }
-    }
-  }
-
   try {
-    const stat = fs.statSync(searchPath);
+    const stat = await fs.promises.stat(searchPath);
     if (stat.isFile()) {
       if (!includePattern || includePattern.test(path.basename(searchPath))) {
-        searchFile(searchPath);
+        await searchFile(searchPath);
       }
     } else if (stat.isDirectory()) {
-      walkDir(searchPath);
+      const files = globSync("**/*", {
+        cwd: searchPath,
+        nodir: true,
+        dot: false,
+        ignore: IGNORE_GLOBS,
+      }).map((rel) => path.join(searchPath, rel));
+      for (const file of files) {
+        if (!includePattern || includePattern.test(path.basename(file))) {
+          await searchFile(file);
+        }
+      }
     } else {
       return {
         LLMresult: "Provided path is neither a file nor a directory.",

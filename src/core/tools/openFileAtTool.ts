@@ -10,7 +10,7 @@ export interface OpenFileAtOptions {
 export function openFileAt(
   options: OpenFileAtOptions,
   rootPath: string
-): ToolResult {
+): Promise<ToolResult> {
   return readFile(
     {
       absolutePath: options.absolutePath,

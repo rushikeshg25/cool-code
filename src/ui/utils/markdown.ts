@@ -8,7 +8,9 @@ export function renderMarkdown(text: string): string {
   // 1. Handle Fenced Code Blocks first to avoid styling within them
   const codeBlocks: string[] = [];
   rendered = rendered.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+    // Use a Private-Use-Area sentinel (no markdown metacharacters) so the
+    // bold/italic passes below don't mangle the placeholder before restore.
+    const placeholder = `${codeBlocks.length}`;
     const header = lang ? chalk.bgWhite.black(` ${lang.toUpperCase()} `) : chalk.bgWhite.black(' CODE ');
     const borderedCode = code
       .split('\n')
@@ -33,7 +35,7 @@ export function renderMarkdown(text: string): string {
 
   // 6. Restore Code Blocks
   codeBlocks.forEach((block, i) => {
-    rendered = rendered.replace(`__CODE_BLOCK_${i}__`, block);
+    rendered = rendered.replace(`${i}`, block);
   });
 
   return rendered;

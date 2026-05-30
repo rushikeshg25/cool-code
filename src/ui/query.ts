@@ -56,6 +56,7 @@ export async function acceptQuery(
       const query = await session.ask();
       if (query === null) {
         console.log(chalk.yellow('\nExiting...'));
+        session.close();
         process.exit(0);
       }
       if (!query) {
@@ -150,6 +151,7 @@ async function handleCommand(
   const command = cmd.trim().toLowerCase();
   if (command === ':exit' || command === ':quit') {
     console.log(chalk.yellow('\nExiting...'));
+    session.close();
     process.exit(0);
   }
   if (command === ':help') {
@@ -182,7 +184,7 @@ async function handleCommand(
     return;
   }
   if (command.startsWith(':pin')) {
-    const parts = cmd.trim().split(' ');
+    const parts = cmd.trim().split(/\s+/);
     if (parts.length > 1) {
       const relPath = parts[1];
       const absPath = path.resolve(processor.config.rootDir, relPath);
@@ -198,7 +200,7 @@ async function handleCommand(
     return;
   }
   if (command.startsWith(':unpin')) {
-    const parts = cmd.trim().split(' ');
+    const parts = cmd.trim().split(/\s+/);
     if (parts.length > 1) {
       const relPath = parts[1];
       const absPath = path.resolve(processor.config.rootDir, relPath);

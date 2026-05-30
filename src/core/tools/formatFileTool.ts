@@ -1,6 +1,10 @@
 import type { ToolResult } from '../../types';
 import { execCommand } from './shellTool';
-import { ensureAbsoluteWithinRoot, toRelativePath } from './toolUtils';
+import {
+  ensureAbsoluteWithinRoot,
+  shellEscapeSingleQuotes,
+  toRelativePath,
+} from './toolUtils';
 
 export interface FormatFileOptions {
   absolutePath: string;
@@ -15,7 +19,7 @@ export async function formatFile(
     return { DisplayResult: 'Fixing Issues', LLMresult: validation };
   }
   const rel = toRelativePath(options.absolutePath, rootPath);
-  const command = `npx prettier --write "${rel}"`;
+  const command = `npx prettier --write '${shellEscapeSingleQuotes(rel)}'`;
   const result = await execCommand({ command, directory: rootPath });
   return {
     DisplayResult: result.success ? 'File formatted' : 'Formatting failed',

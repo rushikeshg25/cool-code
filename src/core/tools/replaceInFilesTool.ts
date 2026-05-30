@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { globSync } from 'glob';
 import type { ToolResult } from '../../types';
+import { debugLog } from '../utils';
 
 export interface ReplaceInFilesOptions {
   pattern: string;
@@ -18,6 +19,20 @@ export function replaceInFiles(
 ): ToolResult {
   if (!options.pattern) {
     return { DisplayResult: 'Fixing Issues', LLMresult: 'pattern is required.' };
+  }
+
+  let compiledRegex: RegExp | null = null;
+  if (options.useRegex) {
+    try {
+      compiledRegex = new RegExp(options.pattern, 'g');
+    } catch (error) {
+      return {
+        DisplayResult: 'Invalid pattern',
+        LLMresult: `Invalid regex pattern: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
   }
 
   const include = options.include ?? '**/*';
@@ -46,16 +61,17 @@ export function replaceInFiles(
     let content: string;
     try {
       content = fs.readFileSync(filePath, 'utf-8');
-    } catch {
+    } catch (error) {
+      debugLog(`replaceInFiles: skipped unreadable file ${filePath}`, error);
       continue;
     }
 
     let replaced = content;
     let count = 0;
 
-    if (options.useRegex) {
-      const regex = new RegExp(options.pattern, 'g');
-      replaced = content.replace(regex, (match) => {
+    if (options.useRegex && compiledRegex) {
+      compiledRegex.lastIndex = 0;
+      replaced = content.replace(compiledRegex, (match) => {
         count += 1;
         return options.replacement;
       });

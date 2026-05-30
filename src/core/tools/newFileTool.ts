@@ -1,14 +1,23 @@
 import fs from 'fs';
 import { ToolResult } from '../../types';
 import { getErrorMessage } from '../utils';
+import { ensureAbsoluteWithinRoot } from './toolUtils';
 
 interface NewFileOptions {
   filePath: string;
   content: string;
 }
 
-export async function newFile(options: NewFileOptions): Promise<ToolResult> {
+export async function newFile(
+  options: NewFileOptions,
+  rootPath: string
+): Promise<ToolResult> {
   const { filePath, content } = options;
+
+  const validation = ensureAbsoluteWithinRoot(filePath, rootPath);
+  if (validation) {
+    return { DisplayResult: 'Fixing Issues', LLMresult: validation };
+  }
 
   try {
     await fs.promises.writeFile(filePath, content);

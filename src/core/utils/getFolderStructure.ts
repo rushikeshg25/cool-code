@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { debugLog } from './index';
 
 interface getFolderStructureType {
   gitIgnoreChecker: (filePath: string) => boolean | null;
@@ -80,7 +81,7 @@ function buildTree(
     }
   } catch (error) {
     // Skip directories that can't be read (permission issues, etc.)
-    console.warn(`Warning: Could not read directory ${dirPath}: ${error}`);
+    debugLog(`getFolderStructure: could not read ${dirPath}`, error);
   }
 
   return nodes;

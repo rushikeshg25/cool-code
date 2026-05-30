@@ -1,5 +1,6 @@
 import type { ToolResult } from '../../types';
 import { execCommand } from './shellTool';
+import { shellEscapeSingleQuotes } from './toolUtils';
 
 export interface FindSymbolOptions {
   pattern: string;
@@ -19,8 +20,12 @@ export async function findSymbol(
   }
 
   const searchPath = options.path || rootPath;
-  const includeFlag = options.include ? ` -g "${options.include}"` : '';
-  const command = `rg -n --hidden --glob '!.git/*' --glob '!node_modules/*'${includeFlag} "${options.pattern}" "${searchPath}"`;
+  const includeFlag = options.include
+    ? ` -g '${shellEscapeSingleQuotes(options.include)}'`
+    : '';
+  const command = `rg -n --hidden --glob '!.git/*' --glob '!node_modules/*'${includeFlag} '${shellEscapeSingleQuotes(
+    options.pattern
+  )}' '${shellEscapeSingleQuotes(searchPath)}'`;
   const result = await execCommand({ command, directory: rootPath });
 
   return {

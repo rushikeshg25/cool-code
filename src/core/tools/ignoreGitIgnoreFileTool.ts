@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { debugLog } from '../utils';
 
 interface GitIgnoreChecker {
   (filePath: string): boolean;
@@ -28,7 +29,7 @@ export function createGitIgnoreChecker(rootDir: string): GitIgnoreChecker {
       return regexPatterns.some((regex) => regex.test(normalizedPath));
     };
   } catch (error) {
-    console.warn(`Warning: Could not read .gitignore file: ${error}`);
+    debugLog('createGitIgnoreChecker: could not read .gitignore', error);
     return () => false;
   }
 }

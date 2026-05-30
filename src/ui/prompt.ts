@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import readline from 'readline';
+import { debugLog } from '../core/utils';
 
 export interface PromptOptions {
   message: string;
@@ -41,6 +42,25 @@ export function createPromptSession(options: PromptOptions): PromptSession {
 
   loadHistory(rl, historyFile);
 
+  // Track the in-flight question so EOF (Ctrl+D / stream close) can resolve it
+  // with null instead of hanging forever.
+  let activeQuestionResolve: ((value: string | null) => void) | null = null;
+  const askQuestion = (message: string): Promise<string | null> =>
+    new Promise((resolve) => {
+      activeQuestionResolve = resolve;
+      rl.question(message, (answer) => {
+        activeQuestionResolve = null;
+        resolve(answer);
+      });
+    });
+
+  rl.on('close', () => {
+    if (activeQuestionResolve) {
+      activeQuestionResolve(null);
+      activeQuestionResolve = null;
+    }
+  });
+
   rl.on('SIGINT', () => {
     rl.close();
     process.exit(0);
@@ -48,7 +68,7 @@ export function createPromptSession(options: PromptOptions): PromptSession {
 
   return {
     async ask() {
-      const value = await question(rl, options.message);
+      const value = await askQuestion(options.message);
       if (value === null) return null;
       const trimmed = value.trim();
       if (trimmed.length > 0) {
@@ -58,7 +78,7 @@ export function createPromptSession(options: PromptOptions): PromptSession {
     },
     async confirm(message: string, defaultValue: boolean = false) {
       const suffix = defaultValue ? ' [Y/n]' : ' [y/N]';
-      const answer = await question(rl, `${message}${suffix} `);
+      const answer = await askQuestion(`${message}${suffix} `);
       if (answer === null) return false;
       const normalized = answer.trim().toLowerCase();
       if (!normalized) return defaultValue;
@@ -86,12 +106,6 @@ export function createPromptSession(options: PromptOptions): PromptSession {
   };
 }
 
-function question(rl: readline.Interface, message: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    rl.question(message, (answer) => resolve(answer));
-  });
-}
-
 function loadHistory(rl: readline.Interface, filePath: string) {
   if (!fs.existsSync(filePath)) return;
   try {
@@ -101,16 +115,16 @@ function loadHistory(rl: readline.Interface, filePath: string) {
       .map((l) => l.trim())
       .filter(Boolean);
     (rl as any).history = lines.slice(-MAX_HISTORY).reverse();
-  } catch {
-    // ignore history errors
+  } catch (error) {
+    debugLog('prompt: failed to load history', error);
   }
 }
 
 function appendHistory(filePath: string, line: string) {
   try {
     fs.appendFileSync(filePath, `${line}\n`);
-  } catch {
-    // ignore history errors
+  } catch (error) {
+    debugLog('prompt: failed to append history', error);
   }
 }
 

@@ -41,7 +41,9 @@ export async function gitCommit(
       }
       relativeFiles.push(toRelativePath(filePath, rootPath));
     }
-    const addCmd = `git add -- ${relativeFiles.map((f) => `"${f}"`).join(' ')}`;
+    const addCmd = `git add -- ${relativeFiles
+      .map((f) => `'${shellEscapeSingleQuotes(f)}'`)
+      .join(' ')}`;
     const addResult = await execCommand({ command: addCmd, directory: rootPath });
     if (!addResult.success) {
       return {

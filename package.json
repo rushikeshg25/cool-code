@@ -12,6 +12,7 @@
     "dev": "tsup --watch --onSuccess \"node dist/index.js\"",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
@@ -33,7 +34,9 @@
     "typescript": "^5.8.3",
     "zod": "^3.23.8"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "vitest": "^4.1.7"
+  },
   "keywords": [
     "ai",
     "cli",

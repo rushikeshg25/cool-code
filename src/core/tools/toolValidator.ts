@@ -246,7 +246,7 @@ export async function validateAndRunToolCall(
       };
     }
 
-    const data = jsonData as any;
+    const data = jsonData as { tool: unknown } & Record<string, unknown>;
 
     switch (data.tool) {
       case "read_file": {
@@ -270,7 +270,7 @@ export async function validateAndRunToolCall(
           };
         }
 
-        const result = readFile(readFileResult.data.toolOptions, rootPath);
+        const result = await readFile(readFileResult.data.toolOptions, rootPath);
         return { success: true, data: readFileResult.data, result };
       }
 
@@ -353,10 +353,13 @@ export async function validateAndRunToolCall(
           };
         }
 
-        const result = await newFile({
-          filePath: newFileResult.data.toolOptions.filePath,
-          content: newFileResult.data.toolOptions.content,
-        });
+        const result = await newFile(
+          {
+            filePath: newFileResult.data.toolOptions.filePath,
+            content: newFileResult.data.toolOptions.content,
+          },
+          rootPath
+        );
         return { success: true, data: newFileResult.data, result };
       }
 
@@ -395,7 +398,7 @@ export async function validateAndRunToolCall(
             error: `Invalid open_file_at toolOptions: ${openResult.error.message}`,
           };
         }
-        const result = openFileAt(openResult.data.toolOptions, rootPath);
+        const result = await openFileAt(openResult.data.toolOptions, rootPath);
         return { success: true, data: openResult.data, result };
       }
 

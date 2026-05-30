@@ -1,6 +1,10 @@
 import type { ToolResult } from '../../types';
 import { execCommand } from './shellTool';
-import { ensureAbsoluteWithinRoot, toRelativePath } from './toolUtils';
+import {
+  ensureAbsoluteWithinRoot,
+  shellEscapeSingleQuotes,
+  toRelativePath,
+} from './toolUtils';
 
 export interface GitDiffOptions {
   filePath?: string;
@@ -17,7 +21,9 @@ export async function gitDiff(
     if (validation) {
       return { DisplayResult: 'Fixing Issues', LLMresult: validation };
     }
-    fileArg = ` -- "${toRelativePath(options.filePath, rootPath)}"`;
+    fileArg = ` -- '${shellEscapeSingleQuotes(
+      toRelativePath(options.filePath, rootPath)
+    )}'`;
   }
 
   const command = `git diff${options.staged ? ' --staged' : ''}${fileArg}`;

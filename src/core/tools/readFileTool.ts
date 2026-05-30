@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ToolResult } from "../../types";
-import { loadConfig } from "../config";
+import { isBlockedPath } from "./toolUtils";
 
 export interface ReadFileOptions {
   absolutePath: string;
@@ -44,7 +44,7 @@ export async function readFile(
   }
   try {
     if (!startLine && !endLine) {
-      const content = fs.readFileSync(absolutePath, "utf-8");
+      const content = await fs.promises.readFile(absolutePath, "utf-8");
       return {
         DisplayResult: "Reading " + path.relative(rootPath, absolutePath),
         LLMresult: content,
@@ -135,32 +135,6 @@ export function validateFileForReading(filePath: string): string | null {
     fs.accessSync(filePath, fs.constants.R_OK);
   } catch {
     return `File is not readable: ${filePath}`;
-  }
-  return null;
-}
-
-function isBlockedPath(filePath: string, rootPath: string): string | null {
-  const config = loadConfig(rootPath);
-  const patterns = config.guardrails?.blockReadPatterns || [];
-  if (patterns.length === 0) return null;
-
-  const base = path.basename(filePath);
-  for (const pattern of patterns) {
-    if (pattern === base) {
-      return `Reading blocked for "${base}" by guardrails.`;
-    }
-    if (pattern.startsWith('.') && pattern.endsWith('.*')) {
-      const prefix = pattern.slice(0, -2);
-      if (base.startsWith(prefix)) {
-        return `Reading blocked for "${base}" by guardrails.`;
-      }
-    }
-    if (pattern.startsWith('*.')) {
-      const ext = pattern.slice(1);
-      if (base.endsWith(ext)) {
-        return `Reading blocked for "${base}" by guardrails.`;
-      }
-    }
   }
   return null;
 }

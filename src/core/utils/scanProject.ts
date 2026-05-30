@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { debugLog } from './index';
 
 export interface ProjectScan {
   rootDir: string;
@@ -87,8 +88,8 @@ export function scanProject(rootDir: string): ProjectScan {
         ...(pkg.devDependencies || {}),
       });
       frameworks = detectFrameworks(deps);
-    } catch {
-      // Ignore invalid package.json
+    } catch (error) {
+      debugLog('scanProject: invalid package.json', error);
     }
   }
 

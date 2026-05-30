@@ -1,5 +1,6 @@
 import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT, MODE_PROMPTS } from './prompts';
 import { toolRegistery } from './tools/tool-registery';
+import { isBlockedPath } from './tools/toolUtils';
 import { getFolderStructure } from './utils';
 import type { CoolCodeConfig } from './config';
 import type { AgentMode } from '../types';
@@ -32,6 +33,8 @@ export class ContextManager {
   private summary: string | null = null;
   private maxTokens = 20000; // Default max tokens for the context window
   private pinnedFiles: Set<string> = new Set();
+  private pinnedCache: Map<string, { mtimeMs: number; content: string }> =
+    new Map();
 
   constructor(
     cwd: string,
@@ -72,12 +75,25 @@ export class ContextManager {
   }
 
   buildPrompt(): string {
-    const sections = [];
-    sections.push(this.buildSystemSection());
-    sections.push(this.buildProjectStateSection());
-    sections.push(this.buildToolInfoSection());
-    sections.push(this.buildConversationSection());
-    return sections.filter(Boolean).join('\n\n');
+    // Order static content first (system + tools) so it forms a stable prefix
+    // the model provider can cache; dynamic content (project state, pinned
+    // files, conversation) goes last.
+    const system = this.buildSystemSection();
+    const toolInfo = this.buildToolInfoSection();
+    const projectState = this.buildProjectStateSection();
+
+    // Budget the conversation window against the real prompt size: subtract the
+    // tokens already consumed by the static + project sections.
+    const overhead =
+      estimateTokens(system) +
+      estimateTokens(toolInfo) +
+      estimateTokens(projectState);
+    const conversationBudget = Math.max(2000, this.maxTokens - overhead);
+    const conversation = this.buildConversationSection(conversationBudget);
+
+    return [system, toolInfo, projectState, conversation]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   private buildSystemSection(): string {
@@ -93,9 +109,14 @@ export class ContextManager {
     if (this.pinnedFiles.size > 0) {
       projectParts.push('\n--- Pinned Files Context ---');
       for (const filePath of this.pinnedFiles) {
+        const blocked = isBlockedPath(filePath, this.projectState.rootDir);
+        if (blocked) {
+          projectParts.push(`File: ${path.relative(this.projectState.rootDir, filePath)} (blocked by guardrails)`);
+          continue;
+        }
         try {
           if (fs.existsSync(filePath)) {
-            const content = fs.readFileSync(filePath, 'utf-8');
+            const content = this.readPinnedFile(filePath);
             projectParts.push(`File: ${path.relative(this.projectState.rootDir, filePath)}\n\`\`\`\n${content}\n\`\`\``);
           }
         } catch (err) {
@@ -107,7 +128,20 @@ export class ContextManager {
     return projectParts.join('\n');
   }
 
-  private buildConversationSection(): string {
+  // Reads a pinned file, reusing the cached content when the file's mtime is
+  // unchanged so we don't hit disk on every prompt build.
+  private readPinnedFile(filePath: string): string {
+    const mtimeMs = fs.statSync(filePath).mtimeMs;
+    const cached = this.pinnedCache.get(filePath);
+    if (cached && cached.mtimeMs === mtimeMs) {
+      return cached.content;
+    }
+    const content = fs.readFileSync(filePath, 'utf-8');
+    this.pinnedCache.set(filePath, { mtimeMs, content });
+    return content;
+  }
+
+  private buildConversationSection(budget: number = this.maxTokens): string {
     let section = '--- Recent Conversation ---\n';
     if (this.summary) {
       section += `[SUMMARY OF PREVIOUS CONTEXT]: ${this.summary}\n\n`;
@@ -120,7 +154,7 @@ export class ContextManager {
 
     for (const msg of recentMessages) {
       const msgTokens = msg.tokens || estimateTokens(msg.content);
-      if (currentTokens + msgTokens > this.maxTokens) break;
+      if (currentTokens + msgTokens > budget) break;
       includedMessages.unshift(msg);
       currentTokens += msgTokens;
     }
@@ -144,6 +178,17 @@ export class ContextManager {
     this.summary = summary;
   }
 
+  // Replace the older conversation with the freshly produced summary, keeping
+  // only a recent tail. This makes summarization actually shrink the context
+  // (the previous summary is already folded into `summary` by the caller's
+  // prompt, which includes it).
+  public applySummary(summary: string, keepRecent: number = 6) {
+    this.summary = summary;
+    if (this.conversations.length > keepRecent) {
+      this.conversations = this.conversations.slice(-keepRecent);
+    }
+  }
+
   public setMaxTokens(max: number) {
     this.maxTokens = max;
   }
@@ -158,8 +203,13 @@ export class ContextManager {
   }
 
   private buildToolInfoSection(): string {
-    const toolInfo = JSON.stringify(toolRegistery);
-    return `These are your Tools and what they expect:\n${toolInfo} here are some examples:\n${EXAMPLES} and the response I am expecting is like \n${TOOL_SELECTION_PROMPT}`;
+    // The registry, examples, and format prompt are all static; build the
+    // string once and reuse it across every turn.
+    if (toolInfoSectionCache === null) {
+      const toolInfo = JSON.stringify(toolRegistery);
+      toolInfoSectionCache = `These are your Tools and what they expect:\n${toolInfo} here are some examples:\n${EXAMPLES} and the response I am expecting is like \n${TOOL_SELECTION_PROMPT}`;
+    }
+    return toolInfoSectionCache;
   }
 
   updateProjectCWD(cwd: string) {
@@ -190,6 +240,9 @@ export class ContextManager {
     return Array.from(this.pinnedFiles);
   }
 }
+
+// Cached static tool-info section (registry + examples + format prompt).
+let toolInfoSectionCache: string | null = null;
 
 function estimateTokens(text: string): number {
   // Rough estimation: 4 characters per token

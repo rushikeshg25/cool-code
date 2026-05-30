@@ -36,11 +36,16 @@ export async function execCommand(options: ShellOptions): Promise<ShellResult> {
       success: true,
     };
   } catch (error) {
-    const execError = error as any;
+    const execError = error as {
+      stdout?: Buffer | string;
+      stderr?: Buffer | string;
+      code?: number;
+      message?: string;
+    };
     return {
       stdout: execError.stdout?.toString() || '',
       stderr: execError.stderr?.toString() || '',
-      exitCode: execError.code || null,
+      exitCode: execError.code ?? null,
       success: false,
       error: execError.message,
     };
