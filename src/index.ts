@@ -40,7 +40,9 @@ async function main() {
     .option("--no-init", "Exit without initializing in the current directory")
     .option("--quiet", "Reduce UI output for automation")
     .option("--allow-dangerous", "Allow dangerous actions without prompting")
-    .option("--copy", "Copy final responses to clipboard");
+    .option("--copy", "Copy final responses to clipboard")
+    .option("--continue", "Resume the most recent session for this directory")
+    .option("--resume <id>", "Resume a specific session by id");
 
   program.addHelpText(
     "after",
@@ -141,7 +143,7 @@ Examples:
   program.action(async () => {
     const rootDir = process.cwd();
     const config = loadConfig(rootDir);
-    const options = program.opts<{ yes?: boolean; noInit?: boolean; quiet?: boolean; allowDangerous?: boolean; copy?: boolean }>();
+    const options = program.opts<{ yes?: boolean; noInit?: boolean; quiet?: boolean; allowDangerous?: boolean; copy?: boolean; continue?: boolean; resume?: string }>();
     if (options.allowDangerous) {
       config.features = config.features || {};
       config.features.allowDangerous = true;
@@ -151,6 +153,8 @@ Examples:
       noInit: options.noInit,
       quiet: options.quiet,
       copy: options.copy,
+      continueSession: options.continue,
+      resumeId: options.resume,
     });
   });
 

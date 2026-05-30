@@ -7,15 +7,23 @@ import type { TaskList, AgentMode } from '../types';
 import { createPromptSession } from './prompt';
 import { toolRegistery } from '../core/tools/tool-registery';
 import { copyToClipboard } from './clipboard';
+import {
+  saveSession,
+  loadSession,
+  latestSession,
+  listSessions,
+  newSessionId,
+} from '../core/session';
 
 export async function acceptQuery(
   rootDir: string,
   config: CoolCodeConfig,
   quiet: boolean,
   copy: boolean,
-  initialMode: AgentMode = 'agent'
+  initialMode: AgentMode = 'agent',
+  resume?: { continue?: boolean; id?: string }
 ) {
-  const commands = [':help', ':exit', ':quit', ':context', ':clear', ':mode', ':pin', ':unpin'];
+  const commands = [':help', ':exit', ':quit', ':context', ':clear', ':mode', ':pin', ':unpin', ':sessions'];
   const tools = toolRegistery.map((t) => t.name);
   const session = createPromptSession({
     message: chalk.cyan('Enter your query:') + '\n' + chalk.gray('❯ '),
@@ -37,6 +45,38 @@ export async function acceptQuery(
       return session.confirm('Proceed?', false);
     },
   });
+
+  // Resolve and restore a prior session if requested.
+  let sessionId = newSessionId();
+  const restoreFrom = resume?.id
+    ? loadSession(resume.id)
+    : resume?.continue
+    ? latestSession(rootDir)
+    : null;
+  if (restoreFrom) {
+    sessionId = restoreFrom.id;
+    processor.restoreSnapshot(restoreFrom);
+    if (!quiet) {
+      console.log(
+        chalk.green(
+          `\nResumed session ${sessionId.slice(0, 8)} (${restoreFrom.conversations.length} messages).`
+        )
+      );
+    }
+  } else if (resume?.id) {
+    if (!quiet) console.log(chalk.yellow(`\nNo session found with id ${resume.id}.`));
+  } else if (resume?.continue) {
+    if (!quiet) console.log(chalk.yellow('\nNo previous session for this directory; starting fresh.'));
+  }
+
+  const persist = () => {
+    saveSession({
+      id: sessionId,
+      cwd: rootDir,
+      updatedAt: new Date().toISOString(),
+      ...processor.snapshot(),
+    });
+  };
 
   // Set up non-blocking input for background queuing
   session.onInput((input) => {
@@ -64,11 +104,12 @@ export async function acceptQuery(
       }
 
       if (query.startsWith(':')) {
-        await handleCommand(query, processor, session);
+        await handleCommand(query, processor, session, rootDir);
         continue;
       }
 
       const result = await processQuery(query, processor);
+      persist();
       if (copy && result) {
         const copied = copyToClipboard(result);
         if (!quiet) {
@@ -146,7 +187,8 @@ function renderStatus(processor: Processor, rootDir: string) {
 async function handleCommand(
   cmd: string,
   processor: Processor,
-  session: ReturnType<typeof createPromptSession>
+  session: ReturnType<typeof createPromptSession>,
+  rootDir: string
 ) {
   const command = cmd.trim().toLowerCase();
   if (command === ':exit' || command === ':quit') {
@@ -162,9 +204,25 @@ async function handleCommand(
     console.log(`  ${chalk.cyan(':pin')}       Pin a file to context (e.g. :pin src/index.ts)`);
     console.log(`  ${chalk.cyan(':unpin')}     Unpin a file from context`);
     console.log(`  ${chalk.cyan(':context')}   Preview context, pinned files, and token usage`);
+    console.log(`  ${chalk.cyan(':sessions')}  List saved sessions for this directory`);
     console.log(`  ${chalk.cyan(':clear')}     Clear the terminal screen`);
     console.log(`  ${chalk.cyan(':exit')}      Close the session`);
     console.log(chalk.gray('  ╾─────────────────────\n'));
+    return;
+  }
+  if (command === ':sessions') {
+    const sessions = listSessions(rootDir);
+    if (sessions.length === 0) {
+      console.log(chalk.yellow('\nNo saved sessions for this directory.'));
+      return;
+    }
+    console.log(chalk.cyan('\nSaved sessions (newest first):'));
+    for (const s of sessions.slice(0, 10)) {
+      console.log(
+        `  ${chalk.gray(s.id.slice(0, 8))}  ${s.updatedAt}  ${chalk.gray(`${s.conversations.length} msgs`)}`
+      );
+    }
+    console.log(chalk.gray('  Resume with: cool-code --resume <id>\n'));
     return;
   }
   if (command.startsWith(':mode')) {

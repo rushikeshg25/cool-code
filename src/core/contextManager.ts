@@ -253,6 +253,37 @@ export class ContextManager {
   getPinnedFiles(): string[] {
     return Array.from(this.pinnedFiles);
   }
+
+  // Serializable snapshot of the mutable conversation state, for session
+  // persistence. Static context (system prompt, tools, file tree, skills) is
+  // rebuilt from disk on restore, so it is intentionally excluded.
+  serialize(): {
+    conversations: Message[];
+    summary: string | null;
+    pinnedFiles: string[];
+  } {
+    return {
+      conversations: this.conversations,
+      summary: this.summary,
+      pinnedFiles: Array.from(this.pinnedFiles),
+    };
+  }
+
+  restore(data: {
+    conversations?: Message[];
+    summary?: string | null;
+    pinnedFiles?: string[];
+  }) {
+    if (Array.isArray(data.conversations)) {
+      this.conversations = data.conversations;
+    }
+    if (data.summary !== undefined) {
+      this.summary = data.summary;
+    }
+    if (Array.isArray(data.pinnedFiles)) {
+      this.pinnedFiles = new Set(data.pinnedFiles);
+    }
+  }
 }
 
 // Cached static tool-info section (registry + examples + format prompt).

@@ -9,6 +9,8 @@ interface RunCliOptions {
   noInit?: boolean;
   quiet?: boolean;
   copy?: boolean;
+  continueSession?: boolean;
+  resumeId?: string;
 }
 
 export async function runCli(config: CoolCodeConfig, options: RunCliOptions = {}) {
@@ -52,5 +54,8 @@ export async function runCli(config: CoolCodeConfig, options: RunCliOptions = {}
     process.exit(0);
   }
 
-  await acceptQuery(rootDir, config, Boolean(options.quiet), Boolean(options.copy), initialMode);
+  await acceptQuery(rootDir, config, Boolean(options.quiet), Boolean(options.copy), initialMode, {
+    continue: options.continueSession,
+    id: options.resumeId,
+  });
 }

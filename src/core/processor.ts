@@ -352,6 +352,23 @@ export class Processor {
     return this.contextManager.getPinnedFiles();
   }
 
+  // Snapshot of mutable session state (mode + conversation) for persistence.
+  public snapshot() {
+    return { mode: this.mode, ...this.contextManager.serialize() };
+  }
+
+  public restoreSnapshot(snap: {
+    mode?: AgentMode;
+    conversations?: any[];
+    summary?: string | null;
+    pinnedFiles?: string[];
+  }) {
+    if (snap.mode) {
+      this.setMode(snap.mode);
+    }
+    this.contextManager.restore(snap);
+  }
+
   private async summarizeContext() {
     const stats = this.contextManager.getStats();
     // Only summarize if context is significantly large
