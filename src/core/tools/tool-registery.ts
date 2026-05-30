@@ -424,4 +424,17 @@ Process Group PGID: Process group started or \`(none)\``,
     required: ['title'],
     type: Object,
   },
+  {
+    name: 'use_skill',
+    description:
+      "Loads the full instructions for one of the available skills (listed in the 'Available Skills' section) into context. Call this when a skill is relevant to the task before acting on it.",
+    toolOptions: {
+      name: {
+        description: 'The exact name of the skill to load.',
+        type: String,
+      },
+    },
+    required: ['name'],
+    type: Object,
+  },
 ];

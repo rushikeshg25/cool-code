@@ -22,6 +22,7 @@ import { renameFile } from "./renameFileTool";
 import { newModule } from "./newModuleTool";
 import { addScript } from "./addScriptTool";
 import { generateReadmeSection } from "./generateReadmeSectionTool";
+import { useSkill } from "./useSkillTool";
 
 export const ReadFileSchema = z.object({
   tool: z.literal("read_file"),
@@ -198,6 +199,13 @@ export const GenerateReadmeSectionSchema = z.object({
   }),
 });
 
+export const UseSkillSchema = z.object({
+  tool: z.literal("use_skill"),
+  toolOptions: z.object({
+    name: z.string().min(1, "Skill name cannot be empty"),
+  }),
+});
+
 export type ToolCall =
   | z.infer<typeof ReadFileSchema>
   | z.infer<typeof EditFileSchema>
@@ -219,7 +227,8 @@ export type ToolCall =
   | z.infer<typeof RenameFileSchema>
   | z.infer<typeof NewModuleSchema>
   | z.infer<typeof AddScriptSchema>
-  | z.infer<typeof GenerateReadmeSectionSchema>;
+  | z.infer<typeof GenerateReadmeSectionSchema>
+  | z.infer<typeof UseSkillSchema>;
 
 export interface FileValidationResult {
   exists: boolean;
@@ -552,10 +561,22 @@ export async function validateAndRunToolCall(
         return { success: true, data: readmeResult.data, result };
       }
 
+      case "use_skill": {
+        const skillResult = UseSkillSchema.safeParse(data);
+        if (!skillResult.success) {
+          return {
+            success: false,
+            error: `Invalid use_skill toolOptions: ${skillResult.error.message}`,
+          };
+        }
+        const result = useSkill(skillResult.data.toolOptions, rootPath);
+        return { success: true, data: skillResult.data, result };
+      }
+
       default:
         return {
           success: false,
-          error: `Unknown tool: ${data.tool}. Supported tools: read_file, edit_file, shell_command, glob, grep, new_file, list_recent_files, project_summary, open_file_at, run_tests, lint_fix, format_file, git_status, git_diff, git_commit, find_symbol, replace_in_files, rename_file, new_module, add_script, generate_readme_section`,
+          error: `Unknown tool: ${data.tool}. Supported tools: read_file, edit_file, shell_command, glob, grep, new_file, list_recent_files, project_summary, open_file_at, run_tests, lint_fix, format_file, git_status, git_diff, git_commit, find_symbol, replace_in_files, rename_file, new_module, add_script, generate_readme_section, use_skill`,
         };
     }
   } catch (error) {

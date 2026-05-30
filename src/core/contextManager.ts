@@ -2,6 +2,7 @@ import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT, MODE_PROMPTS } from './pr
 import { toolRegistery } from './tools/tool-registery';
 import { isBlockedPath } from './tools/toolUtils';
 import { loadProjectInstructions } from './projectMemory';
+import { buildSkillsCatalog } from './skills';
 import { getFolderStructure } from './utils';
 import type { CoolCodeConfig } from './config';
 import type { AgentMode } from '../types';
@@ -37,6 +38,7 @@ export class ContextManager {
   private pinnedCache: Map<string, { mtimeMs: number; content: string }> =
     new Map();
   private projectInstructions: string | null = null;
+  private skillsCatalog = '';
 
   constructor(
     cwd: string,
@@ -55,6 +57,7 @@ export class ContextManager {
     this.conversations = [];
     this.gitIgnoreChecker = gitIgnoreChecker;
     this.projectInstructions = loadProjectInstructions(cwd);
+    this.skillsCatalog = buildSkillsCatalog(cwd);
   }
 
   addResponse(LLMresponse: string, toolCall: ToolCall) {
@@ -83,6 +86,7 @@ export class ContextManager {
     // files, conversation) goes last.
     const system = this.buildSystemSection();
     const toolInfo = this.buildToolInfoSection();
+    const skills = this.skillsCatalog;
     const projectState = this.buildProjectStateSection();
 
     // Budget the conversation window against the real prompt size: subtract the
@@ -90,11 +94,12 @@ export class ContextManager {
     const overhead =
       estimateTokens(system) +
       estimateTokens(toolInfo) +
+      estimateTokens(skills) +
       estimateTokens(projectState);
     const conversationBudget = Math.max(2000, this.maxTokens - overhead);
     const conversation = this.buildConversationSection(conversationBudget);
 
-    return [system, toolInfo, projectState, conversation]
+    return [system, toolInfo, skills, projectState, conversation]
       .filter(Boolean)
       .join('\n\n');
   }
