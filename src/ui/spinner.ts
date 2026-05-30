@@ -1,6 +1,16 @@
 import chalk from 'chalk';
 
-export class StreamingSpinner {
+// Output surface the processor drives during a turn. Implemented by the console
+// StreamingSpinner (default / CLI / quiet) and by the Ink app at runtime.
+export interface StatusReporter {
+  start(initialText?: string): void;
+  updateText(text: string): void;
+  succeed(text?: string): void;
+  fail(text?: string): void;
+  stop(): void;
+}
+
+export class StreamingSpinner implements StatusReporter {
   private enabled: boolean;
   private interval: NodeJS.Timeout | null = null;
   private spinnerChars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];

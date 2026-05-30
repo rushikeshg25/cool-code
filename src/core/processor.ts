@@ -1,4 +1,5 @@
 import { StreamingSpinner } from '../ui/spinner';
+import type { StatusReporter } from '../ui/spinner';
 import { LLM } from './llm';
 import { ContextManager } from './contextManager';
 import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
@@ -105,10 +106,14 @@ export class Processor {
     );
   }
 
-  async processQuery(query: string): Promise<string | null> {
+  async processQuery(
+    query: string,
+    reporter?: StatusReporter
+  ): Promise<string | null> {
     this.contextManager.addUserMessage(query);
 
-    const streamingSpinner = new StreamingSpinner(!this.options.quiet);
+    const streamingSpinner: StatusReporter =
+      reporter ?? new StreamingSpinner(!this.options.quiet);
     if (!this.options.quiet) {
       streamingSpinner.start(getRandomThinkingMessage());
     }
@@ -365,6 +370,14 @@ export class Processor {
 
   public reloadSkills() {
     this.contextManager.reloadSkills();
+  }
+
+  public setConfirmHandlers(
+    confirm: (message: string) => Promise<boolean>,
+    confirmEdit: (message: string, preview?: string) => Promise<boolean>
+  ) {
+    this.options.confirm = confirm;
+    this.options.confirmEdit = confirmEdit;
   }
 
   // Snapshot of mutable session state (mode + conversation) for persistence.
