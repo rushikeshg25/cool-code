@@ -1,10 +1,10 @@
 # Cool-Code: CLI Coding AI Agent
 
-An intelligent command-line interface that leverages AI to help you interact with codebases and work on them similar to Gemini CLI and Claude Code.
+An intelligent command-line interface that leverages AI to help you interact with codebases and work on them, similar to Gemini CLI and Claude Code.
 
 ## Overview
 
-Cool-Code is a powerful tool that combines the capabilities of large language models with a comprehensive set of development tools to provide an interactive development experience. Simply describe what you want to accomplish, and the AI agent will understand your intent and execute the necessary operations.
+Cool-Code combines large language models with a comprehensive set of development tools to provide an interactive development experience. Describe what you want to accomplish, and the agent understands your intent and executes the necessary operations. It works with multiple model providers (Google, OpenAI, Anthropic) and finds context live through search and read tools, so no vector database is required.
 
 Demo of it spinning up a Node Express server with Prisma:
 
@@ -12,22 +12,28 @@ https://github.com/user-attachments/assets/b1b59602-f118-4bbe-8b38-e4be0f39119f
 
 ## Features
 
+- **Multiple Model Providers**: Use Google, OpenAI, or Anthropic models. Set the model and provide the matching API key.
 - **Agent Modes**: Switch between Planning, Agent, and Ask modes for different interaction styles.
+- **Project Memory (`COOLCODE.md`)**: Persistent project instructions automatically loaded into context.
+- **Skills**: Discoverable, model-invoked instruction modules under `.coolcode/skills/`.
+- **Web Access**: `web_fetch` and `web_search` tools for reading pages and searching the web.
+- **Session Persistence**: Conversations are saved and can be resumed with `--continue` / `--resume`.
 - **Task Tracking**: Real-time checklists for complex, multi-step operations.
 - **Input Queuing**: Send new instructions while the agent is still processing a previous request.
-- **Natural Language Processing**: Interact with your codebase using plain English.
-- **Intelligent Code Analysis**: Understands your project structure and coding patterns without needing vector databases.
-- **File Operations**: Read, create, edit, and search files with AI assistance.
-- **Shell Command Execution**: Run system commands safely through the AI agent.
-- **Real-time Streaming**: Get live feedback as the AI processes your requests.
+- **Intelligent Code Analysis**: Understands your project structure and coding patterns without a vector database.
+- **File Operations**: Read, create, edit, rename, and search files with AI assistance.
+- **Shell Command Execution**: Run system commands safely through the agent.
 - **Context-Aware**: Maintains conversation history and project context automatically.
 
 ## Setup Guide
 
 ### Prerequisites
 
-- Node.js
-- A Google AI API key for Gemini
+- Node.js 18+
+- An API key for at least one supported provider:
+  - Google Gemini: `GOOGLE_GENERATIVE_AI_API_KEY`
+  - OpenAI: `OPENAI_API_KEY`
+  - Anthropic: `ANTHROPIC_API_KEY`
 
 ### Quick Install (Recommended)
 
@@ -37,10 +43,14 @@ Install globally from npm:
 npm install -g cool-code
 ```
 
-Set your Google AI API key:
+Set the API key for your chosen provider, for example:
 
 ```bash
 export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
+# or
+export OPENAI_API_KEY=your_api_key_here
+# or
+export ANTHROPIC_API_KEY=your_api_key_here
 ```
 
 ### Development Setup
@@ -64,7 +74,7 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and add your Google AI API key:
+Edit `.env` and add your provider API key, for example:
 
 ```
 GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here
@@ -82,6 +92,38 @@ npm run build
 npm link
 ```
 
+6. Run the tests:
+
+```bash
+npm test
+```
+
+## Model Providers
+
+Cool-Code resolves the provider from `llm.provider` in `.coolcode.json`, or infers it from the model id when `provider` is not set:
+
+- `gpt-*`, `o1*`, `o3*` -> OpenAI
+- `claude-*` -> Anthropic
+- everything else (e.g. `gemini-*`) -> Google
+
+To switch providers, set the model and export the matching API key:
+
+```bash
+cool-code config set llm.model "gpt-4o"        # inferred as OpenAI
+export OPENAI_API_KEY=your_api_key_here
+
+cool-code config set llm.model "claude-sonnet-4-6"   # inferred as Anthropic
+export ANTHROPIC_API_KEY=your_api_key_here
+```
+
+You can also set the provider explicitly:
+
+```bash
+cool-code config set llm.provider "openai"
+```
+
+If the required key is missing, the CLI prints provider-specific setup guidance.
+
 ## Usage
 
 ### Starting the CLI
@@ -92,7 +134,7 @@ Navigate to your project's directory and run:
 cool-code
 ```
 
-On startup, the CLI will ask to initialize in the current directory before building context.
+On startup, the CLI asks to initialize in the current directory, then lets you choose an operational mode before building context.
 
 ### Command Line Options
 
@@ -111,6 +153,12 @@ cool-code --allow-dangerous
 
 # Copy final response to clipboard
 cool-code --copy
+
+# Resume the most recent session for this directory
+cool-code --continue
+
+# Resume a specific saved session
+cool-code --resume <session-id>
 ```
 
 ### Agent Modes
@@ -119,12 +167,50 @@ Cool-Code supports three distinct modes of operation:
 
 1. **Planning Mode**: Analyzes your request and generates a Task List (TODOs) without touching your code. Useful for architecting changes before execution.
 2. **Agent Mode**: The default mode. Executes tasks autonomously, applying code changes and running commands.
-3. **Ask Mode**: Read-only mode for questions and explanations. Mutating tools (like shell or write_file) are blocked.
+3. **Ask Mode**: Read-only mode for questions and explanations. Mutating tools (edit, new file, shell, rename, replace) are blocked.
 
-Switch modes mid-session using the `:mode` command:
+The mode chosen at startup is applied to the system prompt, and you can switch mid-session using the `:mode` command:
+
 - `:mode planning`
 - `:mode agent`
 - `:mode ask`
+
+### Project Memory (COOLCODE.md)
+
+Create a `COOLCODE.md` file in your project root to give the agent persistent, project-specific instructions (conventions, do/don't rules, architecture notes). It is loaded into the system prompt on every turn. A global `~/.coolcode/COOLCODE.md` is used as a fallback when no project file exists.
+
+### Skills
+
+Skills are reusable instruction modules the model can load on demand. Create them under:
+
+```
+.coolcode/skills/<name>/SKILL.md      # project-level
+~/.coolcode/skills/<name>/SKILL.md    # global
+```
+
+Each `SKILL.md` may start with simple frontmatter:
+
+```markdown
+---
+name: pdf-filler
+description: Fill PDF forms from a data file
+---
+
+Step-by-step instructions the agent should follow when this skill applies...
+```
+
+The agent sees a catalog of available skill names and descriptions, and calls the `use_skill` tool to load a skill's full instructions into context when it is relevant.
+
+### Web Access
+
+The agent can reach the web through two tools:
+
+- `web_fetch`: retrieves an `http(s)` URL and returns it as readable text (HTML is stripped).
+- `web_search`: searches the web and returns result titles, URLs, and snippets.
+
+### Sessions
+
+Conversations (messages, summary, pinned files, and mode) are saved automatically to `~/.coolcode/sessions/<id>.json` after each turn. Resume them with `--continue` (most recent for the current directory) or `--resume <id>`, and list saved sessions inside the CLI with `:sessions`.
 
 ### Advanced CLI Commands
 
@@ -152,42 +238,57 @@ cool-code config set llm.maxTokens 2048
 Inside the CLI prompt:
 
 - `:help` Show interactive commands
-- `:mode` Show or switch current mode
-- `:context` Preview the prompt context
+- `:mode` Show or switch the current mode
+- `:pin` Pin a file's contents into context (e.g. `:pin src/index.ts`)
+- `:unpin` Unpin a file (or list pinned files)
+- `:context` Preview the prompt context, pinned files, and token usage
+- `:sessions` List saved sessions for this directory
 - `:clear` Clear the screen
 - `:exit` or `:quit` Exit
 
 ### Non-blocking Input
 
-You can type and send new messages even while the agent is processing tool calls. These messages will be queued and processed immediately after the current step is completed, allowing you to pivot or provide feedback mid-task.
+You can type and send new messages even while the agent is processing tool calls. These messages are queued and processed immediately after the current step completes, allowing you to pivot or provide feedback mid-task.
 
 ## Architecture
 
 ### Core Components
 
 #### 1. Entry Point (`src/index.ts`)
-The main entry point that initializes the CLI using Commander.js and starts the interactive session.
+Initializes the CLI using Commander.js, wires up flags (including `--continue` / `--resume`), and starts the interactive session.
 
 #### 2. UI Layer (`src/ui/`)
-- **Landing (`landing.ts`)**: Displays a compact, professional welcome screen.
-- **Query Handler (`query.ts`)**: Manages the main input loop, status bar, and task rendering.
-- **Spinner (`spinner.ts`)**: Provides visual feedback with synchronized status messages.
+- **Landing (`landing.ts`)**: Compact welcome screen.
+- **Query Handler (`query.ts`)**: Main input loop, status bar, interactive commands, and session save/restore.
+- **Prompt (`prompt.ts`)**: Readline session with history and path completion.
+- **Spinner (`spinner.ts`)**: Visual feedback with synchronized status messages.
+- **Clipboard / Markdown (`clipboard.ts`, `utils/markdown.ts`)**: Output helpers.
 
 #### 3. Core Engine (`src/core/`)
-- **Processor (`processor.ts`)**: Main orchestrator handling query turns, tool execution, and message queuing.
-- **LLM (`llm.ts`)**: Manages communication with Google's Gemini models.
-- **Context Manager (`contextManager.ts`)**: Maintains project state, file trees, and mode-specific prompt building.
-- **Prompts (`prompts.ts`)**: Contains high-level system logic, mode definitions, and tool instructions.
+- **Processor (`processor.ts`)**: Orchestrates query turns, tool execution, mode handling, and message queuing.
+- **LLM (`llm.ts`)**: Resolves the model provider (Google / OpenAI / Anthropic) and streams responses.
+- **Context Manager (`contextManager.ts`)**: Builds the prompt (system, tools, skills, project state, conversation), manages the token budget, summarization, and pinned files.
+- **Project Memory (`projectMemory.ts`)**: Loads `COOLCODE.md`.
+- **Skills (`skills.ts`)**: Discovers and parses `SKILL.md` files.
+- **Session (`session.ts`)**: Persists and restores conversations.
+- **Prompts (`prompts.ts`)**: System prompt, mode definitions, and tool instructions.
 
 #### 4. Tool System (`src/core/tools/`)
-- **File Operations**: `readFileTool`, `editTool`, `newFileTool`, `deleteFileTool`.
-- **Search & Discovery**: `globTool`, `grepTool`.
-- **System Operations**: `shellTool`, `ignoreGitIgnoreFileTool`.
+- **File Operations**: `readFileTool`, `editTool`, `newFileTool`, `renameFileTool`, `replaceInFilesTool`, `openFileAtTool`.
+- **Search & Discovery**: `globTool`, `grepTool`, `findSymbolTool`, `listRecentFilesTool`.
+- **Git**: `gitStatusTool`, `gitDiffTool`, `gitCommitTool`.
+- **Code Quality**: `formatFileTool`, `lintFixTool`, `runTestsTool`.
+- **Project**: `projectSummaryTool`, `newModuleTool`, `addScriptTool`, `generateReadmeSectionTool`.
+- **Web**: `webFetchTool`, `webSearchTool`.
+- **Skills**: `useSkillTool`.
+- **System**: `shellTool`, `ignoreGitIgnoreFileTool`.
+- **Infrastructure**: `tool-registery.ts`, `toolValidator.ts`, `toolUtils.ts`.
 
 ## Configuration
 
 ### Environment Variables
-- `GOOGLE_GENERATIVE_AI_API_KEY`: Your Gemini API key.
+- `GOOGLE_GENERATIVE_AI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`: API key for your chosen provider.
+- `COOLCODE_DEBUG=1`: Print non-fatal debug logs (otherwise suppressed to keep the UI clean).
 
 ### Project Config (.coolcode.json)
 
@@ -195,6 +296,7 @@ The main entry point that initializes the CLI using Commander.js and starts the 
 {
   "llm": {
     "model": "gemini-2.5-flash",
+    "provider": "google",
     "temperature": 0.2,
     "maxTokens": 2048
   },
@@ -202,26 +304,50 @@ The main entry point that initializes the CLI using Commander.js and starts the 
     "scanCache": true,
     "fileTreeMaxDepth": 4,
     "allowDangerous": false,
-    "confirmEdits": false
+    "confirmEdits": false,
+    "maxContextTokens": 20000
   },
   "guardrails": {
     "blockReadPatterns": [
       ".env",
+      ".env.*",
       "*.pem",
       "*.key",
-      "id_rsa"
+      "id_rsa",
+      "id_ed25519",
+      ".npmrc"
     ]
   }
 }
 ```
 
+`provider` is optional; when omitted it is inferred from `model`.
+
 ## Safety Features
 
-- **Path Validation**: Operations are restricted to the project root.
-- **Git Integration**: Automatically respects .gitignore patterns.
+- **Path Validation**: Write operations are restricted to the project root.
+- **Read Guardrails**: `blockReadPatterns` prevents reading sensitive files (e.g. `.env`, `*.key`), including when pinned.
+- **Git Integration**: Automatically respects `.gitignore` patterns.
 - **Dangerous Action Prompts**: Requires explicit confirmation for potentially destructive shell commands.
 - **Edit Confirmations**: Configurable prompts for code edits.
+- **Shell Argument Escaping**: Tool-built shell commands single-quote interpolated values.
 - **Ask Mode**: Strict read-only enforcement for safer exploration.
+
+## Future Scope
+
+Planned and candidate features for future iterations:
+
+- **Semantic codebase index (Cursor-style)**: Build a local embedding index of the codebase for natural-language code search, and keep it in sync incrementally using a **Merkle tree of file content hashes** so only changed files are re-embedded. Embeddings would reuse the configured model provider's API key, exposed to the agent as a `codebase_search` tool. This is the main planned upgrade to retrieval.
+- **Edit checkpoints and undo**: Snapshot files before mutating tools and allow `:undo` to roll back the agent's changes.
+- **Granular permission allowlist**: Rule-based allow/deny per tool and per shell command, extending the current danger prompts.
+- **Custom slash commands**: User-defined command templates under `.coolcode/commands/*.md`.
+- **MCP (Model Context Protocol) support**: Connect external tool servers.
+- **Subagents**: Spawn focused sub-agents for isolated sub-tasks.
+- **Hooks**: Run user-defined commands on events (e.g. before/after a tool runs).
+- **Real streaming output**: Stream the model's final text to the terminal as it is generated.
+- **`@file` mentions**: Inline file references in a query that auto-inject file contents.
+- **Usage and cost tracking**: Per-turn token usage and estimated cost.
+- **Multimodal input**: Accept images/screenshots as part of a query.
 
 ## Project Structure
 
@@ -229,16 +355,29 @@ The main entry point that initializes the CLI using Commander.js and starts the 
 cool-code/
 ├── src/
 │   ├── core/                 # Core engine
-│   │   ├── tools/           # Tool implementations
-│   │   ├── utils/           # Utility functions
+│   │   ├── tools/            # Tool implementations
+│   │   ├── utils/            # Utility functions
 │   │   ├── contextManager.ts
 │   │   ├── llm.ts
 │   │   ├── processor.ts
+│   │   ├── projectMemory.ts
+│   │   ├── skills.ts
+│   │   ├── session.ts
 │   │   └── prompts.ts
-│   ├── types/               # TypeScript definitions
-│   ├── ui/                  # UI components
-│   └── index.ts            # Entry point
-├── dist/                   # Compiled output
+│   ├── types/                # TypeScript definitions
+│   ├── ui/                   # UI components
+│   └── index.ts              # Entry point
+├── dist/                     # Compiled output
 ├── package.json
 └── README.md
+```
+
+## Testing
+
+The project uses [Vitest](https://vitest.dev/):
+
+```bash
+npm test           # run the test suite
+npm run type-check # TypeScript type checking
+npm run build      # bundle with tsup
 ```
