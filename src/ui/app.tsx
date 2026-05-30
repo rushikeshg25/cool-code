@@ -30,6 +30,11 @@ const modeColor: Record<AgentMode, string> = {
   ask: 'blue',
 };
 
+const PLAN_OPTIONS = [
+  'Start implementation (switch to Agent and proceed)',
+  'Keep planning (talk / refine the plan)',
+];
+
 let logCounter = 0;
 interface LogLine {
   key: number;
@@ -47,6 +52,8 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
   const [suggestIndex, setSuggestIndex] = useState(0);
   const confirmRef = useRef<{ resolve: (v: boolean) => void } | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+  const [planMenu, setPlanMenu] = useState(false);
+  const [planMenuIndex, setPlanMenuIndex] = useState(0);
 
   const append = useCallback((text: string) => {
     setLog((prev) => [...prev, { key: logCounter++, text }]);
@@ -105,6 +112,11 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
       if (copy && result) {
         const copied = copyToClipboard(result);
         append(copied.success ? 'Copied to clipboard.' : `Copy failed: ${copied.error}`);
+      }
+      // After a plan-mode turn that produced a plan, offer next actions.
+      if (processor.getMode() === 'plan' && result) {
+        setPlanMenuIndex(0);
+        setPlanMenu(true);
       }
     } catch (err) {
       append(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -209,7 +221,37 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
     void runQuery(value);
   };
 
+  const startImplementation = () => {
+    setPlanMenu(false);
+    processor.setMode('agent');
+    setMode('agent');
+    void runQuery('The plan above is approved. Proceed with implementing it now.');
+  };
+
   useInput((char, key) => {
+    // Post-plan action menu.
+    if (planMenu) {
+      if (key.upArrow) {
+        setPlanMenuIndex((i) => (i + PLAN_OPTIONS.length - 1) % PLAN_OPTIONS.length);
+        return;
+      }
+      if (key.downArrow) {
+        setPlanMenuIndex((i) => (i + 1) % PLAN_OPTIONS.length);
+        return;
+      }
+      if (char === '1') return startImplementation();
+      if (char === '2' || key.escape) {
+        setPlanMenu(false);
+        return;
+      }
+      if (key.return) {
+        if (planMenuIndex === 0) startImplementation();
+        else setPlanMenu(false);
+        return;
+      }
+      return;
+    }
+
     // Confirmation overlay takes priority.
     if (confirmMsg) {
       if (char.toLowerCase() === 'y') {
@@ -312,6 +354,16 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
         <Box flexDirection="column">
           <Text color="yellow">{confirmMsg}</Text>
           <Text color="gray">Proceed? [y/N]</Text>
+        </Box>
+      ) : planMenu ? (
+        <Box flexDirection="column">
+          <Text bold color="yellow">Plan ready. What next?</Text>
+          {PLAN_OPTIONS.map((label, i) => (
+            <Text key={label} color={i === planMenuIndex ? 'cyan' : 'gray'}>
+              {`${i === planMenuIndex ? '>' : ' '} ${i + 1}. ${label}`}
+            </Text>
+          ))}
+          <Text color="gray">Up/Down + Enter, or press 1/2 - Esc to keep planning</Text>
         </Box>
       ) : (
         <Box flexDirection="column">
