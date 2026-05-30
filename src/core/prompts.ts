@@ -24,7 +24,7 @@ When requested to perform tasks like fixing bugs, adding features, refactoring, 
 `;
 
 export const MODE_PROMPTS = {
-  planning: `[PLANNING MODE] You are in PLANNING mode.
+  plan: `[PLAN MODE] You are in PLAN mode.
 Your goal is to understand the requirement and architect a solution WITHOUT making changes.
 Workflow:
 1. GATHER CONTEXT: Use read-only tools (read_file, grep, glob) if needed to understand the code.

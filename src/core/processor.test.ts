@@ -10,11 +10,11 @@ beforeAll(() => {
 
 describe('Processor initial mode', () => {
   it('propagates the selected mode into the system prompt', () => {
-    const planning = new Processor(process.cwd(), DEFAULT_CONFIG, {
+    const plan = new Processor(process.cwd(), DEFAULT_CONFIG, {
       quiet: true,
-      mode: 'planning',
+      mode: 'plan',
     });
-    expect(planning.getContextPreview().prompt).toContain('[PLANNING MODE]');
+    expect(plan.getContextPreview().prompt).toContain('[PLAN MODE]');
 
     const ask = new Processor(process.cwd(), DEFAULT_CONFIG, {
       quiet: true,
@@ -27,4 +27,32 @@ describe('Processor initial mode', () => {
     const agent = new Processor(process.cwd(), DEFAULT_CONFIG, { quiet: true });
     expect(agent.getContextPreview().prompt).toContain('[AGENT MODE]');
   });
+});
+
+describe('Processor plan-mode termination', () => {
+  it('ends the turn after a task-list-only final response (no infinite loop)', async () => {
+    const processor = new Processor(process.cwd(), DEFAULT_CONFIG, {
+      quiet: true,
+      mode: 'plan',
+    });
+    // A final response whose only tool call is the internal update_task_list.
+    (processor as any).LLM.StreamResponse = async () =>
+      JSON.stringify({
+        text: 'Here is the plan.',
+        tool_calls: [
+          {
+            tool: 'update_task_list',
+            toolOptions: {
+              goal: 'do the thing',
+              items: [{ id: '1', title: 'step one', status: 'todo' }],
+            },
+          },
+        ],
+      });
+
+    // Before the fix this would loop forever; the test timeout guards that.
+    const result = await processor.processQuery('plan it');
+    expect(result).toBe('Here is the plan.');
+    expect(processor.getTaskList()?.goal).toBe('do the thing');
+  }, 5000);
 });

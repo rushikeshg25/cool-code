@@ -174,6 +174,16 @@ export class Processor {
         }
       }
 
+      // If the only tool call was internal (e.g. update_task_list in plan mode),
+      // there is nothing left to execute. End the turn instead of re-prompting
+      // forever with the same state.
+      if (toolCalls.length === 0) {
+        if (!finalText && !this.options.quiet) {
+          streamingSpinner.stop();
+        }
+        break;
+      }
+
       let treeDirty = false;
       for (const toolCall of toolCalls) {
         // console.log('[DEBUG] toolCall:', toolCall, typeof toolCall);

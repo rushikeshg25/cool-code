@@ -56,4 +56,4 @@ export interface TaskList {
   items: TaskItem[];
 }
 
-export type AgentMode = 'planning' | 'agent' | 'ask';
+export type AgentMode = 'plan' | 'agent' | 'ask';

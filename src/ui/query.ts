@@ -159,12 +159,12 @@ function renderStatus(processor: Processor, rootDir: string) {
   const status = processor.getStatus();
   const mode = processor.getMode();
   const modeColors: Record<AgentMode, (s: string) => string> = {
-    planning: chalk.yellow,
+    plan: chalk.yellow,
     agent: chalk.green,
     ask: chalk.blue,
   };
   const modeIcon: Record<AgentMode, string> = {
-    planning: '📋',
+    plan: '📋',
     agent: '🤖',
     ask: '💬',
   };
@@ -201,7 +201,7 @@ async function handleCommand(
     console.log(chalk.bold.white('\n  Interactive Commands:'));
     console.log(chalk.gray('  ╾─────────────────────'));
     console.log(`  ${chalk.cyan(':help')}      Show this help menu`);
-    console.log(`  ${chalk.cyan(':mode')}      Switch between ${chalk.yellow('planning')}, ${chalk.green('agent')}, or ${chalk.blue('ask')} modes`);
+    console.log(`  ${chalk.cyan(':mode')}      Switch between ${chalk.yellow('plan')}, ${chalk.green('agent')}, or ${chalk.blue('ask')} modes`);
     console.log(`  ${chalk.cyan(':pin')}       Pin a file to context (e.g. :pin src/index.ts)`);
     console.log(`  ${chalk.cyan(':unpin')}     Unpin a file from context`);
     console.log(`  ${chalk.cyan(':context')}   Preview context, pinned files, and token usage`);
@@ -255,15 +255,15 @@ async function handleCommand(
     const parts = command.split(/\s+/);
     if (parts.length > 1) {
       const targetMode = parts[1] as AgentMode;
-      if (['planning', 'agent', 'ask'].includes(targetMode)) {
+      if (['plan', 'agent', 'ask'].includes(targetMode)) {
         processor.setMode(targetMode);
         console.log(chalk.green(`\n✓ Mode switched to ${targetMode.toUpperCase()}`));
       } else {
-        console.log(chalk.red(`\nInvalid mode: ${targetMode}. Available: planning, agent, ask.`));
+        console.log(chalk.red(`\nInvalid mode: ${targetMode}. Available: plan, agent, ask.`));
       }
     } else {
       console.log(chalk.cyan(`\nCurrent mode: ${processor.getMode().toUpperCase()}`));
-      console.log(chalk.gray('  Use :mode <planning|agent|ask> to switch modes.'));
+      console.log(chalk.gray('  Use :mode <plan|agent|ask> to switch modes.'));
     }
     return;
   }

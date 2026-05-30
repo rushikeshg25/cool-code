@@ -6,6 +6,8 @@ import { discoverSkills, buildSkillsCatalog, getSkillBody } from './skills';
 import { useSkill } from './tools/useSkillTool';
 
 let dir: string;
+let home: string;
+let originalHome: string | undefined;
 
 function writeSkill(name: string, content: string) {
   const skillDir = path.join(dir, '.coolcode', 'skills', name);
@@ -15,10 +17,18 @@ function writeSkill(name: string, content: string) {
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-test-'));
+  // Isolate from the real ~/.coolcode/skills global directory so discovery is
+  // deterministic (os.homedir() honors $HOME on posix).
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-home-'));
+  originalHome = process.env.HOME;
+  process.env.HOME = home;
 });
 
 afterEach(() => {
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
   fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(home, { recursive: true, force: true });
 });
 
 describe('skills discovery', () => {

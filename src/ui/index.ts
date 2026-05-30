@@ -43,7 +43,7 @@ export async function runCli(config: CoolCodeConfig, options: RunCliOptions = {}
       message: 'Select operational mode:',
       options: [
         { value: 'agent', label: '🤖 Agent', hint: 'Auto-execute tasks' },
-        { value: 'planning', label: '📋 Planning', hint: 'Generate task list only' },
+        { value: 'plan', label: 'Plan', hint: 'Investigate and produce a detailed plan only' },
         { value: 'ask', label: '💬 Ask', hint: 'Read-only/Q&A' },
       ],
       initialValue: 'agent',
