@@ -1,6 +1,7 @@
 import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT, MODE_PROMPTS } from './prompts';
 import { toolRegistery } from './tools/tool-registery';
 import { isBlockedPath } from './tools/toolUtils';
+import { loadProjectInstructions } from './projectMemory';
 import { getFolderStructure } from './utils';
 import type { CoolCodeConfig } from './config';
 import type { AgentMode } from '../types';
@@ -35,6 +36,7 @@ export class ContextManager {
   private pinnedFiles: Set<string> = new Set();
   private pinnedCache: Map<string, { mtimeMs: number; content: string }> =
     new Map();
+  private projectInstructions: string | null = null;
 
   constructor(
     cwd: string,
@@ -52,6 +54,7 @@ export class ContextManager {
     };
     this.conversations = [];
     this.gitIgnoreChecker = gitIgnoreChecker;
+    this.projectInstructions = loadProjectInstructions(cwd);
   }
 
   addResponse(LLMresponse: string, toolCall: ToolCall) {
@@ -98,7 +101,13 @@ export class ContextManager {
 
   private buildSystemSection(): string {
     const modePrompt = MODE_PROMPTS[this.mode];
-    return `${this.systemPrompt}\n\n${modePrompt}`;
+    const parts = [this.systemPrompt, modePrompt];
+    if (this.projectInstructions) {
+      parts.push(
+        `--- Project Instructions (COOLCODE.md) ---\n${this.projectInstructions}`
+      );
+    }
+    return parts.join('\n\n');
   }
 
   private buildProjectStateSection(): string {

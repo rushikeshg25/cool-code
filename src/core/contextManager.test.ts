@@ -39,6 +39,24 @@ describe('ContextManager pinned files', () => {
   });
 });
 
+describe('ContextManager project memory (COOLCODE.md)', () => {
+  it('injects COOLCODE.md contents into the system prompt', () => {
+    fs.writeFileSync(
+      path.join(dir, 'COOLCODE.md'),
+      'Always use tabs and never touch the build folder.'
+    );
+    const cm = new ContextManager(dir, noIgnore);
+    const prompt = cm.buildPrompt();
+    expect(prompt).toContain('Project Instructions (COOLCODE.md)');
+    expect(prompt).toContain('Always use tabs and never touch the build folder.');
+  });
+
+  it('omits the section when no COOLCODE.md exists', () => {
+    const cm = new ContextManager(dir, noIgnore);
+    expect(cm.buildPrompt()).not.toContain('Project Instructions (COOLCODE.md)');
+  });
+});
+
 describe('ContextManager prompt structure', () => {
   it('places the static tool-info section before the dynamic project state', () => {
     const cm = new ContextManager(dir, noIgnore);
