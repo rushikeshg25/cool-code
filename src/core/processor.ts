@@ -353,6 +353,10 @@ export class Processor {
     return this.contextManager.getPinnedFiles();
   }
 
+  public reloadSkills() {
+    this.contextManager.reloadSkills();
+  }
+
   // Snapshot of mutable session state (mode + conversation) for persistence.
   public snapshot() {
     return { mode: this.mode, ...this.contextManager.serialize() };

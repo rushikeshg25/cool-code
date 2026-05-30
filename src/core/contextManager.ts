@@ -242,6 +242,11 @@ export class ContextManager {
     this.mode = mode;
   }
 
+  // Rebuilds the skills catalog (e.g. after a new skill is installed mid-session).
+  reloadSkills() {
+    this.skillsCatalog = buildSkillsCatalog(this.projectState.rootDir);
+  }
+
   pinFile(filePath: string) {
     this.pinnedFiles.add(filePath);
   }

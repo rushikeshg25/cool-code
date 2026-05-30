@@ -14,6 +14,7 @@ import {
   listSessions,
   newSessionId,
 } from '../core/session';
+import { installSkill } from '../core/skillInstaller';
 
 export async function acceptQuery(
   rootDir: string,
@@ -23,7 +24,7 @@ export async function acceptQuery(
   initialMode: AgentMode = 'agent',
   resume?: { continue?: boolean; id?: string }
 ) {
-  const commands = [':help', ':exit', ':quit', ':context', ':clear', ':mode', ':pin', ':unpin', ':sessions'];
+  const commands = [':help', ':exit', ':quit', ':context', ':clear', ':mode', ':pin', ':unpin', ':sessions', ':install-skill'];
   const tools = toolRegistery.map((t) => t.name);
   const session = createPromptSession({
     message: chalk.cyan('Enter your query:') + '\n' + chalk.gray('❯ '),
@@ -205,6 +206,7 @@ async function handleCommand(
     console.log(`  ${chalk.cyan(':unpin')}     Unpin a file from context`);
     console.log(`  ${chalk.cyan(':context')}   Preview context, pinned files, and token usage`);
     console.log(`  ${chalk.cyan(':sessions')}  List saved sessions for this directory`);
+    console.log(`  ${chalk.cyan(':install-skill')} Install a skill from a local path or git URL (add --global)`);
     console.log(`  ${chalk.cyan(':clear')}     Clear the terminal screen`);
     console.log(`  ${chalk.cyan(':exit')}      Close the session`);
     console.log(chalk.gray('  ╾─────────────────────\n'));
@@ -223,6 +225,30 @@ async function handleCommand(
       );
     }
     console.log(chalk.gray('  Resume with: cool-code --resume <id>\n'));
+    return;
+  }
+  if (command.startsWith(':install-skill')) {
+    const args = cmd.trim().split(/\s+/).slice(1);
+    const global = args.includes('--global');
+    const source = args.find((a) => a !== '--global');
+    if (!source) {
+      console.log(chalk.yellow('\nUsage: :install-skill <local-path|git-url> [--global]'));
+      return;
+    }
+    const result = installSkill(source, { global }, rootDir);
+    if (result.error) {
+      console.log(chalk.red(`\nInstall failed: ${result.error}`));
+      return;
+    }
+    if (result.installed.length === 0) {
+      console.log(chalk.yellow('\nNo skills found in the source.'));
+      return;
+    }
+    processor.reloadSkills();
+    console.log(
+      chalk.green(`\nInstalled ${result.installed.length} skill(s): ${result.installed.join(', ')}`)
+    );
+    console.log(chalk.gray(`  Into: ${result.dest}\n`));
     return;
   }
   if (command.startsWith(':mode')) {

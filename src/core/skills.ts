@@ -21,7 +21,7 @@ function skillDirs(rootDir: string): string[] {
 // Parses a leading `--- ... ---` frontmatter block for `name:` / `description:`
 // and returns it alongside the remaining markdown body. Falls back to the
 // directory name and the first non-empty line when frontmatter is absent.
-function parseSkillFile(filePath: string, dirName: string): Skill {
+export function parseSkillFile(filePath: string, dirName: string): Skill {
   const raw = fs.readFileSync(filePath, 'utf-8');
   let name = dirName;
   let description = '';

@@ -16,6 +16,7 @@ import {
 } from "./core/config";
 import { scanProject } from "./core/utils";
 import { createTaskPlan } from "./core/taskPlanner";
+import { installSkill } from "./core/skillInstaller";
 
 async function main() {
   // Suppress dotenv output by temporarily redirecting console
@@ -55,6 +56,8 @@ Examples:
   cool-code scan --json
   cool-code task "Add user authentication"
   cool-code config set llm.model "gemini-2.5-flash"
+  cool-code skill install ./path/to/skill
+  cool-code skill install https://github.com/user/some-skill.git --global
 `
   );
 
@@ -118,6 +121,32 @@ Examples:
       } else {
         printScan(scan);
       }
+    });
+
+  const skillCmd = program
+    .command("skill")
+    .description("Manage skills");
+
+  skillCmd
+    .command("install")
+    .description("Install a skill from a local path or git URL")
+    .argument("<source>", "Local path (dir or SKILL.md) or git URL")
+    .option("--global", "Install to ~/.coolcode/skills instead of the project")
+    .action((source: string, options: { global?: boolean }) => {
+      const result = installSkill(source, { global: options.global }, process.cwd());
+      if (result.error) {
+        console.log(chalk.red(`Install failed: ${result.error}`));
+        process.exitCode = 1;
+        return;
+      }
+      if (result.installed.length === 0) {
+        console.log(chalk.yellow("No skills found in the source."));
+        return;
+      }
+      console.log(
+        chalk.green(`Installed ${result.installed.length} skill(s): ${result.installed.join(", ")}`)
+      );
+      console.log(chalk.gray(`Into: ${result.dest}`));
     });
 
   program
