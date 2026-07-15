@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ToolResult } from "../../types";
-import { isBlockedPath } from "./toolUtils";
+import { ensureAbsoluteWithinRoot, isBlockedPath } from "./toolUtils";
 
 export interface ReadFileOptions {
   absolutePath: string;
@@ -28,6 +28,13 @@ export async function readFile(
   rootPath: string
 ): Promise<ToolResult> {
   const { absolutePath, startLine, endLine } = options;
+  const outsideRoot = ensureAbsoluteWithinRoot(absolutePath, rootPath);
+  if (outsideRoot) {
+    return {
+      DisplayResult: "Fixing Issues",
+      LLMresult: outsideRoot,
+    };
+  }
   const blocked = isBlockedPath(absolutePath, rootPath);
   if (blocked) {
     return {
