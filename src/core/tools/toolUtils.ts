@@ -31,6 +31,26 @@ export function isBlockedPath(filePath: string, rootPath: string): string | null
   return null;
 }
 
+// Resolves symlinks up to the nearest existing ancestor of `p` (the target
+// itself may not exist yet, e.g. new_file), then re-appends the non-existent
+// tail. This means a symlink anywhere in the path is followed to its real
+// location, so it cannot be used to escape the root.
+function realpathNearestExisting(p: string): string {
+  let current = p;
+  const tail: string[] = [];
+  while (true) {
+    try {
+      const real = fs.realpathSync(current);
+      return tail.length ? path.join(real, ...tail.reverse()) : real;
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return p;
+      tail.push(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
 export function ensureAbsoluteWithinRoot(
   absolutePath: string,
   rootPath: string
@@ -38,10 +58,10 @@ export function ensureAbsoluteWithinRoot(
   if (!path.isAbsolute(absolutePath)) {
     return 'File path must be absolute';
   }
-  const resolvedRoot = path.resolve(rootPath);
-  const resolvedPath = path.resolve(absolutePath);
-  if (!resolvedPath.startsWith(resolvedRoot + path.sep)) {
-    return `Path must be within project root: ${resolvedRoot}`;
+  const realRoot = realpathNearestExisting(path.resolve(rootPath));
+  const realPath = realpathNearestExisting(path.resolve(absolutePath));
+  if (realPath !== realRoot && !realPath.startsWith(realRoot + path.sep)) {
+    return `Path must be within project root: ${path.resolve(rootPath)}`;
   }
   return null;
 }
