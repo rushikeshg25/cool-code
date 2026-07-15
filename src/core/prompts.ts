@@ -51,6 +51,20 @@ Use only read-only tools (read_file, grep, glob) if necessary to answer the user
 If the user asks for changes, explain that you are in ASK mode and they should switch to AGENT mode.`,
 };
 
+export const EFFORT_PROMPTS = {
+  low: `[EFFORT: LOW] Bias toward fast, direct action. Keep preamble minimal, take
+the shortest reasonable path to the answer, and avoid unnecessary tool calls.`,
+
+  high: `[EFFORT: HIGH] Invest in thoroughness before acting:
+- Investigate first — read the relevant files with read_file and locate code with
+  grep/glob/find_symbol instead of guessing at names, APIs, or structure.
+- Chain independent read-only tools together rather than one at a time.
+- Always read a file before editing it, and prefer targeted edits.
+- Self-verify: after changes, run the project's tests/build/type-check where
+  feasible and react to failures.
+- Prefer correctness and completeness over speed.`,
+};
+
 export const EXAMPLES = `
 <example>
 user: How do I update the user's profile information in this system?

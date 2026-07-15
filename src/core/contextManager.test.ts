@@ -82,3 +82,18 @@ describe('ContextManager summarization is reductive', () => {
     expect(prompt).not.toContain('message number 0');
   });
 });
+
+describe('ContextManager effort level', () => {
+  it('defaults to low effort and can switch to high, injecting the matching prompt', () => {
+    const cm = new ContextManager(dir, noIgnore);
+    expect(cm.getEffort()).toBe('low');
+    expect(cm.buildPrompt()).toContain('[EFFORT: LOW]');
+    expect(cm.buildPrompt()).not.toContain('[EFFORT: HIGH]');
+
+    cm.setEffort('high');
+    expect(cm.getEffort()).toBe('high');
+    const prompt = cm.buildPrompt();
+    expect(prompt).toContain('[EFFORT: HIGH]');
+    expect(prompt).not.toContain('[EFFORT: LOW]');
+  });
+});

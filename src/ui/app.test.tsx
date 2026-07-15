@@ -7,8 +7,9 @@ import { App } from './app';
 function stubProcessor(mode = 'agent') {
   return {
     getMode: () => mode,
+    getEffort: () => 'low',
     getTaskList: () => null,
-    getStatus: () => ({ model: 'gemini-2.5-flash', messageCount: 0, totalTokens: 0, mode }),
+    getStatus: () => ({ model: 'gemini-2.5-flash', messageCount: 0, totalTokens: 0, mode, effort: 'low' }),
     setConfirmHandlers: () => {},
   } as any;
 }
@@ -21,8 +22,9 @@ describe('App (Ink)', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('astro-paper');
     expect(frame).toContain('agent');
+    expect(frame).toContain('low effort');
     expect(frame).toContain('gemini-2.5-flash');
-    expect(frame).toContain('❯');
+    expect(frame).toContain('›');
     unmount();
   });
 });

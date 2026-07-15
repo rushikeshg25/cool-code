@@ -64,13 +64,18 @@ export function loadConfig(rootDir: string): CoolCodeConfig {
 
 export function saveConfig(rootDir: string, config: CoolCodeConfig) {
   const configPath = getConfigPath(rootDir);
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
+
+// Keys that would let a dotted config path walk into the prototype chain and
+// pollute Object.prototype (e.g. `config set __proto__.polluted true`).
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export function getByPath(obj: any, pathStr: string) {
   const parts = pathStr.split('.').filter(Boolean);
   let current = obj;
   for (const part of parts) {
+    if (UNSAFE_KEYS.has(part)) return undefined;
     if (current == null || typeof current !== 'object') {
       return undefined;
     }
@@ -82,6 +87,9 @@ export function getByPath(obj: any, pathStr: string) {
 export function setByPath(obj: any, pathStr: string, value: any) {
   const parts = pathStr.split('.').filter(Boolean);
   if (parts.length === 0) return;
+  if (parts.some((part) => UNSAFE_KEYS.has(part))) {
+    throw new Error(`Illegal config key: ${pathStr}`);
+  }
   let current = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];

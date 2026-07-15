@@ -14,12 +14,13 @@ export interface InstallResult {
   error?: string;
 }
 
-// Recognises common git remote forms so we can clone instead of copy.
+// Recognises safe git remote forms so we can clone instead of copy. Only
+// https, scp-style git@, and ssh:// are accepted — this deliberately excludes
+// transports git treats as command helpers (ext::, file://) and the bare
+// ".git" suffix, which could otherwise smuggle an "ext::sh -c ..." payload
+// into `git clone` and run arbitrary commands.
 export function isGitUrl(source: string): boolean {
-  return (
-    /^(https?:\/\/|git@|ssh:\/\/|git:\/\/)/.test(source) ||
-    source.endsWith('.git')
-  );
+  return /^(https:\/\/|git@|ssh:\/\/)/.test(source);
 }
 
 function sanitizeName(name: string): string {
@@ -84,9 +85,22 @@ export function installSkill(
 
     if (isGitUrl(source)) {
       tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coolcode-skill-'));
-      const res = spawnSync('git', ['clone', '--depth', '1', source, tempDir], {
-        stdio: 'pipe',
-      });
+      const res = spawnSync(
+        'git',
+        [
+          '-c',
+          'protocol.ext.allow=never',
+          '-c',
+          'protocol.file.allow=never',
+          'clone',
+          '--depth',
+          '1',
+          '--',
+          source,
+          tempDir,
+        ],
+        { stdio: 'pipe' }
+      );
       if (res.status !== 0) {
         return {
           installed: [],

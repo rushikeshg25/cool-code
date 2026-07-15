@@ -88,7 +88,13 @@ Examples:
     .action((key: string, value: string) => {
       const rootDir = process.cwd();
       const config = loadConfig(rootDir);
-      setByPath(config, key, parseConfigValue(value));
+      try {
+        setByPath(config, key, parseConfigValue(value));
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+        return;
+      }
       saveConfig(rootDir, config);
       console.log(`Updated ${key}.`);
       console.log(`Config file: ${getConfigPath(rootDir)}`);
@@ -114,7 +120,7 @@ Examples:
       }
       const scan = scanProject(rootDir);
       if (config.features?.scanCache) {
-        writeFileSync(cachePath, JSON.stringify(scan, null, 2));
+        writeFileSync(cachePath, JSON.stringify(scan, null, 2), { mode: 0o600 });
       }
       if (options.json) {
         console.log(JSON.stringify(scan, null, 2));
@@ -207,16 +213,16 @@ function printScan(scan: any) {
 
 function printTaskPlan(plan: any) {
   console.log("");
-  console.log(`${chalk.magenta.bold("Goal:")} ${plan.goal}`);
+  console.log(`${chalk.cyan.bold("Goal:")} ${plan.goal}`);
   console.log("");
   console.log(chalk.cyan.bold("Steps:"));
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i];
     console.log(`${i + 1}. ${step.title}`);
-    console.log(`   ${step.detail}`);
+    console.log(chalk.gray(`   ${step.detail}`));
   }
   console.log("");
-  console.log(`${chalk.yellow.bold("Assumptions:")} ${formatList(plan.assumptions)}`);
+  console.log(`${chalk.cyan.bold("Assumptions:")} ${formatList(plan.assumptions)}`);
   console.log(`${chalk.red.bold("Risks:")} ${formatList(plan.risks)}`);
 }
 

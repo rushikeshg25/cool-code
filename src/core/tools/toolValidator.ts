@@ -316,7 +316,7 @@ export async function validateAndRunToolCall(
             editFileResult.data.toolOptions.expected_replacements ?? 1,
         };
 
-        const result = editFile(toolOptions);
+        const result = editFile(toolOptions, rootPath);
         return { success: true, data: editFileResult.data, result };
       }
 
@@ -367,7 +367,7 @@ export async function validateAndRunToolCall(
           };
         }
 
-        const result = await grepTool(grepResult.data.toolOptions);
+        const result = await grepTool(grepResult.data.toolOptions, rootPath);
         return { success: true, data: grepResult.data, result };
       }
 

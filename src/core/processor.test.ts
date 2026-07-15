@@ -56,3 +56,20 @@ describe('Processor plan-mode termination', () => {
     expect(processor.getTaskList()?.goal).toBe('do the thing');
   }, 5000);
 });
+
+describe('Processor effort level', () => {
+  it('injects the effort prompt and round-trips through snapshot/restore', () => {
+    const p = new Processor(process.cwd(), DEFAULT_CONFIG, { quiet: true });
+    expect(p.getEffort()).toBe('low');
+    expect(p.getContextPreview().prompt).toContain('[EFFORT: LOW]');
+
+    p.setEffort('high');
+    const snap = p.snapshot();
+    expect(snap.effort).toBe('high');
+
+    const restored = new Processor(process.cwd(), DEFAULT_CONFIG, { quiet: true });
+    restored.restoreSnapshot(snap);
+    expect(restored.getEffort()).toBe('high');
+    expect(restored.getContextPreview().prompt).toContain('[EFFORT: HIGH]');
+  });
+});

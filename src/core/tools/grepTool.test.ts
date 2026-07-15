@@ -22,18 +22,26 @@ afterEach(() => {
 
 describe('grepTool', () => {
   it('returns a clean error for an invalid regex instead of throwing', async () => {
-    const result = await grepTool({ pattern: '(', path: dir });
+    const result = await grepTool({ pattern: '(', path: dir }, dir);
     expect(result.DisplayResult).toBe('Invalid pattern');
     expect(result.LLMresult).toMatch(/Invalid search pattern/);
   });
 
   it('finds matches in source files', async () => {
-    const result = await grepTool({ pattern: 'needle', path: dir });
+    const result = await grepTool({ pattern: 'needle', path: dir }, dir);
     expect(result.LLMresult).toContain('a.ts');
   });
 
   it('ignores node_modules', async () => {
-    const result = await grepTool({ pattern: 'needle', path: dir });
+    const result = await grepTool({ pattern: 'needle', path: dir }, dir);
     expect(result.LLMresult).not.toContain('node_modules');
+  });
+
+  it('refuses to search a path outside the project root', async () => {
+    const root = path.join(dir, 'project');
+    fs.mkdirSync(root, { recursive: true });
+    const result = await grepTool({ pattern: 'needle', path: dir }, root);
+    expect(result.DisplayResult).toBe('Invalid path');
+    expect(result.LLMresult).toMatch(/within project root/);
   });
 });

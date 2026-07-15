@@ -1,5 +1,6 @@
 import { ToolResult } from "../../types";
 import { getErrorMessage } from "../utils";
+import { ensureAbsoluteWithinRoot } from "./toolUtils";
 import { globSync } from "glob";
 import * as fs from "fs";
 import * as path from "path";
@@ -33,7 +34,10 @@ function isBinary(buffer: Buffer): boolean {
   return false;
 }
 
-export async function grepTool(options: GrepToolOptions): Promise<ToolResult> {
+export async function grepTool(
+  options: GrepToolOptions,
+  rootPath: string
+): Promise<ToolResult> {
   let regex: RegExp;
   try {
     regex = new RegExp(options.pattern);
@@ -56,7 +60,13 @@ export async function grepTool(options: GrepToolOptions): Promise<ToolResult> {
     }
   }
 
-  const searchPath = options.path ? path.resolve(options.path) : process.cwd();
+  const searchPath = options.path
+    ? path.resolve(rootPath, options.path)
+    : rootPath;
+  const outsideRoot = ensureAbsoluteWithinRoot(searchPath, rootPath);
+  if (outsideRoot) {
+    return { LLMresult: outsideRoot, DisplayResult: "Invalid path" };
+  }
   const matches: GrepMatch[] = [];
 
   async function searchFile(filePath: string) {

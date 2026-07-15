@@ -4,11 +4,12 @@ import Spinner from 'ink-spinner';
 import path from 'path';
 import * as fs from 'fs';
 import type { Processor } from '../core/processor';
-import type { AgentMode, TaskList } from '../types';
+import type { AgentMode, EffortLevel, TaskList } from '../types';
 import type { StatusReporter } from './spinner';
 import { renderMarkdown } from './utils/markdown';
 import { copyToClipboard } from './clipboard';
 import { COMMANDS, matchCommands, nextMode } from './commands';
+import { c, glyph, modeColor, palette } from './theme';
 import { installSkill } from '../core/skillInstaller';
 import {
   saveSession,
@@ -23,12 +24,6 @@ interface AppProps {
   copy: boolean;
   sessionId: string;
 }
-
-const modeColor: Record<AgentMode, string> = {
-  plan: 'yellow',
-  agent: 'green',
-  ask: 'blue',
-};
 
 const PLAN_OPTIONS = [
   'Start implementation (switch to Agent and proceed)',
@@ -47,6 +42,7 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<AgentMode>(processor.getMode());
+  const [effort, setEffort] = useState<EffortLevel>(processor.getEffort());
   const [processing, setProcessing] = useState(false);
   const [tasks, setTasks] = useState<TaskList | null>(processor.getTaskList());
   const [suggestIndex, setSuggestIndex] = useState(0);
@@ -54,6 +50,19 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
   const [planMenu, setPlanMenu] = useState(false);
   const [planMenuIndex, setPlanMenuIndex] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Tick a seconds counter while a turn is running, for the spinner readout.
+  useEffect(() => {
+    if (!status) {
+      setElapsed(0);
+      return;
+    }
+    setElapsed(0);
+    const started = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [status]);
 
   const append = useCallback((text: string) => {
     setLog((prev) => [...prev, { key: logCounter++, text }]);
@@ -104,7 +113,7 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
 
   const runQuery = async (text: string) => {
     setProcessing(true);
-    append(`${'❯'} ${text}`);
+    append(`${c.accent(glyph.caret)} ${text}`);
     try {
       const result = await processor.processQuery(text, reporter);
       setTasks(processor.getTaskList());
@@ -141,17 +150,32 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
     }
     if (name === '/help') {
       append('Commands:');
-      COMMANDS.forEach((c) => append(`  ${c.name}  -  ${c.description}`));
-      append('  Shift+Tab cycles mode (plan -> agent -> ask)');
+      COMMANDS.forEach((cmd) => append(`  ${(cmd.usage || cmd.name).padEnd(34)}${cmd.description}`));
+      append('  Shift+Tab                          cycle mode (plan / agent / ask)');
+      append('  Ctrl+E                             toggle effort (low / high)');
       return;
     }
     if (name === '/mode') {
       if (arg && (['plan', 'agent', 'ask'] as string[]).includes(arg)) {
         processor.setMode(arg as AgentMode);
         setMode(arg as AgentMode);
-        append(`Mode switched to ${arg.toUpperCase()}`);
+        append(`Mode switched to ${arg}`);
+      } else if (arg) {
+        append('Usage: /mode [plan|agent|ask]');
       } else {
-        append(`Current mode: ${mode.toUpperCase()} (use /mode plan|agent|ask)`);
+        append(`Current mode: ${mode} (use /mode plan|agent|ask)`);
+      }
+      return;
+    }
+    if (name === '/effort') {
+      if (arg && (['low', 'high'] as string[]).includes(arg)) {
+        processor.setEffort(arg as EffortLevel);
+        setEffort(arg as EffortLevel);
+        append(`Effort switched to ${arg}`);
+      } else if (arg) {
+        append('Usage: /effort [low|high]');
+      } else {
+        append(`Current effort: ${effort} (use /effort low|high)`);
       }
       return;
     }
@@ -275,6 +299,15 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
       const next = nextMode(processor.getMode());
       processor.setMode(next);
       setMode(next);
+      append(`${c.accent(glyph.caret)} mode: ${next}`);
+      return;
+    }
+    // Ctrl+E toggles reasoning effort.
+    if (key.ctrl && char === 'e') {
+      const next: EffortLevel = processor.getEffort() === 'high' ? 'low' : 'high';
+      processor.setEffort(next);
+      setEffort(next);
+      append(`${c.accent(glyph.caret)} effort: ${next}`);
       return;
     }
     // Tab accepts the highlighted command suggestion.
@@ -317,68 +350,88 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
       {tasks && (
         <Box flexDirection="column" marginTop={1}>
           <Text bold>{`Goal: ${tasks.goal}`}</Text>
-          {tasks.items.map((it) => (
-            <Box key={it.id} flexDirection="column">
-              <Text>
-                {it.status === 'done' ? '[x] ' : it.status === 'in-progress' ? '[~] ' : it.status === 'failed' ? '[!] ' : '[ ] '}
-                {it.title}
-              </Text>
-              {it.detail ? <Text color="gray">{`      ${it.detail}`}</Text> : null}
-            </Box>
-          ))}
+          {tasks.items.map((it) => {
+            const marker =
+              it.status === 'done'
+                ? { g: glyph.ok, color: palette.success }
+                : it.status === 'in-progress'
+                  ? { g: glyph.caret, color: palette.accent }
+                  : it.status === 'failed'
+                    ? { g: glyph.fail, color: palette.error }
+                    : { g: glyph.bullet, color: palette.dim };
+            return (
+              <Box key={it.id} flexDirection="column">
+                <Text>
+                  <Text color={marker.color}>{`${marker.g} `}</Text>
+                  {it.title}
+                </Text>
+                {it.detail ? <Text color={palette.dim}>{`      ${it.detail}`}</Text> : null}
+              </Box>
+            );
+          })}
         </Box>
       )}
 
       <Box marginTop={1}>
-        <Text color="gray">
+        <Text color={palette.dim}>
           {path.basename(rootDir)}
-          {'  '}
+          {` ${glyph.bullet} `}
           <Text color={modeColor[mode]}>{mode}</Text>
-          {'  '}
+          {` ${glyph.bullet} `}
+          {`${effort} effort`}
+          {` ${glyph.bullet} `}
           {status_.model}
-          {'  '}
+          {` ${glyph.bullet} `}
           {`${status_.messageCount} msgs`}
-          {'  '}
+          {` ${glyph.bullet} `}
           {`${Math.round(status_.totalTokens / 100) / 10}k tok`}
         </Text>
       </Box>
 
       {status ? (
         <Box>
-          <Text color="cyan">
+          <Text color={palette.accent}>
             <Spinner type="dots" />
           </Text>
-          <Text>{' ' + status}</Text>
+          <Text color={palette.dim}>{` ${status}${elapsed > 0 ? ` (${elapsed}s)` : ''}`}</Text>
         </Box>
       ) : confirmMsg ? (
         <Box flexDirection="column">
-          <Text color="yellow">{confirmMsg}</Text>
-          <Text color="gray">Proceed? [y/N]</Text>
+          <Text color={palette.warn}>{confirmMsg}</Text>
+          <Text color={palette.dim}>Proceed? [y/N]</Text>
         </Box>
       ) : planMenu ? (
         <Box flexDirection="column">
-          <Text bold color="yellow">Plan ready. What next?</Text>
+          <Text bold color={palette.warn}>Plan ready. What next?</Text>
           {PLAN_OPTIONS.map((label, i) => (
-            <Text key={label} color={i === planMenuIndex ? 'cyan' : 'gray'}>
-              {`${i === planMenuIndex ? '>' : ' '} ${i + 1}. ${label}`}
+            <Text key={label} color={i === planMenuIndex ? palette.accent : palette.dim}>
+              {`${i === planMenuIndex ? glyph.caret : ' '} ${i + 1}. ${label}`}
             </Text>
           ))}
-          <Text color="gray">Up/Down + Enter, or press 1/2 - Esc to keep planning</Text>
+          <Text color={palette.dim}>{`Up/Down + Enter, or press 1/2 ${glyph.bullet} Esc to keep planning`}</Text>
         </Box>
       ) : (
         <Box flexDirection="column">
-          <Box>
-            <Text color="cyan">{'❯ '}</Text>
+          <Box borderStyle="round" borderColor={palette.dim} paddingX={1}>
+            <Text color={palette.accent}>{`${glyph.caret} `}</Text>
             <Text>{input}</Text>
-            <Text color="gray">{'█'}</Text>
+            <Text color={palette.dim}>{'█'}</Text>
           </Box>
           {suggestions.length > 0 && (
-            <Box flexDirection="column" marginLeft={2}>
-              {suggestions.map((s, i) => (
-                <Text key={s.name} color={i === suggestIndex % suggestions.length ? 'cyan' : 'gray'}>
-                  {`${s.name}  ${s.description}`}
-                </Text>
-              ))}
+            <Box flexDirection="column" marginLeft={2} marginTop={1}>
+              {suggestions.map((s, i) => {
+                const active = i === suggestIndex % suggestions.length;
+                const args = s.usage ? s.usage.slice(s.name.length).trim() : '';
+                return (
+                  <Text key={s.name}>
+                    <Text color={active ? palette.accent : palette.dim}>
+                      {active ? glyph.caret : ' '} {s.name}
+                    </Text>
+                    {args ? <Text color={palette.dim}>{` ${args}`}</Text> : null}
+                    <Text color={palette.dim}>{`  ${s.description}`}</Text>
+                  </Text>
+                );
+              })}
             </Box>
           )}
         </Box>

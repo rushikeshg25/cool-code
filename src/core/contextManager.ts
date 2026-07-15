@@ -1,11 +1,11 @@
-import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT, MODE_PROMPTS } from './prompts';
+import { BASE_PROMPT, EXAMPLES, TOOL_SELECTION_PROMPT, MODE_PROMPTS, EFFORT_PROMPTS } from './prompts';
 import { toolRegistery } from './tools/tool-registery';
 import { isBlockedPath } from './tools/toolUtils';
 import { loadProjectInstructions } from './projectMemory';
 import { buildSkillsCatalog } from './skills';
 import { getFolderStructure } from './utils';
 import type { CoolCodeConfig } from './config';
-import type { AgentMode } from '../types';
+import type { AgentMode, EffortLevel } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -32,6 +32,7 @@ export class ContextManager {
   private conversations: Message[];
   private projectState: ProjectStateType;
   private mode: AgentMode = 'agent';
+  private effort: EffortLevel = 'low';
   private summary: string | null = null;
   private maxTokens = 20000; // Default max tokens for the context window
   private pinnedFiles: Set<string> = new Set();
@@ -106,7 +107,7 @@ export class ContextManager {
 
   private buildSystemSection(): string {
     const modePrompt = MODE_PROMPTS[this.mode];
-    const parts = [this.systemPrompt, modePrompt];
+    const parts = [this.systemPrompt, modePrompt, EFFORT_PROMPTS[this.effort]];
     if (this.projectInstructions) {
       parts.push(
         `--- Project Instructions (COOLCODE.md) ---\n${this.projectInstructions}`
@@ -240,6 +241,14 @@ export class ContextManager {
 
   setMode(mode: AgentMode) {
     this.mode = mode;
+  }
+
+  setEffort(effort: EffortLevel) {
+    this.effort = effort;
+  }
+
+  getEffort(): EffortLevel {
+    return this.effort;
   }
 
   // Rebuilds the skills catalog (e.g. after a new skill is installed mid-session).

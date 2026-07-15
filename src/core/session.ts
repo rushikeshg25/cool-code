@@ -3,13 +3,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { Message } from './contextManager';
-import type { AgentMode } from '../types';
+import type { AgentMode, EffortLevel } from '../types';
 
 export interface SessionData {
   id: string;
   cwd: string;
   updatedAt: string;
   mode: AgentMode;
+  effort?: EffortLevel;
   conversations: Message[];
   summary: string | null;
   pinnedFiles: string[];
@@ -29,8 +30,13 @@ export function newSessionId(): string {
 
 export function saveSession(data: SessionData): void {
   const dir = sessionsDir();
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(sessionPath(data.id), JSON.stringify(data, null, 2), 'utf-8');
+  // Sessions store the full conversation and any file contents read during the
+  // run, so keep them owner-only.
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(sessionPath(data.id), JSON.stringify(data, null, 2), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
 }
 
 export function loadSession(id: string): SessionData | null {

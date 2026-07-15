@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { c, glyph } from './theme';
 
 // Output surface the processor drives during a turn. Implemented by the console
 // StreamingSpinner (default / CLI / quiet) and by the Ink app at runtime.
@@ -14,19 +15,20 @@ export class StreamingSpinner implements StatusReporter {
   private enabled: boolean;
   private interval: NodeJS.Timeout | null = null;
   private spinnerChars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  private colors = [chalk.cyan, chalk.blue, chalk.magenta, chalk.green];
   private currentFrame = 0;
   private statusText = '';
   private isActive = false;
+  private startedAt = 0;
 
   constructor(enabled: boolean = true) {
     this.enabled = enabled;
   }
 
-  start(initialText: string = 'Processing...') {
+  start(initialText: string = 'Working…') {
     if (!this.enabled) return;
     this.statusText = initialText;
     this.isActive = true;
+    this.startedAt = Date.now();
     this.showSpinner();
 
     this.interval = setInterval(() => {
@@ -49,9 +51,11 @@ export class StreamingSpinner implements StatusReporter {
     if (!this.enabled) return;
     // Clear current line and show spinner
     process.stdout.write('\r\x1b[K');
-    const color = this.colors[this.currentFrame % this.colors.length];
+    const elapsed = Math.floor((Date.now() - this.startedAt) / 1000);
     process.stdout.write(
-      color(`${this.spinnerChars[this.currentFrame]} `) + chalk.gray(this.statusText)
+      c.accent(`${this.spinnerChars[this.currentFrame]} `) +
+        chalk.dim(this.statusText) +
+        chalk.dim(elapsed > 0 ? ` (${elapsed}s)` : '')
     );
   }
 
@@ -69,12 +73,12 @@ export class StreamingSpinner implements StatusReporter {
   succeed(text?: string) {
     if (!this.enabled) return;
     this.stop();
-    console.log(chalk.green(`✅ ${text || 'Success!'}`));
+    console.log(c.success(`${glyph.ok} ${text || 'Done'}`));
   }
 
   fail(text?: string) {
     if (!this.enabled) return;
     this.stop();
-    console.log(chalk.red(`❌ ${text || 'Failed!'}`));
+    console.log(c.error(`${glyph.fail} ${text || 'Failed'}`));
   }
 }

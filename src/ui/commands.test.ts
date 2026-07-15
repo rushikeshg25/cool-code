@@ -21,6 +21,14 @@ describe('matchCommands', () => {
       '/install-skill',
     ]);
   });
+
+  it('falls back to a fuzzy subsequence match when no prefix matches', () => {
+    expect(matchCommands('/insk').map((c) => c.name)).toContain('/install-skill');
+  });
+
+  it('includes the /effort command', () => {
+    expect(COMMANDS.map((c) => c.name)).toContain('/effort');
+  });
 });
 
 describe('nextMode', () => {
