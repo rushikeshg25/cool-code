@@ -53,13 +53,12 @@ export class LLM {
     const info = PROVIDERS[this.provider];
 
     if (!process.env[info.envKey]) {
-      console.error(chalk.red(`❌ Missing API Key for ${this.provider}!`));
+      console.error(chalk.red.bold(`Missing API key for ${this.provider}`));
       console.error("");
-      console.error(chalk.yellow(`Please set your ${this.provider} API key:`));
+      console.error(chalk.dim(`Set your ${this.provider} API key:`));
+      console.error(chalk.cyan(`  export ${info.envKey}=your_api_key_here`));
       console.error("");
-      console.error(chalk.cyan(`export ${info.envKey}=your_api_key_here`));
-      console.error("");
-      console.error(chalk.blue(`Get your API key at: ${info.keyUrl}`));
+      console.error(chalk.dim(`Get a key at ${info.keyUrl}`));
       process.exit(1);
     }
 
@@ -92,11 +91,11 @@ export class LLM {
         error.message?.includes("authentication")
       ) {
         const info = PROVIDERS[this.provider];
-        console.error(chalk.red("\n❌ Authentication Error!"));
+        console.error(chalk.red.bold("\nAuthentication error"));
         console.error(
-          chalk.yellow(`Please check your ${this.provider} API key is valid.`)
+          chalk.dim(`Check that your ${this.provider} API key is valid.`)
         );
-        console.error(chalk.blue(`Get your API key at: ${info.keyUrl}`));
+        console.error(chalk.dim(`Get a key at ${info.keyUrl}`));
         process.exit(1);
       }
       throw error;
