@@ -11,13 +11,14 @@ export function renderMarkdown(text: string): string {
     // Use a Private-Use-Area sentinel (no markdown metacharacters) so the
     // bold/italic passes below don't mangle the placeholder before restore.
     const placeholder = `${codeBlocks.length}`;
-    const header = lang ? chalk.bgWhite.black(` ${lang.toUpperCase()} `) : chalk.bgWhite.black(' CODE ');
-    const borderedCode = code
+    const label = chalk.dim(lang ? lang.toLowerCase() : 'code');
+    const gutteredCode = code
+      .replace(/\n$/, '')
       .split('\n')
-      .map((line: string) => `${chalk.gray('│')} ${line}`)
+      .map((line: string) => `${chalk.dim('│')} ${line}`)
       .join('\n');
     
-    codeBlocks.push(`\n${header}\n${chalk.gray('┌────────────────────────────────────────────────────────────')}\n${borderedCode}\n${chalk.gray('└────────────────────────────────────────────────────────────')}\n`);
+    codeBlocks.push(`\n${label}\n${gutteredCode}\n`);
     return placeholder;
   });
 
@@ -28,10 +29,10 @@ export function renderMarkdown(text: string): string {
   rendered = rendered.replace(/(\*|_)(.*?)\1/g, (_, __, content) => chalk.italic(content));
 
   // 4. Inline Code (`code`)
-  rendered = rendered.replace(/`(.*?)`/g, (_, content) => chalk.bgGray.white(` ${content} `));
+  rendered = rendered.replace(/`(.*?)`/g, (_, content) => chalk.cyan(content));
 
   // 5. Links ([text](url))
-  rendered = rendered.replace(/\[(.*?)\]\((.*?)\)/g, (_, label, url) => `${chalk.cyan(label)} ${chalk.gray(`(${url})`)}`);
+  rendered = rendered.replace(/\[(.*?)\]\((.*?)\)/g, (_, label, url) => `${chalk.cyan(label)} ${chalk.dim(`(${url})`)}`);
 
   // 6. Restore Code Blocks
   codeBlocks.forEach((block, i) => {
