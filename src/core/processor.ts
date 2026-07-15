@@ -32,20 +32,7 @@ interface ProcessorOptions {
   confirmEdit?: (message: string, preview?: string) => Promise<boolean>;
 }
 
-const THINKING_MESSAGES = [
-  'Thinking out loud...',
-  'Crunching the numbers...',
-  'Consulting the oracle...',
-  'Scanning the matrix...',
-  'Analyzing the flux capacitor...',
-  'Optimizing neural pathways...',
-  'Reading between the lines...',
-  'Checking the crystal ball...',
-  'Distilling digital wisdom...',
-  'Searching the knowledge graph...',
-  'Synthesizing a solution...',
-  'Debugging the universe...',
-];
+const THINKING_MESSAGES = ['Working…', 'Thinking…', 'Reading files…'];
 
 function getRandomThinkingMessage() {
   return THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)];
@@ -243,7 +230,7 @@ export class Processor {
           }
           if (!this.options.quiet) {
             streamingSpinner.updateText(
-              toolCall.description || 'Thinking out loud...'
+              toolCall.description || 'Working…'
             );
           }
           try {
