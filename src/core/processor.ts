@@ -6,7 +6,7 @@ import { createGitIgnoreChecker } from './tools/ignoreGitIgnoreFileTool';
 import { validateAndRunToolCall } from './tools/toolValidator';
 import chalk from 'chalk';
 import type { CoolCodeConfig } from './config';
-import type { LLMConfig, TaskList, AgentMode } from '../types';
+import type { LLMConfig, TaskList, AgentMode, EffortLevel } from '../types';
 import { renderMarkdown } from '../ui/utils/markdown';
 import { debugLog } from './utils';
 export interface QueryResult {
@@ -52,6 +52,7 @@ export class Processor {
   private taskList: TaskList | null = null;
   private messageQueue: string[] = [];
   private mode: AgentMode = 'agent';
+  private effort: EffortLevel = 'low';
   private projectConfig?: CoolCodeConfig;
 
   constructor(
@@ -311,6 +312,7 @@ export class Processor {
       model: this.config.LLMConfig.model,
       ...stats,
       mode: this.mode,
+      effort: this.effort,
     };
   }
 
@@ -343,6 +345,15 @@ export class Processor {
     this.contextManager.setMode(mode);
   }
 
+  public getEffort() {
+    return this.effort;
+  }
+
+  public setEffort(effort: EffortLevel) {
+    this.effort = effort;
+    this.contextManager.setEffort(effort);
+  }
+
   public pinFile(filePath: string) {
     this.contextManager.pinFile(filePath);
   }
@@ -369,17 +380,21 @@ export class Processor {
 
   // Snapshot of mutable session state (mode + conversation) for persistence.
   public snapshot() {
-    return { mode: this.mode, ...this.contextManager.serialize() };
+    return { mode: this.mode, effort: this.effort, ...this.contextManager.serialize() };
   }
 
   public restoreSnapshot(snap: {
     mode?: AgentMode;
+    effort?: EffortLevel;
     conversations?: any[];
     summary?: string | null;
     pinnedFiles?: string[];
   }) {
     if (snap.mode) {
       this.setMode(snap.mode);
+    }
+    if (snap.effort) {
+      this.setEffort(snap.effort);
     }
     this.contextManager.restore(snap);
   }

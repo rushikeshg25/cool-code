@@ -3,13 +3,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { Message } from './contextManager';
-import type { AgentMode } from '../types';
+import type { AgentMode, EffortLevel } from '../types';
 
 export interface SessionData {
   id: string;
   cwd: string;
   updatedAt: string;
   mode: AgentMode;
+  effort?: EffortLevel;
   conversations: Message[];
   summary: string | null;
   pinnedFiles: string[];

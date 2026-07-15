@@ -57,3 +57,8 @@ export interface TaskList {
 }
 
 export type AgentMode = 'plan' | 'agent' | 'ask';
+
+// Reasoning effort, orthogonal to AgentMode: 'high' asks the model to
+// investigate more thoroughly and self-verify; 'low' biases to fast, direct
+// action.
+export type EffortLevel = 'low' | 'high';
