@@ -120,7 +120,7 @@ Examples:
       }
       const scan = scanProject(rootDir);
       if (config.features?.scanCache) {
-        writeFileSync(cachePath, JSON.stringify(scan, null, 2));
+        writeFileSync(cachePath, JSON.stringify(scan, null, 2), { mode: 0o600 });
       }
       if (options.json) {
         console.log(JSON.stringify(scan, null, 2));

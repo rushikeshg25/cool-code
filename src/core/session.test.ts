@@ -73,4 +73,16 @@ describe('session persistence', () => {
     expect(loadSession('does-not-exist')).toBeNull();
     expect(listSessions('/nope')).toEqual([]);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'writes the session file 0600 and its directory 0700',
+    () => {
+      const s = makeSession();
+      saveSession(s);
+      const dir = path.join(home, '.coolcode', 'sessions');
+      const file = path.join(dir, `${s.id}.json`);
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+      expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
+    }
+  );
 });

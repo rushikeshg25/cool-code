@@ -64,7 +64,7 @@ export function loadConfig(rootDir: string): CoolCodeConfig {
 
 export function saveConfig(rootDir: string, config: CoolCodeConfig) {
   const configPath = getConfigPath(rootDir);
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
 // Keys that would let a dotted config path walk into the prototype chain and
