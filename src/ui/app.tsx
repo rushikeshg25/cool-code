@@ -4,7 +4,7 @@ import Spinner from 'ink-spinner';
 import path from 'path';
 import * as fs from 'fs';
 import type { Processor } from '../core/processor';
-import type { AgentMode, TaskList } from '../types';
+import type { AgentMode, EffortLevel, TaskList } from '../types';
 import type { StatusReporter } from './spinner';
 import { renderMarkdown } from './utils/markdown';
 import { copyToClipboard } from './clipboard';
@@ -42,6 +42,7 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<AgentMode>(processor.getMode());
+  const [effort, setEffort] = useState<EffortLevel>(processor.getEffort());
   const [processing, setProcessing] = useState(false);
   const [tasks, setTasks] = useState<TaskList | null>(processor.getTaskList());
   const [suggestIndex, setSuggestIndex] = useState(0);
@@ -149,17 +150,32 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
     }
     if (name === '/help') {
       append('Commands:');
-      COMMANDS.forEach((c) => append(`  ${c.name}  -  ${c.description}`));
-      append('  Shift+Tab cycles mode (plan -> agent -> ask)');
+      COMMANDS.forEach((cmd) => append(`  ${(cmd.usage || cmd.name).padEnd(34)}${cmd.description}`));
+      append('  Shift+Tab                          cycle mode (plan / agent / ask)');
+      append('  Ctrl+E                             toggle effort (low / high)');
       return;
     }
     if (name === '/mode') {
       if (arg && (['plan', 'agent', 'ask'] as string[]).includes(arg)) {
         processor.setMode(arg as AgentMode);
         setMode(arg as AgentMode);
-        append(`Mode switched to ${arg.toUpperCase()}`);
+        append(`Mode switched to ${arg}`);
+      } else if (arg) {
+        append('Usage: /mode [plan|agent|ask]');
       } else {
-        append(`Current mode: ${mode.toUpperCase()} (use /mode plan|agent|ask)`);
+        append(`Current mode: ${mode} (use /mode plan|agent|ask)`);
+      }
+      return;
+    }
+    if (name === '/effort') {
+      if (arg && (['low', 'high'] as string[]).includes(arg)) {
+        processor.setEffort(arg as EffortLevel);
+        setEffort(arg as EffortLevel);
+        append(`Effort switched to ${arg}`);
+      } else if (arg) {
+        append('Usage: /effort [low|high]');
+      } else {
+        append(`Current effort: ${effort} (use /effort low|high)`);
       }
       return;
     }
@@ -283,6 +299,15 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
       const next = nextMode(processor.getMode());
       processor.setMode(next);
       setMode(next);
+      append(`${c.accent(glyph.caret)} mode: ${next}`);
+      return;
+    }
+    // Ctrl+E toggles reasoning effort.
+    if (key.ctrl && char === 'e') {
+      const next: EffortLevel = processor.getEffort() === 'high' ? 'low' : 'high';
+      processor.setEffort(next);
+      setEffort(next);
+      append(`${c.accent(glyph.caret)} effort: ${next}`);
       return;
     }
     // Tab accepts the highlighted command suggestion.
@@ -353,6 +378,8 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
           {` ${glyph.bullet} `}
           <Text color={modeColor[mode]}>{mode}</Text>
           {` ${glyph.bullet} `}
+          {`${effort} effort`}
+          {` ${glyph.bullet} `}
           {status_.model}
           {` ${glyph.bullet} `}
           {`${status_.messageCount} msgs`}
@@ -394,11 +421,13 @@ export function App({ processor, rootDir, copy, sessionId }: AppProps) {
             <Box flexDirection="column" marginLeft={2} marginTop={1}>
               {suggestions.map((s, i) => {
                 const active = i === suggestIndex % suggestions.length;
+                const args = s.usage ? s.usage.slice(s.name.length).trim() : '';
                 return (
                   <Text key={s.name}>
                     <Text color={active ? palette.accent : palette.dim}>
                       {active ? glyph.caret : ' '} {s.name}
                     </Text>
+                    {args ? <Text color={palette.dim}>{` ${args}`}</Text> : null}
                     <Text color={palette.dim}>{`  ${s.description}`}</Text>
                   </Text>
                 );
