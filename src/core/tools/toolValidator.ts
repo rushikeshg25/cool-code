@@ -367,7 +367,7 @@ export async function validateAndRunToolCall(
           };
         }
 
-        const result = await grepTool(grepResult.data.toolOptions);
+        const result = await grepTool(grepResult.data.toolOptions, rootPath);
         return { success: true, data: grepResult.data, result };
       }
 

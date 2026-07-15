@@ -1,6 +1,7 @@
+import * as path from 'path';
 import type { ToolResult } from '../../types';
 import { execCommand } from './shellTool';
-import { shellEscapeSingleQuotes } from './toolUtils';
+import { ensureAbsoluteWithinRoot, shellEscapeSingleQuotes } from './toolUtils';
 
 export interface FindSymbolOptions {
   pattern: string;
@@ -19,7 +20,13 @@ export async function findSymbol(
     };
   }
 
-  const searchPath = options.path || rootPath;
+  const searchPath = options.path
+    ? path.resolve(rootPath, options.path)
+    : rootPath;
+  const outsideRoot = ensureAbsoluteWithinRoot(searchPath, rootPath);
+  if (outsideRoot) {
+    return { DisplayResult: 'Invalid path', LLMresult: outsideRoot };
+  }
   const includeFlag = options.include
     ? ` -g '${shellEscapeSingleQuotes(options.include)}'`
     : '';
