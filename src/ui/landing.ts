@@ -28,6 +28,9 @@ export async function showLanding() {
       chalk.cyan('shift+tab') +
       chalk.dim(' mode') +
       sep +
+      chalk.cyan('ctrl+e') +
+      chalk.dim(' effort') +
+      sep +
       chalk.cyan('ctrl+c') +
       chalk.dim(' exit') +
       '\n'
