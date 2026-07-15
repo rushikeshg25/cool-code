@@ -213,16 +213,16 @@ function printScan(scan: any) {
 
 function printTaskPlan(plan: any) {
   console.log("");
-  console.log(`${chalk.magenta.bold("Goal:")} ${plan.goal}`);
+  console.log(`${chalk.cyan.bold("Goal:")} ${plan.goal}`);
   console.log("");
   console.log(chalk.cyan.bold("Steps:"));
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i];
     console.log(`${i + 1}. ${step.title}`);
-    console.log(`   ${step.detail}`);
+    console.log(chalk.gray(`   ${step.detail}`));
   }
   console.log("");
-  console.log(`${chalk.yellow.bold("Assumptions:")} ${formatList(plan.assumptions)}`);
+  console.log(`${chalk.cyan.bold("Assumptions:")} ${formatList(plan.assumptions)}`);
   console.log(`${chalk.red.bold("Risks:")} ${formatList(plan.risks)}`);
 }
 
