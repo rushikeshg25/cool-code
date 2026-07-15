@@ -19,8 +19,18 @@ describe('isGitUrl', () => {
   it('detects git URLs and leaves local paths alone', () => {
     expect(isGitUrl('https://github.com/x/y.git')).toBe(true);
     expect(isGitUrl('git@github.com:x/y.git')).toBe(true);
+    expect(isGitUrl('ssh://git@github.com/x/y.git')).toBe(true);
     expect(isGitUrl('./my-skill')).toBe(false);
     expect(isGitUrl('/abs/path/SKILL.md')).toBe(false);
+  });
+
+  it('rejects transports git treats as command helpers', () => {
+    // These would run arbitrary commands via git if passed to `git clone`.
+    expect(isGitUrl('ext::sh -c "id"')).toBe(false);
+    expect(isGitUrl('ext::sh -c id.git')).toBe(false);
+    expect(isGitUrl('file:///etc/passwd')).toBe(false);
+    expect(isGitUrl('git://evil.example/repo')).toBe(false);
+    expect(isGitUrl('http://insecure.example/x.git')).toBe(false);
   });
 });
 
