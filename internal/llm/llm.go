@@ -1,0 +1,146 @@
+// Package llm provides a provider-agnostic chat interface with native
+// tool-calling over Anthropic, OpenAI, and Google (Gemini) REST APIs.
+package llm
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/rushikeshg25/cool-code/internal/config"
+)
+
+// Role identifies the author of a message.
+type Role string
+
+const (
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+	RoleTool      Role = "tool"
+)
+
+// ToolCall is a model request to invoke a tool.
+type ToolCall struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+// Message is one turn in the conversation. Assistant turns may carry ToolCalls;
+// tool turns carry a result addressed to a prior ToolCall via ToolCallID.
+type Message struct {
+	Role       Role       `json:"role"`
+	Text       string     `json:"text,omitempty"`
+	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
+	ToolCallID string     `json:"toolCallId,omitempty"`
+	ToolName   string     `json:"toolName,omitempty"`
+}
+
+// ToolDef describes a tool for the provider (JSON-schema parameters).
+type ToolDef struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
+}
+
+// Request is a single completion request.
+type Request struct {
+	System      string
+	Messages    []Message
+	Tools       []ToolDef
+	Temperature *float64
+	MaxTokens   int
+}
+
+// Provider performs completions for one backend.
+type Provider interface {
+	Name() string
+	Model() string
+	Complete(ctx context.Context, req Request) (Message, error)
+}
+
+// providerInfo maps a provider to its API-key env var and signup URL.
+type providerInfo struct {
+	kind   string
+	envKey string
+	keyURL string
+}
+
+var providers = map[string]providerInfo{
+	"google":    {"google", "GOOGLE_GENERATIVE_AI_API_KEY", "https://aistudio.google.com/app/apikey"},
+	"openai":    {"openai", "OPENAI_API_KEY", "https://platform.openai.com/api-keys"},
+	"anthropic": {"anthropic", "ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys"},
+}
+
+// InferProvider guesses the provider from a model id.
+func InferProvider(model string) string {
+	m := strings.ToLower(model)
+	if strings.Contains(m, "gpt") || strings.HasPrefix(m, "o1") || strings.HasPrefix(m, "o3") {
+		return "openai"
+	}
+	if strings.Contains(m, "claude") {
+		return "anthropic"
+	}
+	return "google"
+}
+
+// ResolveProvider returns the configured provider or the inferred one.
+func ResolveProvider(cfg config.LLM) string {
+	if cfg.Provider != "" {
+		return cfg.Provider
+	}
+	return InferProvider(cfg.Model)
+}
+
+// MissingKeyError signals that the required API key env var is unset.
+type MissingKeyError struct {
+	Provider string
+	EnvKey   string
+	KeyURL   string
+}
+
+func (e *MissingKeyError) Error() string {
+	return fmt.Sprintf("missing API key for %s (set %s)", e.Provider, e.EnvKey)
+}
+
+// New builds a Provider for the given config, returning *MissingKeyError when
+// the required API key is absent.
+func New(cfg config.LLM) (Provider, error) {
+	name := ResolveProvider(cfg)
+	info, ok := providers[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown provider: %s", name)
+	}
+	key := os.Getenv(info.envKey)
+	if key == "" {
+		return nil, &MissingKeyError{Provider: name, EnvKey: info.envKey, KeyURL: info.keyURL}
+	}
+	base := baseProvider{
+		model:       cfg.Model,
+		apiKey:      key,
+		temperature: cfg.Temperature,
+		maxTokens:   4096,
+	}
+	if cfg.MaxTokens != nil && *cfg.MaxTokens > 0 {
+		base.maxTokens = *cfg.MaxTokens
+	}
+	switch name {
+	case "anthropic":
+		return &anthropicProvider{base}, nil
+	case "openai":
+		return &openaiProvider{base}, nil
+	default:
+		return &googleProvider{base}, nil
+	}
+}
+
+type baseProvider struct {
+	model       string
+	apiKey      string
+	temperature *float64
+	maxTokens   int
+}
+
+func (b baseProvider) Model() string { return b.model }

@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+          OUT="cool-code_${GOOS}_${GOARCH}${EXT}"
+          go build -ldflags "-s -w -X github.com/rushikeshg25/cool-code/cmd.Version=${VERSION}" -o "$OUT" .
+          tar -czf "cool-code_${GOOS}_${GOARCH}.tar.gz" "$OUT"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cool-code_*.tar.gz
