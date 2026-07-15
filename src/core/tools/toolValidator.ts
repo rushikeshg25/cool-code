@@ -316,7 +316,7 @@ export async function validateAndRunToolCall(
             editFileResult.data.toolOptions.expected_replacements ?? 1,
         };
 
-        const result = editFile(toolOptions);
+        const result = editFile(toolOptions, rootPath);
         return { success: true, data: editFileResult.data, result };
       }
 

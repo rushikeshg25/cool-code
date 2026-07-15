@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ToolResult } from '../../types';
+import { ensureAbsoluteWithinRoot } from './toolUtils';
 
 export interface EditOptions {
   filePath: string;
@@ -9,13 +10,14 @@ export interface EditOptions {
   expected_replacements: number;
 }
 
-export function editFile(options: EditOptions): ToolResult {
+export function editFile(options: EditOptions, rootPath: string): ToolResult {
   const { filePath, newString, oldString, expected_replacements } = options;
 
-  if (!path.isAbsolute(filePath)) {
+  const outsideRoot = ensureAbsoluteWithinRoot(filePath, rootPath);
+  if (outsideRoot) {
     return {
       DisplayResult: 'Fixing Issues',
-      LLMresult: 'File path must be absolute.',
+      LLMresult: outsideRoot,
     };
   }
   if (!fs.existsSync(filePath)) {
