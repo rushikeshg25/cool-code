@@ -88,7 +88,13 @@ Examples:
     .action((key: string, value: string) => {
       const rootDir = process.cwd();
       const config = loadConfig(rootDir);
-      setByPath(config, key, parseConfigValue(value));
+      try {
+        setByPath(config, key, parseConfigValue(value));
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+        return;
+      }
       saveConfig(rootDir, config);
       console.log(`Updated ${key}.`);
       console.log(`Config file: ${getConfigPath(rootDir)}`);
