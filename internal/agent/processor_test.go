@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,15 +38,28 @@ func (f *fakeProvider) Complete(_ context.Context, req llm.Request) (llm.Message
 }
 
 type captureReporter struct {
-	tools []string
-	texts []string
-	tasks *types.TaskList
+	mu            sync.Mutex
+	tools         []string
+	texts         []string
+	tasks         *types.TaskList
+	subagentLines []string
 }
 
-func (c *captureReporter) Status(string)           {}
-func (c *captureReporter) Assistant(md string)     { c.texts = append(c.texts, md) }
-func (c *captureReporter) Tool(name, _ string)     { c.tools = append(c.tools, name) }
+func (c *captureReporter) Status(string)       {}
+func (c *captureReporter) Assistant(md string) { c.texts = append(c.texts, md) }
+func (c *captureReporter) Tool(name, _ string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tools = append(c.tools, name)
+}
 func (c *captureReporter) Tasks(l *types.TaskList) { c.tasks = l }
+func (c *captureReporter) Subagents(lines []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(lines) > 0 {
+		c.subagentLines = append(c.subagentLines, lines...)
+	}
+}
 
 func newTestProcessor(t *testing.T, root string, provider llm.Provider, mode types.AgentMode) *Processor {
 	t.Helper()
@@ -272,6 +286,70 @@ func TestParallelToolResultsKeepCallOrder(t *testing.T) {
 	}
 	if raw, _ := os.ReadFile(target); string(raw) != "made" {
 		t.Fatalf("mutating tool did not run: %q", raw)
+	}
+}
+
+// subagentAwareProvider serves the main loop (scripted) and any number of
+// concurrent subagent conversations (stateless: grep first, then report).
+type subagentAwareProvider struct {
+	mu        sync.Mutex
+	mainCalls int
+}
+
+func (s *subagentAwareProvider) Name() string  { return "fake" }
+func (s *subagentAwareProvider) Model() string { return "fake-model" }
+func (s *subagentAwareProvider) Complete(_ context.Context, req llm.Request) (llm.Message, error) {
+	if strings.Contains(req.System, "explore subagent") {
+		last := req.Messages[len(req.Messages)-1]
+		if last.Role == llm.RoleTool {
+			return llm.Message{Role: llm.RoleAssistant, Text: "findings for: " + req.Messages[0].Text}, nil
+		}
+		return llm.Message{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			{ID: "s1", Name: "glob", Arguments: json.RawMessage(`{"pattern":"*.txt"}`)},
+		}}, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mainCalls++
+	if s.mainCalls == 1 {
+		return llm.Message{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			{ID: "1", Name: "spawn_agent", Arguments: json.RawMessage(`{"task":"explore area A"}`)},
+			{ID: "2", Name: "spawn_agent", Arguments: json.RawMessage(`{"task":"explore area B"}`)},
+		}}, nil
+	}
+	return llm.Message{Role: llm.RoleAssistant, Text: "combined report"}, nil
+}
+
+func TestSpawnAgentFanOut(t *testing.T) {
+	root := t.TempDir()
+	_ = os.WriteFile(filepath.Join(root, "x.txt"), []byte("hi"), 0o644)
+	provider := &subagentAwareProvider{}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+	rep := &captureReporter{}
+
+	final, err := p.ProcessQuery(context.Background(), "explore everything", rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final != "combined report" {
+		t.Fatalf("final = %q", final)
+	}
+	// Both subagent results must be present, in call order.
+	var got []string
+	for _, m := range p.ctxMgr.messages {
+		if m.Role == llm.RoleTool && m.ToolName == "spawn_agent" {
+			got = append(got, m.Text)
+		}
+	}
+	if len(got) != 2 ||
+		!strings.Contains(got[0], "explore area A") ||
+		!strings.Contains(got[1], "explore area B") {
+		t.Fatalf("subagent results = %v", got)
+	}
+	rep.mu.Lock()
+	defer rep.mu.Unlock()
+	if len(rep.subagentLines) == 0 {
+		t.Fatal("no subagent status lines reported")
 	}
 }
 

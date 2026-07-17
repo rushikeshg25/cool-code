@@ -91,7 +91,11 @@ func (m *model) renderStatusBar() string {
 func (m *model) renderInputRegion() string {
 	switch {
 	case m.status != "":
-		return m.sp.View() + " " + subtleStyle.Render(m.status)
+		out := m.sp.View() + " " + subtleStyle.Render(m.status)
+		for _, line := range m.subagents {
+			out += "\n" + faintStyle.Render("  ⤷ "+line)
+		}
+		return out
 	case m.confirmMsg != "":
 		return lipgloss.JoinVertical(lipgloss.Left,
 			confirmTitle.Render("⚠ Confirmation required"),

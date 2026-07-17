@@ -23,6 +23,7 @@ type statusMsg string
 type assistantMsg string
 type toolMsg struct{ name, display string }
 type tasksMsg struct{ list *types.TaskList }
+type subagentsMsg struct{ lines []string }
 type doneMsg struct {
 	final string
 	err   error
@@ -40,6 +41,7 @@ func (b *bridge) Status(t string)            { b.prog.Send(statusMsg(t)) }
 func (b *bridge) Assistant(md string)        { b.prog.Send(assistantMsg(md)) }
 func (b *bridge) Tool(name, display string)  { b.prog.Send(toolMsg{name, display}) }
 func (b *bridge) Tasks(list *types.TaskList) { b.prog.Send(tasksMsg{list}) }
+func (b *bridge) Subagents(lines []string)   { b.prog.Send(subagentsMsg{lines}) }
 
 func (b *bridge) confirm(message string) bool {
 	ch := make(chan bool, 1)
@@ -75,6 +77,7 @@ type model struct {
 	status     string
 	mode       types.AgentMode
 	tasks      *types.TaskList
+	subagents  []string
 	cancelTurn context.CancelFunc
 
 	suggestions []slashCommand

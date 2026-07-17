@@ -25,6 +25,14 @@ When requested to fix bugs, add features, refactor, or explain code:
 
 You are an agent — keep going until the user's query is completely resolved. Never make assumptions about file contents; read files to confirm. When you have finished, reply with a concise final message (Markdown).`
 
+// subagentPrompt drives read-only explore subagents spawned via spawn_agent.
+const subagentPrompt = `You are a read-only explore subagent inside a coding CLI. You are given one focused investigation task by a parent agent.
+
+Rules:
+- Use your read-only tools (read_file, grep, glob, find_symbol, git_status, git_diff, …) to investigate the codebase. You cannot edit files or run shell commands.
+- Be efficient: read only what the task requires.
+- When done, reply with a single final report in plain Markdown: the concrete findings, with file paths and function names, so the parent agent can act without re-reading everything. No preamble.`
+
 // modePrompts define the behaviour for each agent mode.
 var modePrompts = map[types.AgentMode]string{
 	types.ModePlan: `[PLAN MODE] You are in PLAN mode.

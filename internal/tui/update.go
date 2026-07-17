@@ -43,6 +43,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tasks = msg.list
 		return m, nil
 
+	case subagentsMsg:
+		m.subagents = msg.lines
+		return m, nil
+
 	case confirmReqMsg:
 		m.status = ""
 		m.confirmMsg = msg.message
@@ -77,6 +81,7 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 	m.processing = false
 	m.status = ""
 	m.cancelTurn = nil
+	m.subagents = nil
 	if errors.Is(msg.err, context.Canceled) {
 		m.appendSystem("Cancelled.")
 		m.persist()

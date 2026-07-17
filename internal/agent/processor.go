@@ -15,12 +15,13 @@ import (
 )
 
 // Reporter receives live updates during a turn. All methods may be called from
-// the processor goroutine.
+// the processor goroutine or, for Subagents, from subagent worker goroutines.
 type Reporter interface {
 	Status(text string)         // spinner / progress text
 	Assistant(markdown string)  // final or intermediate model text
 	Tool(name, display string)  // a tool finished with this display line
 	Tasks(list *types.TaskList) // the task list changed
+	Subagents(lines []string)   // live subagent status lines; nil clears them
 }
 
 // Options configure a Processor.
@@ -91,10 +92,11 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 }
 
 func (p *Processor) buildToolDefs() {
-	defs := make([]llm.ToolDef, 0, len(tools.All)+1)
+	defs := make([]llm.ToolDef, 0, len(tools.All)+2)
 	for _, t := range tools.All {
 		defs = append(defs, llm.ToolDef{Name: t.Name, Description: t.Description, Parameters: t.Schema})
 	}
+	defs = append(defs, spawnAgentDef)
 	defs = append(defs, llm.ToolDef{
 		Name:        updateTaskListTool,
 		Description: "Records or updates the task list shown to the user. Use it to track multi-step work and mark progress.",
@@ -177,11 +179,13 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		n := len(resp.ToolCalls)
 		results := make([]*types.ToolResult, n)
 		executed := make([]bool, n) // true when a real tool ran (fires reporter.Tool)
-		var readIdx, mutIdx []int
+		var readIdx, mutIdx, spawnIdx []int
 		for i, call := range resp.ToolCalls {
 			switch {
 			case call.Name == updateTaskListTool:
 				results[i] = &types.ToolResult{LLMResult: p.handleTaskList(call, reporter)}
+			case call.Name == spawnAgentTool:
+				spawnIdx = append(spawnIdx, i)
 			case p.getMode() == types.ModeAsk && tools.IsMutating(call.Name):
 				results[i] = &types.ToolResult{LLMResult: "[ASK MODE] Cannot execute tool '" + call.Name + "' in Ask mode. Only reading and answering questions is allowed."}
 			default:
@@ -195,12 +199,16 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			}
 		}
 
-		// Read-only calls run concurrently; each worker writes only results[i].
-		if len(readIdx) > 0 {
+		// Read-only calls and subagents run concurrently under one WaitGroup;
+		// each worker writes only results[i].
+		if len(readIdx)+len(spawnIdx) > 0 {
 			if reporter != nil {
-				if len(readIdx) == 1 {
+				switch {
+				case len(spawnIdx) > 0:
+					reporter.Status("Running " + strconv.Itoa(len(spawnIdx)) + " subagent(s)…")
+				case len(readIdx) == 1:
 					reporter.Status(toolStatus(resp.ToolCalls[readIdx[0]].Name))
-				} else {
+				default:
 					reporter.Status("Running " + strconv.Itoa(len(readIdx)) + " tools in parallel…")
 				}
 			}
@@ -213,8 +221,49 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 					results[i] = &r
 				}(i, resp.ToolCalls[i])
 			}
+			if len(spawnIdx) > 0 {
+				lines := make([]string, len(spawnIdx))
+				var linesMu sync.Mutex
+				push := func() {
+					if reporter == nil {
+						return
+					}
+					linesMu.Lock()
+					cp := append([]string(nil), lines...)
+					linesMu.Unlock()
+					reporter.Subagents(cp)
+				}
+				for k, i := range spawnIdx {
+					task, ok := parseSpawnTask(resp.ToolCalls[i].Arguments)
+					if !ok {
+						results[i] = &types.ToolResult{Display: "Subagent failed", LLMResult: "Invalid arguments: spawn_agent requires a non-empty task."}
+						continue
+					}
+					label := "agent " + strconv.Itoa(k+1) + ": " + truncateTask(task)
+					setLine := func(k int, state string) {
+						linesMu.Lock()
+						lines[k] = label + " — " + state
+						linesMu.Unlock()
+						push()
+					}
+					setLine(k, "starting")
+					wg.Add(1)
+					go func(k, i int, task string) {
+						defer wg.Done()
+						text := p.runSubagent(ctx, task, func(state string) { setLine(k, state) })
+						results[i] = &types.ToolResult{Display: "Subagent: " + truncateTask(task), LLMResult: text}
+						setLine(k, "done")
+					}(k, i, task)
+				}
+			}
 			wg.Wait()
+			if len(spawnIdx) > 0 && reporter != nil {
+				reporter.Subagents(nil)
+			}
 			for _, i := range readIdx {
+				executed[i] = true
+			}
+			for _, i := range spawnIdx {
 				executed[i] = true
 			}
 		}

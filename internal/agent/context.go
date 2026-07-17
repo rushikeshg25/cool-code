@@ -239,6 +239,13 @@ func (c *contextManager) stats() (messageCount, totalTokens int) {
 	return len(c.messages), totalTokens
 }
 
+// tree returns the current file tree text.
+func (c *contextManager) tree() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.fileTree
+}
+
 // snapshotMessages returns a copy of the message history.
 func (c *contextManager) snapshotMessages() []llm.Message {
 	c.mu.Lock()
