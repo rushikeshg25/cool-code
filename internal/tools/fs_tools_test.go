@@ -57,6 +57,21 @@ func TestNewFileOutsideRootRejected(t *testing.T) {
 	}
 }
 
+func TestEditFileOutsideRootRejected(t *testing.T) {
+	root := t.TempDir()
+	ctx := testCtx(root)
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	_ = os.WriteFile(outside, []byte("original"), 0o644)
+	res := editFileTool.Execute(ctx, args(t, map[string]any{"filePath": outside, "oldString": "original", "newString": "hacked"}))
+	if !strings.Contains(res.LLMResult, "within project root") {
+		t.Fatalf("expected containment error, got: %s", res.LLMResult)
+	}
+	raw, _ := os.ReadFile(outside)
+	if string(raw) != "original" {
+		t.Fatalf("file outside root was modified: %s", raw)
+	}
+}
+
 func TestReadBlockedByGuardrail(t *testing.T) {
 	root := t.TempDir()
 	ctx := testCtx(root)

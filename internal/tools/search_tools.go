@@ -26,7 +26,7 @@ var globTool = Tool{
 			Pattern string `json:"pattern"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		fsys := os.DirFS(ctx.RootDir)
 		matches, err := doublestar.Glob(fsys, a.Pattern)
@@ -69,7 +69,7 @@ var grepTool = Tool{
 			Include string `json:"include"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		re, err := regexp.Compile(a.Pattern)
 		if err != nil {
@@ -142,10 +142,10 @@ var findSymbolTool = Tool{
 			Path    string `json:"path"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if strings.TrimSpace(a.Pattern) == "" {
-			return fail("Fixing Issues", "pattern is required.")
+			return fail("Invalid arguments", "pattern is required.")
 		}
 		searchPath := a.Path
 		if searchPath == "" {

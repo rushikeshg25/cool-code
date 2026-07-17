@@ -37,7 +37,7 @@ var gitDiffTool = Tool{
 		fileArg := ""
 		if a.FilePath != "" {
 			if v := EnsureAbsoluteWithinRoot(a.FilePath, ctx.RootDir); v != "" {
-				return fail("Fixing Issues", v)
+				return fail("Invalid path", v)
 			}
 			fileArg = " -- '" + shellEscapeSingleQuotes(toRelative(a.FilePath, ctx.RootDir)) + "'"
 		}
@@ -71,10 +71,10 @@ var gitCommitTool = Tool{
 			Files   []string `json:"files"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if strings.TrimSpace(a.Message) == "" {
-			return fail("Fixing Issues", "Commit message is required.")
+			return fail("Invalid arguments", "Commit message is required.")
 		}
 		if a.All {
 			if res := execCommand("git add -A", ctx.RootDir, 0); !res.success {
@@ -84,7 +84,7 @@ var gitCommitTool = Tool{
 			var rels []string
 			for _, f := range a.Files {
 				if v := EnsureAbsoluteWithinRoot(f, ctx.RootDir); v != "" {
-					return fail("Fixing Issues", v)
+					return fail("Invalid path", v)
 				}
 				rels = append(rels, "'"+shellEscapeSingleQuotes(toRelative(f, ctx.RootDir))+"'")
 			}

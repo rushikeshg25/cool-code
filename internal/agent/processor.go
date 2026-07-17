@@ -168,11 +168,9 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				continue
 			}
 
-			if !p.allowDangerous {
-				if declined, msg := p.gate(call); declined {
-					p.ctxMgr.addToolResult(call, msg)
-					continue
-				}
+			if declined, msg := p.gate(call); declined {
+				p.ctxMgr.addToolResult(call, msg)
+				continue
 			}
 
 			if reporter != nil {
@@ -213,7 +211,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 func (p *Processor) gate(call llm.ToolCall) (bool, string) {
 	reason := tools.DangerReason(call.Name, call.Arguments)
 	preview := tools.EditPreview(call.Name, call.Arguments)
-	if reason != "" {
+	if reason != "" && !p.allowDangerous {
 		if p.confirm == nil || !p.confirm("Allow potentially dangerous action ("+reason+")?") {
 			return true, "User declined to run a potentially dangerous tool."
 		}

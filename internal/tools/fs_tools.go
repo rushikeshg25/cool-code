@@ -29,34 +29,34 @@ var readFileTool = Tool{
 			EndLine      *int   `json:"endLine"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if reason := BlockedPath(a.AbsolutePath, ctx.Config); reason != "" {
-			return fail("Fixing Issues", reason)
+			return fail("Blocked by guardrails", reason)
 		}
 		if v := validateFileForReading(a.AbsolutePath); v != "" {
-			return fail("Fixing Issues", v)
+			return fail("Read failed", v)
 		}
 		rel := toRelative(a.AbsolutePath, ctx.RootDir)
 		if a.StartLine == nil && a.EndLine == nil {
 			content, err := os.ReadFile(a.AbsolutePath)
 			if err != nil {
-				return fail("Fixing Issues", err.Error())
+				return fail("Read failed", err.Error())
 			}
 			return types.ToolResult{Display: "Reading " + rel, LLMResult: string(content)}
 		}
 		if a.StartLine == nil || a.EndLine == nil {
-			return fail("Fixing Issues", "Both startLine and endLine must be provided.")
+			return fail("Invalid arguments", "Both startLine and endLine must be provided.")
 		}
 		if *a.StartLine < 1 || *a.EndLine < 1 {
-			return fail("Fixing Issues", "startLine and endLine must be greater than 0.")
+			return fail("Invalid arguments", "startLine and endLine must be greater than 0.")
 		}
 		if *a.EndLine < *a.StartLine {
-			return fail("Fixing Issues", "endLine must be greater than or equal to startLine.")
+			return fail("Invalid arguments", "endLine must be greater than or equal to startLine.")
 		}
 		f, err := os.Open(a.AbsolutePath)
 		if err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Read failed", err.Error())
 		}
 		defer f.Close()
 		scanner := bufio.NewScanner(f)
@@ -73,7 +73,7 @@ var readFileTool = Tool{
 			}
 		}
 		if cur < *a.StartLine {
-			return fail("Fixing Issues", "File only has fewer lines than startLine.")
+			return fail("Read failed", "File only has fewer lines than startLine.")
 		}
 		return types.ToolResult{
 			Display:   "Reading lines from " + rel,
@@ -112,28 +112,28 @@ var editFileTool = Tool{
 			ExpectedReplacements *int   `json:"expected_replacements"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		expected := 1
 		if a.ExpectedReplacements != nil && *a.ExpectedReplacements > 0 {
 			expected = *a.ExpectedReplacements
 		}
-		if !filepath.IsAbs(a.FilePath) {
-			return fail("Fixing Issues", "File path must be absolute.")
+		if v := EnsureAbsoluteWithinRoot(a.FilePath, ctx.RootDir); v != "" {
+			return fail("Edit blocked", v)
 		}
 		info, err := os.Stat(a.FilePath)
 		if err != nil {
-			return fail("Fixing Issues", "File does not exist: "+a.FilePath)
+			return fail("Edit failed", "File does not exist: "+a.FilePath)
 		}
 		if info.IsDir() {
-			return fail("Fixing Issues", "Path is not a file: "+a.FilePath)
+			return fail("Edit failed", "Path is not a file: "+a.FilePath)
 		}
 		if a.OldString == "" {
-			return fail("Fixing Issues", "oldString cannot be empty.")
+			return fail("Invalid arguments", "oldString cannot be empty.")
 		}
 		raw, err := os.ReadFile(a.FilePath)
 		if err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Edit failed", err.Error())
 		}
 		content := string(raw)
 		count := 0
@@ -155,7 +155,7 @@ var editFileTool = Tool{
 		b.WriteString(content[idx:])
 		newContent := b.String()
 		if err := os.WriteFile(a.FilePath, []byte(newContent), info.Mode().Perm()); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Edit failed", err.Error())
 		}
 		return types.ToolResult{
 			Display:   "Edited " + filepath.Base(a.FilePath),
@@ -178,10 +178,10 @@ var newFileTool = Tool{
 			Content  string `json:"content"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if v := EnsureAbsoluteWithinRoot(a.FilePath, ctx.RootDir); v != "" {
-			return fail("Fixing Issues", v)
+			return fail("Invalid path", v)
 		}
 		if err := os.MkdirAll(filepath.Dir(a.FilePath), 0o755); err != nil {
 			return fail("Error creating file "+a.FilePath, err.Error())
@@ -210,25 +210,25 @@ var renameFileTool = Tool{
 			Overwrite bool   `json:"overwrite"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if v := EnsureAbsoluteWithinRoot(a.FromPath, ctx.RootDir); v != "" {
-			return fail("Fixing Issues", v)
+			return fail("Invalid path", v)
 		}
 		if v := EnsureAbsoluteWithinRoot(a.ToPath, ctx.RootDir); v != "" {
-			return fail("Fixing Issues", v)
+			return fail("Invalid path", v)
 		}
 		if _, err := os.Stat(a.FromPath); err != nil {
-			return fail("Fixing Issues", "Source file does not exist: "+a.FromPath)
+			return fail("Rename failed", "Source file does not exist: "+a.FromPath)
 		}
 		if _, err := os.Stat(a.ToPath); err == nil && !a.Overwrite {
-			return fail("Fixing Issues", "Target already exists: "+a.ToPath)
+			return fail("Rename failed", "Target already exists: "+a.ToPath)
 		}
 		if err := os.MkdirAll(filepath.Dir(a.ToPath), 0o755); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Rename failed", err.Error())
 		}
 		if err := os.Rename(a.FromPath, a.ToPath); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Rename failed", err.Error())
 		}
 		return types.ToolResult{Display: "File renamed", LLMResult: "Renamed " + a.FromPath + " to " + a.ToPath}
 	},
@@ -310,10 +310,10 @@ var replaceInFilesTool = Tool{
 			DryRun      *bool  `json:"dryRun"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if a.Pattern == "" {
-			return fail("Fixing Issues", "pattern is required.")
+			return fail("Invalid arguments", "pattern is required.")
 		}
 		var re *regexp.Regexp
 		if a.UseRegex {
@@ -398,10 +398,10 @@ var newModuleTool = Tool{
 			ExportFromRootIndex bool   `json:"exportFromRootIndex"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if strings.TrimSpace(a.ModuleName) == "" {
-			return fail("Fixing Issues", "moduleName is required.")
+			return fail("Invalid arguments", "moduleName is required.")
 		}
 		baseDir := a.BaseDir
 		if baseDir == "" {
@@ -409,10 +409,10 @@ var newModuleTool = Tool{
 		}
 		moduleDir := filepath.Join(ctx.RootDir, baseDir, a.ModuleName)
 		if v := EnsureAbsoluteWithinRoot(moduleDir, ctx.RootDir); v != "" {
-			return fail("Fixing Issues", v)
+			return fail("Invalid path", v)
 		}
 		if err := os.MkdirAll(moduleDir, 0o755); err != nil {
-			return fail("Fixing Issues", "Failed to create module: "+err.Error())
+			return fail("Create failed", "Failed to create module: "+err.Error())
 		}
 		exportName := toPascalCase(a.ModuleName)
 		if exportName == "" {

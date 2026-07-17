@@ -54,7 +54,7 @@ var webFetchTool = Tool{
 			URL string `json:"url"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		u, err := url.Parse(a.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -135,10 +135,10 @@ var webSearchTool = Tool{
 			Query string `json:"query"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if strings.TrimSpace(a.Query) == "" {
-			return fail("Fixing Issues", "query is required.")
+			return fail("Invalid arguments", "query is required.")
 		}
 		endpoint := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(a.Query)
 		ctxT, cancel := context.WithTimeout(context.Background(), webTimeout)

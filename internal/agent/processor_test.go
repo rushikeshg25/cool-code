@@ -139,6 +139,37 @@ func TestAskModeBlocksMutating(t *testing.T) {
 	}
 }
 
+func TestConfirmEditsIndependentOfAllowDangerous(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "x.txt")
+	_ = os.WriteFile(target, []byte("original"), 0o644)
+
+	provider := &fakeProvider{responses: []llm.Message{
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			toolCall("1", "edit_file", map[string]any{"filePath": target, "oldString": "original", "newString": "changed"}),
+		}},
+		{Role: llm.RoleAssistant, Text: "done"},
+	}}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+	p.confirmEdits = true // allowDangerous is already true in newTestProcessor
+	confirmCalled := false
+	p.confirmEdit = func(_, _ string) bool {
+		confirmCalled = true
+		return false // decline the edit
+	}
+
+	if _, err := p.ProcessQuery(context.Background(), "edit x.txt", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !confirmCalled {
+		t.Fatal("confirmEdit was not called despite confirmEdits=true (allowDangerous must not skip it)")
+	}
+	raw, _ := os.ReadFile(target)
+	if string(raw) != "original" {
+		t.Fatalf("declined edit was applied anyway: %s", raw)
+	}
+}
+
 func TestProcessQueryTaskList(t *testing.T) {
 	root := t.TempDir()
 	provider := &fakeProvider{responses: []llm.Message{

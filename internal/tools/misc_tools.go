@@ -38,10 +38,10 @@ var generateReadmeSectionTool = Tool{
 			Content string   `json:"content"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if strings.TrimSpace(a.Title) == "" {
-			return fail("Fixing Issues", "title is required.")
+			return fail("Invalid arguments", "title is required.")
 		}
 		readmePath := filepath.Join(ctx.RootDir, "README.md")
 		heading := "## " + a.Title + "\n"
@@ -58,11 +58,11 @@ var generateReadmeSectionTool = Tool{
 
 		if raw, err := os.ReadFile(readmePath); err == nil {
 			if strings.Contains(string(raw), strings.TrimSpace(heading)) {
-				return fail("Fixing Issues", "README already contains section \""+a.Title+"\".")
+				return fail("Section already exists", "README already contains section \""+a.Title+"\".")
 			}
 			f, err := os.OpenFile(readmePath, os.O_APPEND|os.O_WRONLY, 0o644)
 			if err != nil {
-				return fail("Fixing Issues", err.Error())
+				return fail("README update failed", err.Error())
 			}
 			_, _ = f.WriteString(section)
 			_ = f.Close()
@@ -85,10 +85,10 @@ var useSkillTool = Tool{
 			Name string `json:"name"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if strings.TrimSpace(a.Name) == "" {
-			return fail("Fixing Issues", "skill name is required.")
+			return fail("Invalid arguments", "skill name is required.")
 		}
 		body, ok := skills.Body(ctx.RootDir, a.Name)
 		if !ok {

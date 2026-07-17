@@ -2,6 +2,8 @@ package tools
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"strings"
 
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
@@ -22,11 +24,20 @@ var shellCommandTool = Tool{
 			Directory   string `json:"directory"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
+		}
+		if strings.TrimSpace(a.Command) == "" {
+			return fail("Invalid command", "command must not be empty.")
 		}
 		dir := ctx.RootDir
 		if a.Directory != "" {
 			dir = a.Directory
+			if !filepath.IsAbs(dir) {
+				dir = filepath.Join(ctx.RootDir, dir)
+			}
+			if v := EnsureAbsoluteWithinRoot(dir, ctx.RootDir); v != "" {
+				return fail("Invalid directory", v)
+			}
 		}
 		res := execCommand(a.Command, dir, 0)
 		llm := res.stdout
@@ -127,10 +138,10 @@ var formatFileTool = Tool{
 			AbsolutePath string `json:"absolutePath"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if v := EnsureAbsoluteWithinRoot(a.AbsolutePath, ctx.RootDir); v != "" {
-			return fail("Fixing Issues", v)
+			return fail("Invalid path", v)
 		}
 		rel := toRelative(a.AbsolutePath, ctx.RootDir)
 		command := "npx prettier --write '" + shellEscapeSingleQuotes(rel) + "'"
@@ -159,14 +170,14 @@ var addScriptTool = Tool{
 			Overwrite bool   `json:"overwrite"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("Invalid arguments", err.Error())
 		}
 		if a.Name == "" || a.Command == "" {
-			return fail("Fixing Issues", "name and command are required.")
+			return fail("Invalid arguments", "name and command are required.")
 		}
 		pkg, ok := readPackageJSON(ctx.RootDir)
 		if !ok {
-			return fail("Fixing Issues", "package.json not found or invalid.")
+			return fail("package.json not found", "package.json not found or invalid.")
 		}
 		scripts, ok := pkg["scripts"].(map[string]any)
 		if !ok {
@@ -174,11 +185,11 @@ var addScriptTool = Tool{
 			pkg["scripts"] = scripts
 		}
 		if _, exists := scripts[a.Name]; exists && !a.Overwrite {
-			return fail("Fixing Issues", "Script \""+a.Name+"\" already exists.")
+			return fail("Script already exists", "Script \""+a.Name+"\" already exists.")
 		}
 		scripts[a.Name] = a.Command
 		if err := writePackageJSON(ctx.RootDir, pkg); err != nil {
-			return fail("Fixing Issues", err.Error())
+			return fail("package.json update failed", err.Error())
 		}
 		return types.ToolResult{Display: "Script added", LLMResult: "Added script \"" + a.Name + "\"."}
 	},
