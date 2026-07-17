@@ -99,7 +99,7 @@ func (m *model) renderInputRegion() string {
 	case m.confirmMsg != "":
 		return lipgloss.JoinVertical(lipgloss.Left,
 			confirmTitle.Render("⚠ Confirmation required"),
-			confirmBox.Render(m.confirmMsg),
+			confirmBox.Render(colorizeDiff(m.confirmMsg)),
 			faintStyle.Render("Proceed? [y/N]"),
 		)
 	case m.planMenu:
@@ -136,6 +136,20 @@ func (m *model) renderSuggestions() string {
 		}
 	}
 	return b.String()
+}
+
+// colorizeDiff styles "- "/"+ " prefixed lines (edit previews) red/green.
+func colorizeDiff(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		switch {
+		case strings.HasPrefix(l, "- "):
+			lines[i] = lipgloss.NewStyle().Foreground(danger).Render(l)
+		case strings.HasPrefix(l, "+ "):
+			lines[i] = lipgloss.NewStyle().Foreground(success).Render(l)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func shortPath(p string) string {

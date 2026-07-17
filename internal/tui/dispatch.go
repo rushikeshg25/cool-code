@@ -136,5 +136,9 @@ func (m *model) helpText() string {
 		b.WriteString("\n  " + c.name + "  —  " + c.desc)
 	}
 	b.WriteString("\n  Shift+Tab cycles mode (plan → agent → ask)")
+	b.WriteString("\nKeys:")
+	b.WriteString("\n  Enter submits · Alt+Enter or Ctrl+J inserts a newline (Shift+Enter is not detectable in terminals)")
+	b.WriteString("\n  Esc or Ctrl+C cancels a running turn · Ctrl+C when idle quits")
+	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript")
 	return b.String()
 }

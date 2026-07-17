@@ -13,15 +13,19 @@ import (
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		widthChanged := m.width != msg.Width
 		m.width = msg.Width
 		m.height = msg.Height
-		m.ti.Width = msg.Width - 4
+		m.ti.SetWidth(msg.Width - 4)
 		if !m.ready {
 			m.vp = newViewport(msg.Width, m.viewportHeight())
 			m.ready = true
 		} else {
 			m.vp.Width = msg.Width
 			m.vp.Height = m.viewportHeight()
+		}
+		if widthChanged {
+			m.rerenderHistory()
 		}
 		m.syncViewport()
 		return m, nil
@@ -154,25 +158,62 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.suggestIdx = (m.suggestIdx - 1 + len(m.suggestions)) % len(m.suggestions)
 			return m, nil
 		}
-		var cmd tea.Cmd
-		m.vp, cmd = m.vp.Update(msg)
-		return m, cmd
+		// Recall older input when the cursor is on the first line.
+		if m.ti.Line() == 0 && m.histIdx > 0 {
+			m.histIdx--
+			m.setInput(m.inputHist[m.histIdx])
+			return m, nil
+		}
 	case tea.KeyDown:
 		if len(m.suggestions) > 0 {
 			m.suggestIdx = (m.suggestIdx + 1) % len(m.suggestions)
 			return m, nil
 		}
+		// Recall newer input when the cursor is on the last line.
+		if m.ti.Line() == m.ti.LineCount()-1 && m.histIdx < len(m.inputHist) {
+			m.histIdx++
+			if m.histIdx == len(m.inputHist) {
+				m.setInput("")
+			} else {
+				m.setInput(m.inputHist[m.histIdx])
+			}
+			return m, nil
+		}
+	case tea.KeyPgUp, tea.KeyPgDown:
 		var cmd tea.Cmd
 		m.vp, cmd = m.vp.Update(msg)
 		return m, cmd
 	case tea.KeyEnter:
-		return m.submit()
+		if !msg.Alt {
+			return m.submit()
+		}
+		// Alt+Enter falls through to the textarea's newline binding.
 	}
 
 	var cmd tea.Cmd
 	m.ti, cmd = m.ti.Update(msg)
+	m.fitInputHeight()
 	m.refreshSuggestions()
 	return m, cmd
+}
+
+// setInput replaces the input contents (history recall).
+func (m *model) setInput(value string) {
+	m.ti.SetValue(value)
+	m.fitInputHeight()
+	m.refreshSuggestions()
+}
+
+// fitInputHeight grows the input with its content, up to 5 lines.
+func (m *model) fitInputHeight() {
+	h := m.ti.LineCount()
+	if h > 5 {
+		h = 5
+	}
+	if h < 1 {
+		h = 1
+	}
+	m.ti.SetHeight(h)
 }
 
 func (m *model) handlePlanMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -210,7 +251,7 @@ func (m *model) respondConfirm(v bool) {
 }
 
 func (m *model) refreshSuggestions() {
-	if m.processing {
+	if m.processing || m.ti.LineCount() > 1 {
 		m.suggestions = nil
 		return
 	}
@@ -222,12 +263,15 @@ func (m *model) refreshSuggestions() {
 
 func (m *model) submit() (tea.Model, tea.Cmd) {
 	value := strings.TrimSpace(m.ti.Value())
-	m.ti.SetValue("")
+	m.ti.Reset()
+	m.ti.SetHeight(1)
 	m.suggestions = nil
 	m.suggestIdx = 0
 	if value == "" {
 		return m, nil
 	}
+	m.inputHist = append(m.inputHist, value)
+	m.histIdx = len(m.inputHist)
 	if m.processing {
 		m.proc.EnqueueMessage(value)
 		m.appendSystem("(queued) " + value)

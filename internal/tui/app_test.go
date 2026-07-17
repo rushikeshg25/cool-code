@@ -61,7 +61,11 @@ func TestSlashModeSwitch(t *testing.T) {
 func TestSlashHelpAppendsHistory(t *testing.T) {
 	m := newTestModel(t)
 	m = typeLine(t, m, "/help")
-	joined := strings.Join(m.history, "\n")
+	var parts []string
+	for _, e := range m.history {
+		parts = append(parts, e.rendered)
+	}
+	joined := strings.Join(parts, "\n")
 	if !strings.Contains(joined, "/context") || !strings.Contains(joined, "/install-skill") {
 		t.Fatalf("help output missing commands:\n%s", joined)
 	}

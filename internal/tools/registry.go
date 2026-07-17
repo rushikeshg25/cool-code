@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
@@ -106,13 +107,21 @@ func DangerReason(name string, args json.RawMessage) string {
 	return ""
 }
 
-// EditPreview returns a human-readable preview for edit-like tools, or "".
+// EditPreview returns a diff-style preview for edit-like tools, or "". Removed
+// lines are prefixed "- " and added lines "+ " so the UI can colorize them.
 func EditPreview(name string, args json.RawMessage) string {
 	truncate := func(s string) string {
 		if len(s) > 400 {
 			return s[:400] + "\n... (truncated)"
 		}
 		return s
+	}
+	prefixLines := func(s, prefix string) string {
+		lines := strings.Split(truncate(s), "\n")
+		for i, l := range lines {
+			lines[i] = prefix + l
+		}
+		return strings.Join(lines, "\n")
 	}
 	switch name {
 	case "edit_file":
@@ -122,14 +131,14 @@ func EditPreview(name string, args json.RawMessage) string {
 			NewString string `json:"newString"`
 		}
 		_ = json.Unmarshal(args, &a)
-		return "File: " + a.FilePath + "\n--- old ---\n" + truncate(a.OldString) + "\n--- new ---\n" + truncate(a.NewString)
+		return "File: " + a.FilePath + "\n" + prefixLines(a.OldString, "- ") + "\n" + prefixLines(a.NewString, "+ ")
 	case "new_file":
 		var a struct {
 			FilePath string `json:"filePath"`
 			Content  string `json:"content"`
 		}
 		_ = json.Unmarshal(args, &a)
-		return "File: " + a.FilePath + "\n--- content ---\n" + truncate(a.Content)
+		return "File: " + a.FilePath + "\n" + prefixLines(a.Content, "+ ")
 	}
 	return ""
 }

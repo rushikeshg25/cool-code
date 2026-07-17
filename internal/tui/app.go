@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -68,11 +68,13 @@ type model struct {
 
 	width, height int
 	vp            viewport.Model
-	ti            textinput.Model
+	ti            textarea.Model
 	sp            spinner.Model
 	ready         bool
 
-	history    []string
+	history    []entry
+	inputHist  []string
+	histIdx    int
 	processing bool
 	status     string
 	mode       types.AgentMode
@@ -91,12 +93,17 @@ type model struct {
 }
 
 func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sessionID string) *model {
-	ti := textinput.New()
+	ti := textarea.New()
 	ti.Placeholder = "Ask, plan, or build something…"
 	ti.Prompt = "❯ "
-	ti.PromptStyle = promptGlyph
-	ti.Focus()
+	ti.FocusedStyle.Prompt = promptGlyph
+	ti.ShowLineNumbers = false
+	ti.SetHeight(1)
 	ti.CharLimit = 0
+	// Enter submits; Alt+Enter or Ctrl+J inserts a newline (Shift+Enter is
+	// not distinguishable from Enter in classic terminal input).
+	ti.KeyMap.InsertNewline.SetKeys("alt+enter", "ctrl+j")
+	ti.Focus()
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -116,10 +123,28 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 }
 
 func (m *model) Init() tea.Cmd {
-	return textinput.Blink
+	return textarea.Blink
 }
 
 // --- history helpers ---
+
+// entry is one transcript item: raw source plus its rendering at the current
+// width, so history can be re-rendered on resize.
+type entryKind int
+
+const (
+	entryRaw entryKind = iota // pre-styled, never re-rendered (banner)
+	entryUser
+	entryAssistant
+	entryTool
+	entrySystem
+)
+
+type entry struct {
+	kind     entryKind
+	raw      string
+	rendered string
+}
 
 func (m *model) contentWidth() int {
 	if m.width < 10 {
@@ -128,33 +153,56 @@ func (m *model) contentWidth() int {
 	return m.width
 }
 
-func (m *model) appendRaw(s string) {
-	m.history = append(m.history, s)
+func (m *model) renderEntry(e entry) string {
+	switch e.kind {
+	case entryUser:
+		return userPrefix.Render("❯ ") + userText.Render(e.raw)
+	case entryAssistant:
+		return renderMarkdown(e.raw, m.contentWidth())
+	case entryTool:
+		return toolGlyph.Render("  ● ") + toolStyle.Render(e.raw)
+	case entrySystem:
+		return systemStyle.Render(e.raw)
+	default:
+		return e.raw
+	}
+}
+
+func (m *model) appendEntry(kind entryKind, raw string) {
+	e := entry{kind: kind, raw: raw}
+	e.rendered = m.renderEntry(e)
+	m.history = append(m.history, e)
 	m.syncViewport()
 }
 
-func (m *model) appendUser(text string) {
-	m.appendRaw(userPrefix.Render("❯ ") + userText.Render(text))
-}
+func (m *model) appendRaw(s string)         { m.appendEntry(entryRaw, s) }
+func (m *model) appendUser(text string)     { m.appendEntry(entryUser, text) }
+func (m *model) appendAssistant(md string)  { m.appendEntry(entryAssistant, md) }
+func (m *model) appendTool(display string)  { m.appendEntry(entryTool, display) }
+func (m *model) appendSystem(text string)   { m.appendEntry(entrySystem, text) }
 
-func (m *model) appendAssistant(md string) {
-	m.appendRaw(renderMarkdown(md, m.contentWidth()))
-}
-
-func (m *model) appendTool(display string) {
-	m.appendRaw(toolGlyph.Render("  ● ") + toolStyle.Render(display))
-}
-
-func (m *model) appendSystem(text string) {
-	m.appendRaw(systemStyle.Render(text))
+// rerenderHistory refreshes every entry's rendering, e.g. after a resize.
+func (m *model) rerenderHistory() {
+	for i := range m.history {
+		if m.history[i].kind != entryRaw {
+			m.history[i].rendered = m.renderEntry(m.history[i])
+		}
+	}
 }
 
 func (m *model) syncViewport() {
 	if !m.ready {
 		return
 	}
-	m.vp.SetContent(strings.Join(m.history, "\n\n"))
-	m.vp.GotoBottom()
+	atBottom := m.vp.AtBottom()
+	parts := make([]string, len(m.history))
+	for i, e := range m.history {
+		parts[i] = e.rendered
+	}
+	m.vp.SetContent(strings.Join(parts, "\n\n"))
+	if atBottom {
+		m.vp.GotoBottom()
+	}
 }
 
 func (m *model) persist() {
