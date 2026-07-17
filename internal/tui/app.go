@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
@@ -74,6 +75,7 @@ type model struct {
 	status     string
 	mode       types.AgentMode
 	tasks      *types.TaskList
+	cancelTurn context.CancelFunc
 
 	suggestions []slashCommand
 	suggestIdx  int

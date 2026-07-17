@@ -26,7 +26,7 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 
 	switch name {
 	case "/exit", "/quit":
-		return m, tea.Quit
+		return m.quit()
 	case "/clear":
 		m.history = nil
 		m.syncViewport()

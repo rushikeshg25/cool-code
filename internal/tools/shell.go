@@ -17,12 +17,16 @@ type shellResult struct {
 }
 
 // execCommand runs a shell command via `bash -c` in dir (or root) with a
-// timeout, capturing stdout/stderr.
-func execCommand(command, dir string, timeout time.Duration) shellResult {
+// timeout, capturing stdout/stderr. The parent context cancels the command
+// early when the turn is aborted.
+func execCommand(parent context.Context, command, dir string, timeout time.Duration) shellResult {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
@@ -42,6 +46,12 @@ func execCommand(command, dir string, timeout time.Duration) shellResult {
 		res.exitCode = -1
 		res.success = false
 		res.errMsg = "Command timed out after " + timeout.String()
+		return res
+	}
+	if ctx.Err() == context.Canceled {
+		res.exitCode = -1
+		res.success = false
+		res.errMsg = "Command cancelled"
 		return res
 	}
 	if err != nil {

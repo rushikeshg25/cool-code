@@ -3,10 +3,12 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
@@ -136,6 +138,64 @@ func TestAskModeBlocksMutating(t *testing.T) {
 	}
 	if !blocked {
 		t.Fatal("expected an ASK MODE refusal in context")
+	}
+}
+
+// blockingProvider blocks until the context is cancelled.
+type blockingProvider struct{ started chan struct{} }
+
+func (b *blockingProvider) Name() string  { return "blocking" }
+func (b *blockingProvider) Model() string { return "blocking-model" }
+func (b *blockingProvider) Complete(ctx context.Context, _ llm.Request) (llm.Message, error) {
+	close(b.started)
+	<-ctx.Done()
+	return llm.Message{}, ctx.Err()
+}
+
+func TestProcessQueryCancellation(t *testing.T) {
+	root := t.TempDir()
+	provider := &blockingProvider{started: make(chan struct{})}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.ProcessQuery(ctx, "hang forever", nil)
+		done <- err
+	}()
+	<-provider.started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ProcessQuery did not return after cancellation")
+	}
+}
+
+func TestCloseOpenToolCalls(t *testing.T) {
+	root := t.TempDir()
+	p := newTestProcessor(t, root, &fakeProvider{}, types.ModeAgent)
+	cm := p.ctxMgr
+	cm.addUser("do things")
+	cm.addAssistant(llm.Message{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+		toolCall("a", "read_file", nil), toolCall("b", "grep", nil),
+	}})
+	cm.addToolResult(llm.ToolCall{ID: "a", Name: "read_file"}, "result a")
+	// Tool call "b" has no result — as after a mid-turn cancellation.
+	cm.closeOpenToolCalls("[interrupted]")
+
+	last := cm.messages[len(cm.messages)-1]
+	if last.Role != llm.RoleTool || last.ToolCallID != "b" || last.Text != "[interrupted]" {
+		t.Fatalf("dangling call not closed, last = %+v", last)
+	}
+	// Idempotent: a second pass adds nothing.
+	n := len(cm.messages)
+	cm.closeOpenToolCalls("[interrupted]")
+	if len(cm.messages) != n {
+		t.Fatal("closeOpenToolCalls is not idempotent")
 	}
 }
 

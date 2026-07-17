@@ -128,9 +128,15 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 	if reporter != nil {
 		reporter.Status(randomThinking())
 	}
+	// Whatever way this turn ends, never leave a tool call without a result:
+	// providers reject histories with dangling tool_use blocks.
+	defer p.ctxMgr.closeOpenToolCalls("[Turn interrupted before this tool ran]")
 
 	var finalText string
 	for {
+		if err := ctx.Err(); err != nil {
+			return finalText, err
+		}
 		req := llm.Request{
 			System:      p.ctxMgr.buildSystem(),
 			Messages:    p.ctxMgr.window(),
@@ -154,9 +160,14 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			break
 		}
 
+		toolCtx := p.toolCtx
+		toolCtx.Ctx = ctx
 		treeDirty := false
 		interrupted := false
 		for _, call := range resp.ToolCalls {
+			if err := ctx.Err(); err != nil {
+				return finalText, err
+			}
 			if call.Name == updateTaskListTool {
 				p.handleTaskList(call, reporter)
 				continue
@@ -176,7 +187,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			if reporter != nil {
 				reporter.Status(toolStatus(call.Name))
 			}
-			result := tools.Run(p.toolCtx, call.Name, call.Arguments)
+			result := tools.Run(toolCtx, call.Name, call.Arguments)
 			p.ctxMgr.addToolResult(call, result.LLMResult)
 			if reporter != nil {
 				reporter.Tool(call.Name, result.Display)
@@ -244,7 +255,7 @@ func (p *Processor) summarize(ctx context.Context) {
 	}
 	var b strings.Builder
 	b.WriteString("Summarize the key technical objectives and progress in the following conversation in under 200 words. Focus on specific code changes and design decisions. Avoid filler.\n\n")
-	for _, m := range p.ctxMgr.messages {
+	for _, m := range p.ctxMgr.snapshotMessages() {
 		if m.Text != "" {
 			b.WriteString(string(m.Role) + ": " + m.Text + "\n")
 		}
@@ -292,7 +303,7 @@ func (p *Processor) SetMode(mode types.AgentMode) {
 	p.mu.Lock()
 	p.mode = mode
 	p.mu.Unlock()
-	p.ctxMgr.mode = mode
+	p.ctxMgr.setMode(mode)
 }
 
 // SetConfirmHandlers wires interactive confirmation callbacks.
@@ -327,28 +338,13 @@ func (p *Processor) TaskList() *types.TaskList {
 }
 
 // PinFile pins an absolute file path into context.
-func (p *Processor) PinFile(path string) {
-	for _, e := range p.ctxMgr.pinned {
-		if e == path {
-			return
-		}
-	}
-	p.ctxMgr.pinned = append(p.ctxMgr.pinned, path)
-}
+func (p *Processor) PinFile(path string) { p.ctxMgr.pin(path) }
 
 // UnpinFile removes a pinned file.
-func (p *Processor) UnpinFile(path string) {
-	out := p.ctxMgr.pinned[:0]
-	for _, e := range p.ctxMgr.pinned {
-		if e != path {
-			out = append(out, e)
-		}
-	}
-	p.ctxMgr.pinned = out
-}
+func (p *Processor) UnpinFile(path string) { p.ctxMgr.unpin(path) }
 
 // PinnedFiles returns the pinned file paths.
-func (p *Processor) PinnedFiles() []string { return append([]string{}, p.ctxMgr.pinned...) }
+func (p *Processor) PinnedFiles() []string { return p.ctxMgr.pinnedFiles() }
 
 // ReloadSkills rebuilds the skills catalog after an install.
 func (p *Processor) ReloadSkills() { p.ctxMgr.reloadSkills() }
@@ -356,21 +352,17 @@ func (p *Processor) ReloadSkills() { p.ctxMgr.reloadSkills() }
 // RootDir returns the project root.
 func (p *Processor) RootDir() string { return p.rootDir }
 
-// Snapshot returns the serializable session state.
+// Snapshot returns copies of the serializable session state.
 func (p *Processor) Snapshot() (messages []llm.Message, summary string, pinned []string, mode types.AgentMode, count int) {
-	c, _ := p.ctxMgr.stats()
-	return p.ctxMgr.messages, p.ctxMgr.summary, p.PinnedFiles(), p.getMode(), c
+	messages, summary, pinned = p.ctxMgr.sessionState()
+	return messages, summary, pinned, p.getMode(), len(messages)
 }
 
 // Restore loads persisted session state.
 func (p *Processor) Restore(messages []llm.Message, summary string, pinned []string, mode types.AgentMode) {
-	if len(messages) > 0 {
-		p.ctxMgr.messages = messages
-	}
-	p.ctxMgr.summary = summary
-	if pinned != nil {
-		p.ctxMgr.pinned = pinned
-	}
+	p.ctxMgr.restore(messages, summary, pinned)
+	// Guard against sessions persisted mid-turn with unanswered tool calls.
+	p.ctxMgr.closeOpenToolCalls("[Session restored before this tool ran]")
 	if mode.Valid() {
 		p.SetMode(mode)
 	}

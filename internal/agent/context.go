@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
@@ -15,19 +16,22 @@ import (
 )
 
 // contextManager holds the conversation and builds the system prompt + windowed
-// message list for each turn.
+// message list for each turn. mu guards all mutable state: the processor
+// goroutine appends messages while the TUI goroutine reads stats/snapshots.
 type contextManager struct {
 	rootDir             string
 	gitIgnore           project.GitIgnoreChecker
 	cfg                 config.Config
-	mode                types.AgentMode
-	messages            []llm.Message
-	summary             string
 	maxTokens           int
-	fileTree            string
 	projectInstructions string
-	skillsCatalog       string
-	pinned              []string
+
+	mu            sync.Mutex
+	mode          types.AgentMode
+	messages      []llm.Message
+	summary       string
+	fileTree      string
+	skillsCatalog string
+	pinned        []string
 }
 
 func newContextManager(rootDir string, cfg config.Config, checker project.GitIgnoreChecker) *contextManager {
@@ -50,14 +54,20 @@ func newContextManager(rootDir string, cfg config.Config, checker project.GitIgn
 func estimateTokens(s string) int { return (len(s) + 3) / 4 }
 
 func (c *contextManager) addUser(text string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.messages = append(c.messages, llm.Message{Role: llm.RoleUser, Text: text})
 }
 
 func (c *contextManager) addAssistant(m llm.Message) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.messages = append(c.messages, m)
 }
 
 func (c *contextManager) addToolResult(call llm.ToolCall, result string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.messages = append(c.messages, llm.Message{
 		Role:       llm.RoleTool,
 		Text:       result,
@@ -66,7 +76,54 @@ func (c *contextManager) addToolResult(call llm.ToolCall, result string) {
 	})
 }
 
+// closeOpenToolCalls appends a synthetic result for every tool call in the
+// last assistant message that has no matching result yet, keeping the
+// tool_use/tool_result pairing valid after an aborted turn. No-op when the
+// history is already consistent.
+func (c *contextManager) closeOpenToolCalls(note string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	last := -1
+	for i := len(c.messages) - 1; i >= 0; i-- {
+		if c.messages[i].Role == llm.RoleAssistant {
+			last = i
+			break
+		}
+	}
+	if last == -1 || len(c.messages[last].ToolCalls) == 0 {
+		return
+	}
+	answered := map[string]bool{}
+	for _, m := range c.messages[last+1:] {
+		if m.Role == llm.RoleTool {
+			answered[m.ToolCallID] = true
+		}
+	}
+	for _, call := range c.messages[last].ToolCalls {
+		if !answered[call.ID] {
+			c.messages = append(c.messages, llm.Message{
+				Role:       llm.RoleTool,
+				Text:       note,
+				ToolCallID: call.ID,
+				ToolName:   call.Name,
+			})
+		}
+	}
+}
+
+func (c *contextManager) setMode(mode types.AgentMode) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.mode = mode
+}
+
 func (c *contextManager) buildSystem() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buildSystemLocked()
+}
+
+func (c *contextManager) buildSystemLocked() string {
 	parts := []string{basePrompt, modePrompts[c.mode]}
 	if c.projectInstructions != "" {
 		parts = append(parts, "--- Project Instructions (COOLCODE.md) ---\n"+c.projectInstructions)
@@ -106,7 +163,9 @@ func (c *contextManager) buildSystem() string {
 // window returns the trailing slice of messages that fits within the token
 // budget, starting at a real user turn so tool-call/result pairs stay intact.
 func (c *contextManager) window() []llm.Message {
-	budget := c.maxTokens - estimateTokens(c.buildSystem())
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	budget := c.maxTokens - estimateTokens(c.buildSystemLocked())
 	if budget < 2000 {
 		budget = 2000
 	}
@@ -141,14 +200,22 @@ func (c *contextManager) refreshTree() {
 	if c.cfg.Features.FileTreeMaxDepth != nil {
 		maxDepth = *c.cfg.Features.FileTreeMaxDepth
 	}
-	c.fileTree = project.FolderStructure(c.rootDir, c.gitIgnore, maxDepth)
+	tree := project.FolderStructure(c.rootDir, c.gitIgnore, maxDepth)
+	c.mu.Lock()
+	c.fileTree = tree
+	c.mu.Unlock()
 }
 
 func (c *contextManager) reloadSkills() {
-	c.skillsCatalog = skills.Catalog(c.rootDir)
+	catalog := skills.Catalog(c.rootDir)
+	c.mu.Lock()
+	c.skillsCatalog = catalog
+	c.mu.Unlock()
 }
 
 func (c *contextManager) applySummary(summary string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.summary = summary
 	const keepRecent = 6
 	if len(c.messages) > keepRecent {
@@ -164,8 +231,65 @@ func (c *contextManager) applySummary(summary string) {
 }
 
 func (c *contextManager) stats() (messageCount, totalTokens int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, m := range c.messages {
 		totalTokens += estimateTokens(m.Text)
 	}
 	return len(c.messages), totalTokens
+}
+
+// snapshotMessages returns a copy of the message history.
+func (c *contextManager) snapshotMessages() []llm.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]llm.Message(nil), c.messages...)
+}
+
+// sessionState returns copies of the persistable state under one lock.
+func (c *contextManager) sessionState() (messages []llm.Message, summary string, pinned []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]llm.Message(nil), c.messages...), c.summary, append([]string(nil), c.pinned...)
+}
+
+func (c *contextManager) pin(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, e := range c.pinned {
+		if e == path {
+			return
+		}
+	}
+	c.pinned = append(c.pinned, path)
+}
+
+func (c *contextManager) unpin(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := c.pinned[:0]
+	for _, e := range c.pinned {
+		if e != path {
+			out = append(out, e)
+		}
+	}
+	c.pinned = out
+}
+
+func (c *contextManager) pinnedFiles() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string{}, c.pinned...)
+}
+
+func (c *contextManager) restore(messages []llm.Message, summary string, pinned []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(messages) > 0 {
+		c.messages = messages
+	}
+	c.summary = summary
+	if pinned != nil {
+		c.pinned = pinned
+	}
 }

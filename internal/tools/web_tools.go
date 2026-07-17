@@ -49,7 +49,7 @@ var webFetchTool = Tool{
 	Schema: obj(map[string]any{
 		"url": strProp("The absolute http(s) URL to fetch."),
 	}, "url"),
-	Execute: func(_ Context, args json.RawMessage) types.ToolResult {
+	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
 			URL string `json:"url"`
 		}
@@ -60,7 +60,7 @@ var webFetchTool = Tool{
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 			return fail("Invalid URL", "Only http and https URLs are allowed.")
 		}
-		ctxT, cancel := context.WithTimeout(context.Background(), webTimeout)
+		ctxT, cancel := context.WithTimeout(ctx.Context(), webTimeout)
 		defer cancel()
 		req, _ := http.NewRequestWithContext(ctxT, http.MethodGet, u.String(), nil)
 		req.Header.Set("User-Agent", "cool-code/2.0 (+https://github.com/rushikeshg25/cool-code)")
@@ -130,7 +130,7 @@ var webSearchTool = Tool{
 	Schema: obj(map[string]any{
 		"query": strProp("The search query."),
 	}, "query"),
-	Execute: func(_ Context, args json.RawMessage) types.ToolResult {
+	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
 			Query string `json:"query"`
 		}
@@ -141,7 +141,7 @@ var webSearchTool = Tool{
 			return fail("Invalid arguments", "query is required.")
 		}
 		endpoint := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(a.Query)
-		ctxT, cancel := context.WithTimeout(context.Background(), webTimeout)
+		ctxT, cancel := context.WithTimeout(ctx.Context(), webTimeout)
 		defer cancel()
 		req, _ := http.NewRequestWithContext(ctxT, http.MethodGet, endpoint, nil)
 		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; cool-code/2.0)")

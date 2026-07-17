@@ -12,7 +12,7 @@ var gitStatusTool = Tool{
 	Description: "Shows a git status summary.",
 	Schema:      obj(map[string]any{}),
 	Execute: func(ctx Context, _ json.RawMessage) types.ToolResult {
-		res := execCommand("git status --short -b", ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), "git status --short -b", ctx.RootDir, 0)
 		display := "Git status"
 		if !res.success {
 			display = "Git status failed"
@@ -46,7 +46,7 @@ var gitDiffTool = Tool{
 			command += " --staged"
 		}
 		command += fileArg
-		res := execCommand(command, ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
 		display := "Git diff"
 		if !res.success {
 			display = "Git diff failed"
@@ -77,7 +77,7 @@ var gitCommitTool = Tool{
 			return fail("Invalid arguments", "Commit message is required.")
 		}
 		if a.All {
-			if res := execCommand("git add -A", ctx.RootDir, 0); !res.success {
+			if res := execCommand(ctx.Context(), "git add -A", ctx.RootDir, 0); !res.success {
 				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined()}
 			}
 		} else if len(a.Files) > 0 {
@@ -88,11 +88,11 @@ var gitCommitTool = Tool{
 				}
 				rels = append(rels, "'"+shellEscapeSingleQuotes(toRelative(f, ctx.RootDir))+"'")
 			}
-			if res := execCommand("git add -- "+strings.Join(rels, " "), ctx.RootDir, 0); !res.success {
+			if res := execCommand(ctx.Context(), "git add -- "+strings.Join(rels, " "), ctx.RootDir, 0); !res.success {
 				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined()}
 			}
 		}
-		res := execCommand("git commit -m '"+shellEscapeSingleQuotes(a.Message)+"'", ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), "git commit -m '"+shellEscapeSingleQuotes(a.Message)+"'", ctx.RootDir, 0)
 		display := "Commit created"
 		if !res.success {
 			display = "Commit failed"

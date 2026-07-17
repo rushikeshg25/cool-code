@@ -39,7 +39,7 @@ var shellCommandTool = Tool{
 				return fail("Invalid directory", v)
 			}
 		}
-		res := execCommand(a.Command, dir, 0)
+		res := execCommand(ctx.Context(), a.Command, dir, 0)
 		llm := res.stdout
 		if res.stderr != "" {
 			llm += "\nSTDERR:\n" + res.stderr
@@ -79,7 +79,7 @@ var runTestsTool = Tool{
 		if command == "" {
 			return fail("No test command found", "No test command found. Provide a command explicitly.")
 		}
-		res := execCommand(command, ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
 		display := "Tests completed successfully"
 		if !res.success {
 			display = "Tests failed"
@@ -117,7 +117,7 @@ var lintFixTool = Tool{
 		if command == "" {
 			return fail("No lint/format command found", "No lint/format command found. Provide a command explicitly.")
 		}
-		res := execCommand(command, ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
 		display := "Lint/format completed successfully"
 		if !res.success {
 			display = "Lint/format failed"
@@ -145,7 +145,7 @@ var formatFileTool = Tool{
 		}
 		rel := toRelative(a.AbsolutePath, ctx.RootDir)
 		command := "npx prettier --write '" + shellEscapeSingleQuotes(rel) + "'"
-		res := execCommand(command, ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
 		display := "File formatted"
 		if !res.success {
 			display = "Formatting failed"

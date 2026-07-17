@@ -4,6 +4,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 
@@ -14,9 +15,20 @@ import (
 
 // Context is the ambient state every tool receives.
 type Context struct {
+	// Ctx cancels long-running tool work (shell commands, web requests) when
+	// the turn is aborted. May be nil; use Context() for a non-nil value.
+	Ctx       context.Context
 	RootDir   string
 	Config    config.Config
 	GitIgnore project.GitIgnoreChecker
+}
+
+// Context returns the cancellation context, defaulting to context.Background().
+func (c Context) Context() context.Context {
+	if c.Ctx != nil {
+		return c.Ctx
+	}
+	return context.Background()
 }
 
 // Tool is a single callable capability exposed to the model.

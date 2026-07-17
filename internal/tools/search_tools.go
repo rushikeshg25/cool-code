@@ -157,7 +157,7 @@ var findSymbolTool = Tool{
 		}
 		command := "rg -n --hidden --glob '!.git/*' --glob '!node_modules/*'" + includeFlag +
 			" '" + shellEscapeSingleQuotes(a.Pattern) + "' '" + shellEscapeSingleQuotes(searchPath) + "'"
-		res := execCommand(command, ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
 		display := "Symbol search results"
 		if !res.success {
 			display = "Symbol search failed"

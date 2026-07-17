@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/atotto/clipboard"
@@ -75,6 +76,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 	m.processing = false
 	m.status = ""
+	m.cancelTurn = nil
+	if errors.Is(msg.err, context.Canceled) {
+		m.appendSystem("Cancelled.")
+		m.persist()
+		return m, nil
+	}
 	if msg.err != nil {
 		m.appendSystem("Error: " + msg.err.Error())
 		return m, nil
@@ -114,7 +121,16 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.Type {
 	case tea.KeyCtrlC:
-		return m, tea.Quit
+		if m.processing {
+			m.interruptTurn()
+			return m, nil
+		}
+		return m.quit()
+	case tea.KeyEsc:
+		if m.processing {
+			m.interruptTurn()
+		}
+		return m, nil
 	case tea.KeyShiftTab:
 		next := nextMode(m.proc.Mode())
 		m.proc.SetMode(next)
@@ -222,11 +238,27 @@ func (m *model) runQuery(text string) (tea.Model, tea.Cmd) {
 	m.processing = true
 	m.appendUser(text)
 	m.status = "Thinking…"
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancelTurn = cancel
 	proc := m.proc
 	br := m.bridge
 	run := func() tea.Msg {
-		final, err := proc.ProcessQuery(context.Background(), text, br)
+		final, err := proc.ProcessQuery(ctx, text, br)
 		return doneMsg{final: final, err: err}
 	}
 	return m, tea.Batch(run, m.sp.Tick)
+}
+
+// interruptTurn cancels the in-flight turn; handleDone reports the outcome.
+func (m *model) interruptTurn() {
+	if m.cancelTurn != nil {
+		m.status = "Cancelling…"
+		m.cancelTurn()
+	}
+}
+
+// quit persists the session before exiting so nothing is lost on Ctrl+C.
+func (m *model) quit() (tea.Model, tea.Cmd) {
+	m.persist()
+	return m, tea.Quit
 }
