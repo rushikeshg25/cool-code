@@ -87,15 +87,20 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 				ToolCalls []openaiToolCall `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 	}
 	if err := postJSON(ctx, "https://api.openai.com/v1/chat/completions", headers, body, &resp); err != nil {
 		return Message{}, err
 	}
+	usage := Usage{Input: resp.Usage.PromptTokens, Output: resp.Usage.CompletionTokens}
 	if len(resp.Choices) == 0 {
-		return Message{Role: RoleAssistant}, nil
+		return Message{Role: RoleAssistant, Usage: usage}, nil
 	}
 	msg := resp.Choices[0].Message
-	out := Message{Role: RoleAssistant, Text: msg.Content}
+	out := Message{Role: RoleAssistant, Text: msg.Content, Usage: usage}
 	for _, tc := range msg.ToolCalls {
 		args := tc.Function.Arguments
 		if args == "" {

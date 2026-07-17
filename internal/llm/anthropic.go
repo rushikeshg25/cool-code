@@ -91,12 +91,16 @@ func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message,
 
 	var resp struct {
 		Content []anthropicContentBlock `json:"content"`
+		Usage   struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
 	}
 	if err := postJSON(ctx, "https://api.anthropic.com/v1/messages", headers, body, &resp); err != nil {
 		return Message{}, err
 	}
 
-	out := Message{Role: RoleAssistant}
+	out := Message{Role: RoleAssistant, Usage: Usage{Input: resp.Usage.InputTokens, Output: resp.Usage.OutputTokens}}
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "text":

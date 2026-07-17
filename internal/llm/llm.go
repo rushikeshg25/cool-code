@@ -28,6 +28,12 @@ type ToolCall struct {
 	Arguments json.RawMessage `json:"arguments"`
 }
 
+// Usage reports token counts from the provider for one completion.
+type Usage struct {
+	Input  int `json:"input,omitempty"`
+	Output int `json:"output,omitempty"`
+}
+
 // Message is one turn in the conversation. Assistant turns may carry ToolCalls;
 // tool turns carry a result addressed to a prior ToolCall via ToolCallID.
 type Message struct {
@@ -36,6 +42,7 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	ToolName   string     `json:"toolName,omitempty"`
+	Usage      Usage      `json:"usage,omitzero"`
 }
 
 // ToolDef describes a tool for the provider (JSON-schema parameters).

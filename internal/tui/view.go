@@ -80,7 +80,11 @@ func (m *model) renderStatusBar() string {
 	mode := modeStyle(m.mode).Render(string(m.mode))
 	model := statusValue.Render(status.Model)
 	msgs := statusBar.Render(fmt.Sprintf("%d msgs", status.MessageCount))
-	toks := statusBar.Render(fmt.Sprintf("%.1fk tok", float64(status.TotalTokens)/1000))
+	tokFmt := "%.1fk ctx tok"
+	if status.Estimated {
+		tokFmt = "~%.1fk ctx tok"
+	}
+	toks := statusBar.Render(fmt.Sprintf(tokFmt, float64(status.TotalTokens)/1000))
 	return statusBar.Render(dir + sep + mode + sep + model + sep + msgs + sep + toks)
 }
 

@@ -71,8 +71,12 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		}
 	case "/context":
 		status := m.proc.GetStatus()
-		m.appendSystem(fmt.Sprintf("Context: %d messages, ~%.1fk tokens, %d pinned",
-			status.MessageCount, float64(status.TotalTokens)/1000, len(m.proc.PinnedFiles())))
+		approx := ""
+		if status.Estimated {
+			approx = "~"
+		}
+		m.appendSystem(fmt.Sprintf("Context: %d messages, %s%.1fk tokens, %d pinned",
+			status.MessageCount, approx, float64(status.TotalTokens)/1000, len(m.proc.PinnedFiles())))
 	case "/sessions":
 		sessions := session.List(m.rootDir)
 		if len(sessions) == 0 {

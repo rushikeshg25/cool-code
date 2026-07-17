@@ -44,10 +44,11 @@ type Processor struct {
 	allowDangerous bool
 	confirmEdits   bool
 
-	mu       sync.Mutex
-	mode     types.AgentMode
-	taskList *types.TaskList
-	queue    []string
+	mu        sync.Mutex
+	mode      types.AgentMode
+	taskList  *types.TaskList
+	queue     []string
+	lastUsage llm.Usage
 
 	confirm     func(string) bool
 	confirmEdit func(string, string) bool
@@ -146,6 +147,11 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		resp, err := p.provider.Complete(ctx, req)
 		if err != nil {
 			return finalText, err
+		}
+		if resp.Usage.Input > 0 || resp.Usage.Output > 0 {
+			p.mu.Lock()
+			p.lastUsage = resp.Usage
+			p.mu.Unlock()
 		}
 		p.ctxMgr.addAssistant(resp)
 
@@ -275,18 +281,31 @@ type Status struct {
 	Model        string
 	Mode         types.AgentMode
 	MessageCount int
-	TotalTokens  int
+	// TotalTokens is the context size: the last request's real input tokens
+	// when the provider reported usage, otherwise a len/4 estimate.
+	TotalTokens int
+	// Estimated is true when TotalTokens is the fallback estimate.
+	Estimated bool
 }
 
 // GetStatus returns a footer snapshot.
 func (p *Processor) GetStatus() Status {
 	count, tokens := p.ctxMgr.stats()
-	return Status{
+	p.mu.Lock()
+	usage := p.lastUsage
+	p.mu.Unlock()
+	s := Status{
 		Model:        p.provider.Model(),
 		Mode:         p.getMode(),
 		MessageCount: count,
 		TotalTokens:  tokens,
+		Estimated:    true,
 	}
+	if usage.Input > 0 {
+		s.TotalTokens = usage.Input
+		s.Estimated = false
+	}
+	return s
 }
 
 func (p *Processor) getMode() types.AgentMode {

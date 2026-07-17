@@ -96,11 +96,18 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, er
 		Candidates []struct {
 			Content geminiContent `json:"content"`
 		} `json:"candidates"`
+		UsageMetadata struct {
+			PromptTokenCount     int `json:"promptTokenCount"`
+			CandidatesTokenCount int `json:"candidatesTokenCount"`
+		} `json:"usageMetadata"`
 	}
 	if err := postJSON(ctx, url, nil, body, &resp); err != nil {
 		return Message{}, err
 	}
-	out := Message{Role: RoleAssistant}
+	out := Message{Role: RoleAssistant, Usage: Usage{
+		Input:  resp.UsageMetadata.PromptTokenCount,
+		Output: resp.UsageMetadata.CandidatesTokenCount,
+	}}
 	if len(resp.Candidates) == 0 {
 		return out, nil
 	}
