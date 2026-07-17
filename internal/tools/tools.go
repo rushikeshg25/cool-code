@@ -39,6 +39,9 @@ type Tool struct {
 	Schema map[string]any
 	// Mutating marks tools blocked in ask mode.
 	Mutating bool
+	// ReadOnly marks side-effect-free tools that may run concurrently and are
+	// available to explore subagents.
+	ReadOnly bool
 	// Execute runs the tool with raw JSON arguments and the ambient context.
 	Execute func(ctx Context, args json.RawMessage) types.ToolResult
 }

@@ -18,6 +18,7 @@ var globTool = Tool{
 	Name: "glob",
 	Description: "Finds files matching a glob pattern (e.g. src/**/*.go, **/*.md), returning absolute paths. " +
 		"Respects .gitignore and skips node_modules.",
+	ReadOnly: true,
 	Schema: obj(map[string]any{
 		"pattern": strProp("The glob pattern to match against (e.g. **/*.py, docs/*.md)."),
 	}, "pattern"),
@@ -57,6 +58,7 @@ var grepTool = Tool{
 	Name: "grep",
 	Description: "Searches for a regular expression within file contents under a directory. " +
 		"Optionally filter files by an include regex. Returns matching lines with file paths and line numbers.",
+	ReadOnly: true,
 	Schema: obj(map[string]any{
 		"pattern": strProp("The regular expression to search for within file contents."),
 		"path":    strProp("Optional absolute path to a directory or file to search. Defaults to project root."),
@@ -130,6 +132,7 @@ var grepTool = Tool{
 var findSymbolTool = Tool{
 	Name:        "find_symbol",
 	Description: "Searches for a symbol or pattern using ripgrep (rg).",
+	ReadOnly:    true,
 	Schema: obj(map[string]any{
 		"pattern": strProp("Regex or string pattern to search for."),
 		"include": strProp("Optional glob filter for files."),

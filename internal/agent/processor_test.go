@@ -230,6 +230,51 @@ func TestConfirmEditsIndependentOfAllowDangerous(t *testing.T) {
 	}
 }
 
+func TestParallelToolResultsKeepCallOrder(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("content of "+name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := filepath.Join(root, "new.txt")
+	provider := &fakeProvider{responses: []llm.Message{
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+			toolCall("1", "read_file", map[string]any{"absolutePath": filepath.Join(root, "a.txt")}),
+			toolCall("2", "read_file", map[string]any{"absolutePath": filepath.Join(root, "b.txt")}),
+			toolCall("3", "new_file", map[string]any{"filePath": target, "content": "made"}),
+			toolCall("4", "read_file", map[string]any{"absolutePath": filepath.Join(root, "c.txt")}),
+		}},
+		{Role: llm.RoleAssistant, Text: "done"},
+	}}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+	rep := &captureReporter{}
+
+	if _, err := p.ProcessQuery(context.Background(), "read and create", rep); err != nil {
+		t.Fatal(err)
+	}
+	// Tool results must appear in original call order regardless of the
+	// read-only calls running concurrently.
+	var ids []string
+	for _, m := range p.ctxMgr.messages {
+		if m.Role == llm.RoleTool {
+			ids = append(ids, m.ToolCallID)
+		}
+	}
+	want := []string{"1", "2", "3", "4"}
+	if len(ids) != len(want) {
+		t.Fatalf("tool results = %v", ids)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("result order = %v, want %v", ids, want)
+		}
+	}
+	if raw, _ := os.ReadFile(target); string(raw) != "made" {
+		t.Fatalf("mutating tool did not run: %q", raw)
+	}
+}
+
 func TestProcessQueryTaskList(t *testing.T) {
 	root := t.TempDir()
 	provider := &fakeProvider{responses: []llm.Message{

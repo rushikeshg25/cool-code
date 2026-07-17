@@ -10,6 +10,7 @@ import (
 var gitStatusTool = Tool{
 	Name:        "git_status",
 	Description: "Shows a git status summary.",
+	ReadOnly:    true,
 	Schema:      obj(map[string]any{}),
 	Execute: func(ctx Context, _ json.RawMessage) types.ToolResult {
 		res := execCommand(ctx.Context(), "git status --short -b", ctx.RootDir, 0)
@@ -24,6 +25,7 @@ var gitStatusTool = Tool{
 var gitDiffTool = Tool{
 	Name:        "git_diff",
 	Description: "Shows a git diff. Optionally specify a file path and/or the staged diff.",
+	ReadOnly:    true,
 	Schema: obj(map[string]any{
 		"filePath": strProp("Absolute path to a file to diff (optional)."),
 		"staged":   boolProp("If true, show the staged diff."),

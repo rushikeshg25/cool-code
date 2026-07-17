@@ -14,6 +14,7 @@ import (
 var projectSummaryTool = Tool{
 	Name:        "project_summary",
 	Description: "Summarizes the project (entrypoints, frameworks, scripts, languages).",
+	ReadOnly:    true,
 	Schema:      obj(map[string]any{}),
 	Execute: func(ctx Context, _ json.RawMessage) types.ToolResult {
 		scan := project.ScanProject(ctx.RootDir)

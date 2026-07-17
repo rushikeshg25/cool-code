@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -169,54 +170,98 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		toolCtx := p.toolCtx
 		toolCtx.Ctx = ctx
 		treeDirty := false
-		interrupted := false
-		for _, call := range resp.ToolCalls {
+
+		// Sequential pre-pass in call order: resolve the task list, ask-mode
+		// blocks, and confirmation prompts (only one overlay can exist), and
+		// partition the surviving calls into read-only and mutating sets.
+		n := len(resp.ToolCalls)
+		results := make([]*types.ToolResult, n)
+		executed := make([]bool, n) // true when a real tool ran (fires reporter.Tool)
+		var readIdx, mutIdx []int
+		for i, call := range resp.ToolCalls {
+			switch {
+			case call.Name == updateTaskListTool:
+				results[i] = &types.ToolResult{LLMResult: p.handleTaskList(call, reporter)}
+			case p.getMode() == types.ModeAsk && tools.IsMutating(call.Name):
+				results[i] = &types.ToolResult{LLMResult: "[ASK MODE] Cannot execute tool '" + call.Name + "' in Ask mode. Only reading and answering questions is allowed."}
+			default:
+				if declined, msg := p.gate(call); declined {
+					results[i] = &types.ToolResult{LLMResult: msg}
+				} else if tools.IsReadOnly(call.Name) {
+					readIdx = append(readIdx, i)
+				} else {
+					mutIdx = append(mutIdx, i)
+				}
+			}
+		}
+
+		// Read-only calls run concurrently; each worker writes only results[i].
+		if len(readIdx) > 0 {
+			if reporter != nil {
+				if len(readIdx) == 1 {
+					reporter.Status(toolStatus(resp.ToolCalls[readIdx[0]].Name))
+				} else {
+					reporter.Status("Running " + strconv.Itoa(len(readIdx)) + " tools in parallel…")
+				}
+			}
+			var wg sync.WaitGroup
+			for _, i := range readIdx {
+				wg.Add(1)
+				go func(i int, call llm.ToolCall) {
+					defer wg.Done()
+					r := tools.Run(toolCtx, call.Name, call.Arguments)
+					results[i] = &r
+				}(i, resp.ToolCalls[i])
+			}
+			wg.Wait()
+			for _, i := range readIdx {
+				executed[i] = true
+			}
+		}
+
+		// Mutating calls run sequentially, in original order.
+		var cancelErr error
+		for _, i := range mutIdx {
 			if err := ctx.Err(); err != nil {
-				return finalText, err
+				cancelErr = err
+				break
 			}
-			if call.Name == updateTaskListTool {
-				p.handleTaskList(call, reporter)
-				continue
-			}
-
-			// Ask mode blocks mutating tools.
-			if p.getMode() == types.ModeAsk && tools.IsMutating(call.Name) {
-				p.ctxMgr.addToolResult(call, "[ASK MODE] Cannot execute tool '"+call.Name+"' in Ask mode. Only reading and answering questions is allowed.")
-				continue
-			}
-
-			if declined, msg := p.gate(call); declined {
-				p.ctxMgr.addToolResult(call, msg)
-				continue
-			}
-
+			call := resp.ToolCalls[i]
 			if reporter != nil {
 				reporter.Status(toolStatus(call.Name))
 			}
-			result := tools.Run(toolCtx, call.Name, call.Arguments)
-			p.ctxMgr.addToolResult(call, result.LLMResult)
-			if reporter != nil {
-				reporter.Tool(call.Name, result.Display)
-			}
+			r := tools.Run(toolCtx, call.Name, call.Arguments)
+			results[i] = &r
+			executed[i] = true
 			if structuralTools[call.Name] {
 				treeDirty = true
 			}
+		}
 
-			if msg := p.drainQueue(); msg != "" {
-				p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + msg)
-				interrupted = true
-				break
+		// Append results in original call order so tool_call/result pairing
+		// stays deterministic. Calls skipped by cancellation stay nil and are
+		// closed by the deferred closeOpenToolCalls.
+		for i, call := range resp.ToolCalls {
+			if results[i] == nil {
+				continue
+			}
+			p.ctxMgr.addToolResult(call, results[i].LLMResult)
+			if executed[i] && reporter != nil {
+				reporter.Tool(call.Name, results[i].Display)
 			}
 		}
 
 		if treeDirty {
 			p.ctxMgr.refreshTree()
 		}
-		if interrupted {
+		if cancelErr != nil {
+			return finalText, cancelErr
+		}
+		if msg := p.drainQueue(); msg != "" {
+			p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + msg)
 			if reporter != nil {
 				reporter.Status(randomThinking())
 			}
-			continue
 		}
 	}
 
@@ -241,7 +286,8 @@ func (p *Processor) gate(call llm.ToolCall) (bool, string) {
 	return false, ""
 }
 
-func (p *Processor) handleTaskList(call llm.ToolCall, reporter Reporter) {
+// handleTaskList records the model's task list and returns the tool result.
+func (p *Processor) handleTaskList(call llm.ToolCall, reporter Reporter) string {
 	var list types.TaskList
 	if err := json.Unmarshal(call.Arguments, &list); err == nil {
 		p.mu.Lock()
@@ -251,7 +297,7 @@ func (p *Processor) handleTaskList(call llm.ToolCall, reporter Reporter) {
 			reporter.Tasks(&list)
 		}
 	}
-	p.ctxMgr.addToolResult(call, "Task list updated.")
+	return "Task list updated."
 }
 
 func (p *Processor) summarize(ctx context.Context) {

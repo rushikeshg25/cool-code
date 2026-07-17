@@ -17,6 +17,7 @@ var readFileTool = Tool{
 	Name: "read_file",
 	Description: "Reads and returns the content of a specified file from the local filesystem. " +
 		"For text files, it can read specific line ranges.",
+	ReadOnly: true,
 	Schema: obj(map[string]any{
 		"absolutePath": strProp("The absolute path to the file to read. Relative paths are not supported."),
 		"startLine":    numProp("Optional: 1-based line to start reading from. Requires endLine."),
@@ -85,6 +86,7 @@ var readFileTool = Tool{
 var openFileAtTool = Tool{
 	Name:        "open_file_at",
 	Description: "Reads a file or a specific line range. Line numbers are 1-based.",
+	ReadOnly:    true,
 	Schema: obj(map[string]any{
 		"absolutePath": strProp("Absolute path to the file to read."),
 		"startLine":    numProp("Start line (1-based). Use with endLine."),
@@ -237,6 +239,7 @@ var renameFileTool = Tool{
 var listRecentFilesTool = Tool{
 	Name:        "list_recent_files",
 	Description: "Lists recently modified files in the project, most recent first.",
+	ReadOnly:    true,
 	Schema: obj(map[string]any{
 		"limit":   numProp("Maximum number of files to return. Defaults to 20."),
 		"include": strProp("Optional glob to include files (e.g. src/**/*.ts)."),

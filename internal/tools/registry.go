@@ -139,3 +139,20 @@ func IsMutating(name string) bool {
 	t, ok := byName[name]
 	return ok && t.Mutating
 }
+
+// IsReadOnly reports whether a tool is side-effect-free.
+func IsReadOnly(name string) bool {
+	t, ok := byName[name]
+	return ok && t.ReadOnly
+}
+
+// ReadOnlyTools returns the read-only subset of All, in order.
+func ReadOnlyTools() []Tool {
+	var out []Tool
+	for _, t := range All {
+		if t.ReadOnly {
+			out = append(out, t)
+		}
+	}
+	return out
+}

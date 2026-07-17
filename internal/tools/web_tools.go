@@ -46,6 +46,7 @@ func htmlToText(html string) string {
 var webFetchTool = Tool{
 	Name:        "web_fetch",
 	Description: "Fetches the contents of an http(s) URL and returns it as readable text (HTML is stripped).",
+	ReadOnly:    true,
 	Schema: obj(map[string]any{
 		"url": strProp("The absolute http(s) URL to fetch."),
 	}, "url"),
@@ -127,6 +128,7 @@ func parseDuckDuckGo(html string) []searchResult {
 var webSearchTool = Tool{
 	Name:        "web_search",
 	Description: "Searches the web and returns result titles, URLs, and snippets. Follow up with web_fetch for details.",
+	ReadOnly:    true,
 	Schema: obj(map[string]any{
 		"query": strProp("The search query."),
 	}, "query"),
