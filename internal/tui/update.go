@@ -34,9 +34,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = string(msg)
 		return m, nil
 
+	case deltaMsg:
+		m.appendDelta(string(msg))
+		return m, nil
+
 	case assistantMsg:
 		m.status = ""
-		m.appendAssistant(string(msg))
+		m.finishStream(string(msg))
 		return m, nil
 
 	case toolMsg:
@@ -86,6 +90,7 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 	m.status = ""
 	m.cancelTurn = nil
 	m.subagents = nil
+	m.streamIdx = -1
 	if errors.Is(msg.err, context.Canceled) {
 		m.appendSystem("Cancelled.")
 		m.persist()

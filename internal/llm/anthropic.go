@@ -27,7 +27,8 @@ type anthropicMessage struct {
 	Content []anthropicContentBlock `json:"content"`
 }
 
-func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message, error) {
+// buildBody converts a Request into the Anthropic messages-API body + headers.
+func (p *anthropicProvider) buildBody(req Request) (map[string]any, map[string]string) {
 	var messages []anthropicMessage
 	for _, m := range req.Messages {
 		switch m.Role {
@@ -88,6 +89,11 @@ func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message,
 		"x-api-key":         p.apiKey,
 		"anthropic-version": "2023-06-01",
 	}
+	return body, headers
+}
+
+func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message, error) {
+	body, headers := p.buildBody(req)
 
 	var resp struct {
 		Content []anthropicContentBlock `json:"content"`
@@ -96,7 +102,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message,
 			OutputTokens int `json:"output_tokens"`
 		} `json:"usage"`
 	}
-	if err := postJSON(ctx, "https://api.anthropic.com/v1/messages", headers, body, &resp); err != nil {
+	if err := postJSON(ctx, anthropicURL, headers, body, &resp); err != nil {
 		return Message{}, err
 	}
 
@@ -112,6 +118,86 @@ func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message,
 			}
 			out.ToolCalls = append(out.ToolCalls, ToolCall{ID: block.ID, Name: block.Name, Arguments: args})
 		}
+	}
+	return out, nil
+}
+
+// Stream implements Streamer using the Anthropic SSE protocol.
+func (p *anthropicProvider) Stream(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
+	body, headers := p.buildBody(req)
+	body["stream"] = true
+
+	out := Message{Role: RoleAssistant}
+	type blockState struct {
+		kind string // "text" or "tool_use"
+		id   string
+		name string
+		args []byte
+	}
+	blocks := map[int]*blockState{}
+
+	err := streamSSE(ctx, anthropicURL, headers, body, func(event string, data []byte) {
+		var ev struct {
+			Type  string `json:"type"`
+			Index int    `json:"index"`
+			// message_start
+			Message struct {
+				Usage struct {
+					InputTokens int `json:"input_tokens"`
+				} `json:"usage"`
+			} `json:"message"`
+			// content_block_start
+			ContentBlock struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"content_block"`
+			// content_block_delta
+			Delta struct {
+				Type        string `json:"type"`
+				Text        string `json:"text"`
+				PartialJSON string `json:"partial_json"`
+			} `json:"delta"`
+			// message_delta
+			Usage struct {
+				OutputTokens int `json:"output_tokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal(data, &ev) != nil {
+			return
+		}
+		switch ev.Type {
+		case "message_start":
+			out.Usage.Input = ev.Message.Usage.InputTokens
+		case "content_block_start":
+			blocks[ev.Index] = &blockState{kind: ev.ContentBlock.Type, id: ev.ContentBlock.ID, name: ev.ContentBlock.Name}
+		case "content_block_delta":
+			b := blocks[ev.Index]
+			if b == nil {
+				return
+			}
+			switch ev.Delta.Type {
+			case "text_delta":
+				out.Text += ev.Delta.Text
+				onDelta(ev.Delta.Text)
+			case "input_json_delta":
+				b.args = append(b.args, ev.Delta.PartialJSON...)
+			}
+		case "content_block_stop":
+			b := blocks[ev.Index]
+			if b != nil && b.kind == "tool_use" {
+				args := json.RawMessage(b.args)
+				if len(args) == 0 {
+					args = json.RawMessage("{}")
+				}
+				out.ToolCalls = append(out.ToolCalls, ToolCall{ID: b.id, Name: b.name, Arguments: args})
+			}
+		case "message_delta":
+			out.Usage.Output = ev.Usage.OutputTokens
+		}
+	})
+	if err != nil {
+		return Message{}, err
 	}
 	return out, nil
 }

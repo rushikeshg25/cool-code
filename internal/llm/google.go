@@ -31,7 +31,8 @@ type geminiContent struct {
 	Parts []geminiPart `json:"parts"`
 }
 
-func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, error) {
+// buildBody converts a Request into the generateContent body.
+func (p *googleProvider) buildBody(req Request) map[string]any {
 	var contents []geminiContent
 	for _, m := range req.Messages {
 		switch m.Role {
@@ -89,8 +90,12 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, er
 	if len(genConfig) > 0 {
 		body["generationConfig"] = genConfig
 	}
+	return body
+}
 
-	url := "https://generativelanguage.googleapis.com/v1beta/models/" + p.model + ":generateContent?key=" + p.apiKey
+func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, error) {
+	body := p.buildBody(req)
+	url := googleBaseURL + p.model + ":generateContent?key=" + p.apiKey
 
 	var resp struct {
 		Candidates []struct {
@@ -126,6 +131,56 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, er
 				Arguments: args,
 			})
 		}
+	}
+	return out, nil
+}
+
+// Stream implements Streamer via streamGenerateContent with alt=sse. Each
+// chunk is a partial generateContent response.
+func (p *googleProvider) Stream(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
+	body := p.buildBody(req)
+	url := googleBaseURL + p.model + ":streamGenerateContent?alt=sse&key=" + p.apiKey
+
+	out := Message{Role: RoleAssistant}
+	err := streamSSE(ctx, url, nil, body, func(_ string, data []byte) {
+		var chunk struct {
+			Candidates []struct {
+				Content geminiContent `json:"content"`
+			} `json:"candidates"`
+			UsageMetadata *struct {
+				PromptTokenCount     int `json:"promptTokenCount"`
+				CandidatesTokenCount int `json:"candidatesTokenCount"`
+			} `json:"usageMetadata"`
+		}
+		if json.Unmarshal(data, &chunk) != nil {
+			return
+		}
+		if chunk.UsageMetadata != nil {
+			out.Usage = Usage{Input: chunk.UsageMetadata.PromptTokenCount, Output: chunk.UsageMetadata.CandidatesTokenCount}
+		}
+		if len(chunk.Candidates) == 0 {
+			return
+		}
+		for _, part := range chunk.Candidates[0].Content.Parts {
+			if part.Text != "" {
+				out.Text += part.Text
+				onDelta(part.Text)
+			}
+			if part.FunctionCall != nil {
+				args := part.FunctionCall.Args
+				if len(args) == 0 {
+					args = json.RawMessage("{}")
+				}
+				out.ToolCalls = append(out.ToolCalls, ToolCall{
+					ID:        part.FunctionCall.Name,
+					Name:      part.FunctionCall.Name,
+					Arguments: args,
+				})
+			}
+		}
+	})
+	if err != nil {
+		return Message{}, err
 	}
 	return out, nil
 }

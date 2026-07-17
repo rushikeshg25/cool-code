@@ -18,6 +18,7 @@ import (
 // the processor goroutine or, for Subagents, from subagent worker goroutines.
 type Reporter interface {
 	Status(text string)         // spinner / progress text
+	AssistantDelta(text string) // a streamed fragment of the current reply
 	Assistant(markdown string)  // final or intermediate model text
 	Tool(name, display string)  // a tool finished with this display line
 	Tasks(list *types.TaskList) // the task list changed
@@ -147,7 +148,13 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			Tools:       p.toolDefs,
 			Temperature: p.cfg.LLM.Temperature,
 		}
-		resp, err := p.provider.Complete(ctx, req)
+		var resp llm.Message
+		var err error
+		if streamer, ok := p.provider.(llm.Streamer); ok && reporter != nil {
+			resp, err = streamer.Stream(ctx, req, reporter.AssistantDelta)
+		} else {
+			resp, err = p.provider.Complete(ctx, req)
+		}
 		if err != nil {
 			return finalText, err
 		}

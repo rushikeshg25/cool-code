@@ -68,6 +68,13 @@ type Provider interface {
 	Complete(ctx context.Context, req Request) (Message, error)
 }
 
+// Streamer is an optional Provider capability: stream the completion, calling
+// onDelta with each assistant-text fragment, and return the fully assembled
+// message (identical to what Complete would have returned).
+type Streamer interface {
+	Stream(ctx context.Context, req Request, onDelta func(text string)) (Message, error)
+}
+
 // providerInfo maps a provider to its API-key env var and signup URL.
 type providerInfo struct {
 	kind   string

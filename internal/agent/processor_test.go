@@ -45,8 +45,9 @@ type captureReporter struct {
 	subagentLines []string
 }
 
-func (c *captureReporter) Status(string)       {}
-func (c *captureReporter) Assistant(md string) { c.texts = append(c.texts, md) }
+func (c *captureReporter) Status(string)         {}
+func (c *captureReporter) AssistantDelta(string) {}
+func (c *captureReporter) Assistant(md string)   { c.texts = append(c.texts, md) }
 func (c *captureReporter) Tool(name, _ string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/rushikeshg25/cool-code/internal/agent"
 	"github.com/rushikeshg25/cool-code/internal/session"
@@ -21,6 +22,7 @@ import (
 
 type statusMsg string
 type assistantMsg string
+type deltaMsg string
 type toolMsg struct{ name, display string }
 type tasksMsg struct{ list *types.TaskList }
 type subagentsMsg struct{ lines []string }
@@ -38,6 +40,7 @@ type confirmReqMsg struct {
 type bridge struct{ prog *tea.Program }
 
 func (b *bridge) Status(t string)            { b.prog.Send(statusMsg(t)) }
+func (b *bridge) AssistantDelta(t string)    { b.prog.Send(deltaMsg(t)) }
 func (b *bridge) Assistant(md string)        { b.prog.Send(assistantMsg(md)) }
 func (b *bridge) Tool(name, display string)  { b.prog.Send(toolMsg{name, display}) }
 func (b *bridge) Tasks(list *types.TaskList) { b.prog.Send(tasksMsg{list}) }
@@ -73,6 +76,7 @@ type model struct {
 	ready         bool
 
 	history    []entry
+	streamIdx  int // index of the in-progress streaming entry, -1 when none
 	inputHist  []string
 	histIdx    int
 	processing bool
@@ -119,6 +123,7 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 		sp:        sp,
 		mode:      proc.Mode(),
 		tasks:     proc.TaskList(),
+		streamIdx: -1,
 	}
 }
 
@@ -138,6 +143,7 @@ const (
 	entryAssistant
 	entryTool
 	entrySystem
+	entryStream // assistant text still streaming: plain wrap, no markdown
 )
 
 type entry struct {
@@ -163,9 +169,38 @@ func (m *model) renderEntry(e entry) string {
 		return toolGlyph.Render("  ● ") + toolStyle.Render(e.raw)
 	case entrySystem:
 		return systemStyle.Render(e.raw)
+	case entryStream:
+		return lipgloss.NewStyle().Width(m.contentWidth()).Render(e.raw)
 	default:
 		return e.raw
 	}
+}
+
+// appendDelta grows the in-progress streaming entry (creating it on the first
+// fragment). Cheap per fragment: plain wrapping, markdown renders once at the
+// end via finishStream.
+func (m *model) appendDelta(delta string) {
+	if m.streamIdx < 0 {
+		m.appendEntry(entryStream, delta)
+		m.streamIdx = len(m.history) - 1
+		return
+	}
+	e := &m.history[m.streamIdx]
+	e.raw += delta
+	e.rendered = m.renderEntry(*e)
+	m.syncViewport()
+}
+
+// finishStream replaces the streaming entry with the final markdown rendering.
+func (m *model) finishStream(md string) {
+	if m.streamIdx < 0 {
+		m.appendAssistant(md)
+		return
+	}
+	m.history[m.streamIdx] = entry{kind: entryAssistant, raw: md}
+	m.history[m.streamIdx].rendered = m.renderEntry(m.history[m.streamIdx])
+	m.streamIdx = -1
+	m.syncViewport()
 }
 
 func (m *model) appendEntry(kind entryKind, raw string) {

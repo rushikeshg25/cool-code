@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,10 +10,18 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Minute}
+
+// Provider endpoints, as vars so tests can point them at a local server.
+var (
+	anthropicURL  = "https://api.anthropic.com/v1/messages"
+	openaiURL     = "https://api.openai.com/v1/chat/completions"
+	googleBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/"
+)
 
 const maxAttempts = 3
 
@@ -96,6 +105,80 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// streamSSE posts body as JSON and parses the server-sent-event response,
+// calling onEvent for every data line (event is "" when the server sends bare
+// data lines, as OpenAI and Gemini do). Transient failures are retried only
+// until the first event has been delivered.
+func streamSSE(ctx context.Context, url string, headers map[string]string, body any, onEvent func(event string, data []byte)) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	var lastErr *httpError
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			if err := sleepCtx(ctx, retryDelay(attempt, lastErr.retryAfter)); err != nil {
+				return err
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return err
+			}
+			lastErr = &httpError{err: err}
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			data, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			lastErr = &httpError{
+				retryAfter: resp.Header.Get("Retry-After"),
+				err:        fmt.Errorf("%s: HTTP %d: %s", url, resp.StatusCode, truncateErr(string(data))),
+			}
+			if !shouldRetry(resp.StatusCode) {
+				return lastErr.err
+			}
+			continue
+		}
+		err = scanSSE(resp.Body, onEvent)
+		resp.Body.Close()
+		return err
+	}
+	return lastErr.err
+}
+
+func scanSSE(r io.Reader, onEvent func(event string, data []byte)) error {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	event := ""
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "event:"):
+			event = strings.TrimSpace(line[len("event:"):])
+		case strings.HasPrefix(line, "data:"):
+			data := strings.TrimSpace(line[len("data:"):])
+			if data == "[DONE]" {
+				return nil
+			}
+			onEvent(event, []byte(data))
+		case line == "":
+			event = ""
+		}
+	}
+	return scanner.Err()
 }
 
 func truncateErr(s string) string {
