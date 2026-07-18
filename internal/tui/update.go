@@ -2,7 +2,9 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/atotto/clipboard"
@@ -11,6 +13,9 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/creds"
+	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/session"
+	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -144,6 +149,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleConnectMenu(msg)
 	}
 
+	// Session picker (/sessions).
+	if m.sessionMenu {
+		return m.handleSessionMenu(msg)
+	}
+
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		if m.processing {
@@ -163,10 +173,14 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyTab:
 		if len(m.suggestions) > 0 {
-			m.ti.SetValue(m.suggestions[m.suggestIdx%len(m.suggestions)].name + " ")
-			m.ti.CursorEnd()
-			m.suggestIdx = 0
-			m.refreshSuggestions()
+			if m.suggestMode == suggestFile {
+				m.applyFileSuggestion()
+			} else {
+				m.ti.SetValue(m.suggestions[m.suggestIdx%len(m.suggestions)].name + " ")
+				m.ti.CursorEnd()
+				m.suggestIdx = 0
+				m.refreshSuggestions()
+			}
 		}
 		return m, nil
 	case tea.KeyUp:
@@ -201,6 +215,18 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.KeyEnter:
 		if !msg.Alt {
+			// When the slash-command dropdown is open and no arguments have
+			// been typed, Enter accepts the highlighted command and runs it.
+			// Typed arguments (e.g. "/pin foo.go") are preserved as-is.
+			if len(m.suggestions) > 0 {
+				if m.suggestMode == suggestFile {
+					m.applyFileSuggestion()
+					return m, nil
+				}
+				if fields := strings.Fields(m.ti.Value()); len(fields) <= 1 {
+					m.ti.SetValue(m.suggestions[m.suggestIdx%len(m.suggestions)].name)
+				}
+			}
 			return m.submit()
 		}
 		// Alt+Enter falls through to the textarea's newline binding.
@@ -275,6 +301,54 @@ func (m *model) handleConnectMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *model) handleSessionMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	n := len(m.sessionList)
+	switch msg.String() {
+	case "up":
+		m.sessionIdx = (m.sessionIdx + n - 1) % n
+	case "down":
+		m.sessionIdx = (m.sessionIdx + 1) % n
+	case "esc":
+		m.sessionMenu = false
+	case "enter":
+		return m.resumeSelectedSession()
+	default:
+		// Number keys 1-9 jump to and select a session.
+		if len(msg.String()) == 1 && msg.String()[0] >= '1' && msg.String()[0] <= '9' {
+			if idx := int(msg.String()[0] - '1'); idx < n {
+				m.sessionIdx = idx
+				return m.resumeSelectedSession()
+			}
+		}
+	}
+	return m, nil
+}
+
+// resumeSelectedSession restores the highlighted session into the processor and
+// rebuilds the visible transcript, matching a startup --resume.
+func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
+	m.sessionMenu = false
+	data := session.Load(m.sessionList[m.sessionIdx].ID)
+	if data == nil {
+		m.appendSystem("Could not load that session.")
+		return m, nil
+	}
+	var messages []llm.Message
+	_ = json.Unmarshal(data.Messages, &messages)
+	m.proc.Restore(messages, data.Summary, data.PinnedFiles, types.AgentMode(data.Mode))
+	m.sessionID = data.ID
+	m.mode = m.proc.Mode()
+	m.history = nil
+	m.repopulateTranscript()
+	short := data.ID
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	m.appendSystem(fmt.Sprintf("Resumed session %s (%d messages).", short, data.MessageCount))
+	m.syncViewport()
+	return m, nil
+}
+
 func (m *model) selectConnectOption() (tea.Model, tea.Cmd) {
 	opt := connectOptions[m.connectIdx]
 	m.connectMenu = false
@@ -335,12 +409,45 @@ func (m *model) respondConfirm(v bool) {
 func (m *model) refreshSuggestions() {
 	if m.processing || m.ti.LineCount() > 1 {
 		m.suggestions = nil
+		m.suggestMode = suggestNone
 		return
 	}
-	m.suggestions = matchCommands(m.ti.Value())
+	val := m.ti.Value()
+	switch {
+	case strings.HasPrefix(val, "/"):
+		m.suggestMode = suggestCommand
+		m.suggestions = matchCommands(val)
+	case hasAtToken(val):
+		token, _, _ := atToken(val)
+		m.suggestMode = suggestFile
+		m.suggestions = matchFiles(m.projectFiles(), token)
+	default:
+		m.suggestMode = suggestNone
+		m.suggestions = nil
+	}
 	if m.suggestIdx >= len(m.suggestions) {
 		m.suggestIdx = 0
 	}
+}
+
+// hasAtToken reports whether the input ends in a completable "@" mention.
+func hasAtToken(val string) bool {
+	_, _, ok := atToken(val)
+	return ok
+}
+
+// applyFileSuggestion replaces the trailing "@token" with the highlighted path.
+func (m *model) applyFileSuggestion() {
+	val := m.ti.Value()
+	_, at, ok := atToken(val)
+	if !ok || len(m.suggestions) == 0 {
+		return
+	}
+	sel := m.suggestions[m.suggestIdx%len(m.suggestions)].name
+	m.ti.SetValue(val[:at] + sel + " ")
+	m.ti.CursorEnd()
+	m.suggestIdx = 0
+	m.refreshSuggestions()
 }
 
 func (m *model) submit() (tea.Model, tea.Cmd) {

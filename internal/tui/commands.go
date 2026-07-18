@@ -1,16 +1,28 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 
+	"github.com/rushikeshg25/cool-code/internal/tools"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
-// slashCommand is a single in-session command.
+// slashCommand is a single in-session command. Reused for @-file suggestions,
+// where name holds the project-relative path and desc is empty.
 type slashCommand struct {
 	name string
 	desc string
 }
+
+// suggestKind is what the dropdown is currently completing.
+type suggestKind int
+
+const (
+	suggestNone suggestKind = iota
+	suggestCommand
+	suggestFile
+)
 
 var commands = []slashCommand{
 	{"/help", "Show available commands"},
@@ -23,6 +35,7 @@ var commands = []slashCommand{
 	{"/install-skill", "Install a skill from a local path or git URL"},
 	{"/clear", "Clear the screen"},
 	{"/exit", "Exit the session"},
+	{"/quit", "Exit the session"},
 }
 
 var modeCycle = []types.AgentMode{types.ModePlan, types.ModeAgent, types.ModeAsk}
@@ -58,4 +71,54 @@ func matchCommands(input string) []slashCommand {
 		}
 	}
 	return out
+}
+
+const maxFileSuggestions = 8
+
+// atToken extracts a trailing "@<token>" mention from the input: the "@" must
+// start the input or follow whitespace, and no whitespace may follow it. It
+// returns the token after "@" and the byte index of the "@".
+func atToken(s string) (token string, at int, ok bool) {
+	i := strings.LastIndex(s, "@")
+	if i < 0 {
+		return "", 0, false
+	}
+	if i > 0 && s[i-1] != ' ' && s[i-1] != '\t' {
+		return "", 0, false
+	}
+	rest := s[i+1:]
+	if strings.ContainsAny(rest, " \t") {
+		return "", 0, false
+	}
+	return rest, i, true
+}
+
+// matchFiles returns up to maxFileSuggestions project files matching token,
+// ranking basename matches ahead of full-path matches.
+func matchFiles(files []string, token string) []slashCommand {
+	token = strings.ToLower(token)
+	var byBase, byPath []slashCommand
+	for _, f := range files {
+		lower := strings.ToLower(f)
+		base := strings.ToLower(filepath.Base(f))
+		switch {
+		case token == "" || strings.Contains(base, token):
+			byBase = append(byBase, slashCommand{name: f})
+		case strings.Contains(lower, token):
+			byPath = append(byPath, slashCommand{name: f})
+		}
+	}
+	out := append(byBase, byPath...)
+	if len(out) > maxFileSuggestions {
+		out = out[:maxFileSuggestions]
+	}
+	return out
+}
+
+// projectFiles lazily loads and caches the project file list for completion.
+func (m *model) projectFiles() []string {
+	if m.fileCache == nil {
+		m.fileCache = tools.ProjectFiles(m.rootDir)
+	}
+	return m.fileCache
 }

@@ -57,7 +57,7 @@ var shellCommandTool = Tool{
 
 var runTestsTool = Tool{
 	Name:        "run_tests",
-	Description: "Runs project tests. Uses the package.json test script when no command is provided.",
+	Description: "Runs project tests. Auto-detects Go, Rust, Python, or Node when no command is provided.",
 	Schema: obj(map[string]any{
 		"command": strProp("Optional command to run tests."),
 	}),
@@ -68,13 +68,7 @@ var runTestsTool = Tool{
 		_ = json.Unmarshal(args, &a)
 		command := a.Command
 		if command == "" {
-			if pkg, ok := readPackageJSON(ctx.RootDir); ok {
-				if scripts, ok := pkg["scripts"].(map[string]any); ok {
-					if _, ok := scripts["test"]; ok {
-						command = "npm run test"
-					}
-				}
-			}
+			command = defaultTestCommand(ctx.RootDir)
 		}
 		if command == "" {
 			return fail("No test command found", "No test command found. Provide a command explicitly.")
@@ -90,7 +84,7 @@ var runTestsTool = Tool{
 
 var lintFixTool = Tool{
 	Name:        "lint_fix",
-	Description: "Runs lint/format with auto-fix, using lint:fix, lint, or format scripts when available.",
+	Description: "Runs lint/format with auto-fix. Auto-detects Go, Rust, Python, or Node when no command is provided.",
 	Schema: obj(map[string]any{
 		"command": strProp("Optional command to run lint/format."),
 	}),
@@ -101,18 +95,7 @@ var lintFixTool = Tool{
 		_ = json.Unmarshal(args, &a)
 		command := a.Command
 		if command == "" {
-			if pkg, ok := readPackageJSON(ctx.RootDir); ok {
-				if scripts, ok := pkg["scripts"].(map[string]any); ok {
-					switch {
-					case scripts["lint:fix"] != nil:
-						command = "npm run lint:fix"
-					case scripts["lint"] != nil:
-						command = "npm run lint -- --fix"
-					case scripts["format"] != nil:
-						command = "npm run format"
-					}
-				}
-			}
+			command = defaultLintFixCommand(ctx.RootDir)
 		}
 		if command == "" {
 			return fail("No lint/format command found", "No lint/format command found. Provide a command explicitly.")
@@ -128,7 +111,7 @@ var lintFixTool = Tool{
 
 var formatFileTool = Tool{
 	Name:        "format_file",
-	Description: "Formats a file with prettier.",
+	Description: "Formats a file with the right formatter for its type (gofmt, rustfmt, ruff, or prettier).",
 	Mutating:    true,
 	Schema: obj(map[string]any{
 		"absolutePath": strProp("Absolute path to the file to format."),
@@ -144,7 +127,7 @@ var formatFileTool = Tool{
 			return fail("Invalid path", v)
 		}
 		rel := toRelative(a.AbsolutePath, ctx.RootDir)
-		command := "npx prettier --write '" + shellEscapeSingleQuotes(rel) + "'"
+		command := formatFileCommand(rel)
 		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
 		display := "File formatted"
 		if !res.success {

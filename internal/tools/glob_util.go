@@ -45,6 +45,20 @@ func globFiles(rootDir, include string, extraIgnore ...string) []string {
 	return out
 }
 
+// ProjectFiles returns project-relative (slash-separated) file paths under
+// rootDir, skipping dotfiles and the standard ignore directories. Used for
+// @-mention file completion in the TUI.
+func ProjectFiles(rootDir string) []string {
+	abs := globFiles(rootDir, "**/*")
+	out := make([]string, 0, len(abs))
+	for _, p := range abs {
+		if rel, err := filepath.Rel(rootDir, p); err == nil {
+			out = append(out, filepath.ToSlash(rel))
+		}
+	}
+	return out
+}
+
 func hasDotComponent(rel string) bool {
 	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
 		if strings.HasPrefix(part, ".") && part != "." && part != ".." {
