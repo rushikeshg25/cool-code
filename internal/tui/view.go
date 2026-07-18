@@ -76,7 +76,11 @@ func taskGlyph(status types.TaskStatus) (string, lipgloss.Style) {
 func (m *model) renderStatusBar() string {
 	status := m.proc.GetStatus()
 	sep := sepStyle.Render("  ·  ")
-	dir := statusValue.Render(shortPath(m.rootDir))
+	dirLabel := shortPath(m.rootDir)
+	if n := len(m.proc.ExtraDirs()); n > 0 {
+		dirLabel += fmt.Sprintf(" +%d", n)
+	}
+	dir := statusValue.Render(dirLabel)
 	mode := modeStyle(m.mode).Render(string(m.mode))
 	model := statusValue.Render(status.Model)
 	msgs := statusBar.Render(fmt.Sprintf("%d msgs", status.MessageCount))

@@ -339,6 +339,7 @@ func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
 	for _, d := range data.ExtraDirs {
 		_, _ = m.proc.AddDir(d) // dir may have been removed since; ignore
 	}
+	m.fileCache = nil
 	m.sessionID = data.ID
 	m.mode = m.proc.Mode()
 	m.history = nil
