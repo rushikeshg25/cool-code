@@ -105,6 +105,9 @@ func runInteractive(flags rootFlags) error {
 		var messages []llm.Message
 		_ = json.Unmarshal(restoreFrom.Messages, &messages)
 		proc.Restore(messages, restoreFrom.Summary, restoreFrom.PinnedFiles, types.AgentMode(restoreFrom.Mode))
+		for _, d := range restoreFrom.ExtraDirs {
+			_, _ = proc.AddDir(d) // dir may have been removed since; ignore
+		}
 		sessionID = restoreFrom.ID
 		short := restoreFrom.ID
 		if len(short) > 8 {
