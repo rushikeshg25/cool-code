@@ -35,7 +35,7 @@ var shellCommandTool = Tool{
 			if !filepath.IsAbs(dir) {
 				dir = filepath.Join(ctx.RootDir, dir)
 			}
-			if v := EnsureAbsoluteWithinRoot(dir, ctx.RootDir); v != "" {
+			if v := EnsureAbsoluteWithinRoots(dir, ctx.Roots()); v != "" {
 				return fail("Invalid directory", v)
 			}
 		}
@@ -123,7 +123,7 @@ var formatFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if v := EnsureAbsoluteWithinRoot(a.AbsolutePath, ctx.RootDir); v != "" {
+		if v := EnsureAbsoluteWithinRoots(a.AbsolutePath, ctx.Roots()); v != "" {
 			return fail("Invalid path", v)
 		}
 		rel := toRelative(a.AbsolutePath, ctx.RootDir)

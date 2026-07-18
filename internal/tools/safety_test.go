@@ -43,6 +43,28 @@ func TestEnsureAbsoluteWithinRoot(t *testing.T) {
 	}
 }
 
+func TestEnsureAbsoluteWithinRoots(t *testing.T) {
+	roots := []string{"/home/user/proj", "/home/user/lib"}
+	if EnsureAbsoluteWithinRoots("/home/user/proj/src/a.go", roots) != "" {
+		t.Error("expected primary-root path to pass")
+	}
+	if EnsureAbsoluteWithinRoots("/home/user/lib/b.go", roots) != "" {
+		t.Error("expected extra-dir path to pass")
+	}
+	if EnsureAbsoluteWithinRoots("/home/user/other/a.go", roots) == "" {
+		t.Error("expected out-of-all-roots path to fail")
+	}
+	if EnsureAbsoluteWithinRoots("relative/path", roots) == "" {
+		t.Error("expected relative path to fail")
+	}
+	if EnsureAbsoluteWithinRoots("/home/user/lib/../secret", roots) == "" {
+		t.Error("expected traversal escape to fail")
+	}
+	if EnsureAbsoluteWithinRoots("/home/user/proj/a.go", roots[:1]) != "" {
+		t.Error("expected single-root behavior with no extras")
+	}
+}
+
 func TestDangerReason(t *testing.T) {
 	rm, _ := json.Marshal(map[string]any{"command": "rm -rf /tmp/x"})
 	if DangerReason("shell_command", rm) == "" {

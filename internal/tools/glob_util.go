@@ -59,6 +59,13 @@ func ProjectFiles(rootDir string) []string {
 	return out
 }
 
+// ProjectFilesAbs is like ProjectFiles but returns absolute paths. Used for
+// @-mention completion of files in additional (/add-dir) directories, where a
+// project-relative path would be ambiguous.
+func ProjectFilesAbs(rootDir string) []string {
+	return globFiles(rootDir, "**/*")
+}
+
 func hasDotComponent(rel string) bool {
 	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
 		if strings.HasPrefix(part, ".") && part != "." && part != ".." {

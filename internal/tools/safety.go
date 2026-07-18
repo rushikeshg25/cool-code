@@ -49,6 +49,20 @@ func EnsureAbsoluteWithinRoot(absPath, rootPath string) string {
 	return ""
 }
 
+// EnsureAbsoluteWithinRoots verifies absPath is absolute and contained within
+// any of roots, returning a non-empty error message otherwise.
+func EnsureAbsoluteWithinRoots(absPath string, roots []string) string {
+	if !filepath.IsAbs(absPath) {
+		return "File path must be absolute"
+	}
+	for _, root := range roots {
+		if EnsureAbsoluteWithinRoot(absPath, root) == "" {
+			return ""
+		}
+	}
+	return "Path must be within project root or an added directory: " + strings.Join(roots, ", ")
+}
+
 func readPackageJSON(rootPath string) (map[string]any, bool) {
 	raw, err := os.ReadFile(filepath.Join(rootPath, "package.json"))
 	if err != nil {
