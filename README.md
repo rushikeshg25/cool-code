@@ -203,3 +203,20 @@ Requires Go 1.24+. External tools used at runtime when present: `git`, `rg` (rip
 - **Subscription sign-in for `/connect`** (Claude Pro/Max, ChatGPT/Codex OAuth).
 - **Full-toolset subagents** (explore-only subagents shipped; write-capable ones need permission routing).
 - **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **hooks**, **`@file` mentions**, **cost tracking**, and **multimodal input**.
+
+## Changelog
+
+### 2.1 — Subagents, concurrency & quality of life (2026-07)
+
+- **Explore subagents** — new `spawn_agent` tool; the agent fans out concurrent read-only mini-agents (own history, 15-iteration cap, cannot nest) with live per-agent status lines in the TUI.
+- **Parallel tools** — independent read-only tool calls in one assistant turn run concurrently; mutating calls stay sequential with results in original call order.
+- **Cancellation** — Esc or Ctrl+C aborts an in-flight turn (LLM request, shell commands, and web requests all stop); Ctrl+C while idle quits. Interrupted tool calls are closed cleanly so the next request never fails on unpaired tool calls.
+- **Streaming** — assistant output streams token-by-token on all three providers (Anthropic, OpenAI, Gemini) over SSE.
+- **`/connect`** — interactive provider setup; API keys stored in `~/.coolcode/credentials.json` (0600), provider/model defaults in `~/.coolcode/settings.json`, env vars as fallback. Starting without a key opens the TUI with a hint instead of exiting.
+- **Reliability** — automatic retry with exponential backoff on 429/5xx/network errors (honors `Retry-After`); real token usage from provider responses in the status bar; sessions persist on quit and cancel; fixed a data race between the status bar and the agent loop.
+- **TUI** — multiline input (Enter submits, Alt+Enter/Ctrl+J newline), mouse-wheel and PgUp/PgDn scrolling, input-history recall on Up/Down, `--resume` repopulates the visible transcript, markdown re-wraps on window resize, edit confirmations show red/green diff hunks.
+- **Safety** — `edit_file` and `shell_command` directories are confined to the project root; `confirmEdits` works independently of `allowDangerous`; all tool error labels are now descriptive.
+
+### 2.0 — Go rewrite
+
+- Full rewrite from TypeScript/Node to a single Go binary: native provider function-calling (Anthropic, OpenAI, Gemini), Bubble Tea/Lipgloss/Glamour TUI, cobra CLI, plan/agent/ask modes, sessions, skills, project memory, and 23 tools. The TypeScript version lives on the `node` branch.
