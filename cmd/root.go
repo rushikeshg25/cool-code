@@ -133,7 +133,7 @@ func handleProviderError(err error) error {
 	var missing *llm.MissingKeyError
 	if ok := asMissingKey(err, &missing); ok {
 		fmt.Fprintf(os.Stderr, "\n  Missing API key for %s.\n\n", missing.Provider)
-		fmt.Fprintf(os.Stderr, "  Set it with:\n    export %s=your_api_key_here\n\n", missing.EnvKey)
+		fmt.Fprintf(os.Stderr, "  Run cool-code and use /connect to link a provider, or set:\n    export %s=your_api_key_here\n\n", missing.EnvKey)
 		fmt.Fprintf(os.Stderr, "  Get a key at: %s\n\n", missing.KeyURL)
 		os.Exit(1)
 	}

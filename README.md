@@ -10,14 +10,17 @@ Cool-Code combines large language models with a comprehensive set of development
 
 ## Features
 
-- **Multiple model providers** — Google, OpenAI, or Anthropic. Set the model and provide the matching API key; the provider is inferred from the model id.
-- **Native tool-calling** — structured function-calling against each provider's API for reliable tool use.
-- **Polished TUI** — a Bubble Tea terminal UI with Glamour-rendered markdown, a `/` slash-command palette with Tab autocomplete, a live task panel, and Shift+Tab to switch modes.
+- **Multiple model providers** — Google, OpenAI, or Anthropic. Connect one with `/connect` (keys stored in `~/.coolcode/credentials.json`) or export the matching env var; the provider is inferred from the model id.
+- **Native tool-calling with streaming** — structured function-calling against each provider's API, with assistant output streamed token-by-token.
+- **Explore subagents** — the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
+- **Concurrent tools + cancellation** — independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
+- **Polished TUI** — a Bubble Tea terminal UI with Glamour-rendered markdown, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, a live task panel, and Shift+Tab to switch modes.
 - **Three agent modes** — Plan (read-only investigation → detailed plan), Agent (autonomous execution), Ask (read-only Q&A). After Plan mode produces a plan, choose **Start implementation** to jump straight into Agent mode.
 - **Project memory (`COOLCODE.md`)** — persistent project instructions loaded into every prompt.
 - **Skills** — discoverable, model-invoked instruction modules under `.coolcode/skills/` (compatible with Claude Code skills).
 - **Web access** — `web_fetch` and `web_search` tools.
-- **Session persistence** — conversations saved to `~/.coolcode/sessions/`; resume with `--continue` / `--resume`.
+- **Session persistence** — conversations saved to `~/.coolcode/sessions/` (including on quit and cancel); resume with `--continue` / `--resume` and the prior conversation reappears in the transcript.
+- **Reliability** — automatic retry with backoff on transient API errors, and real token usage from provider responses in the status bar.
 - **Task tracking, input queuing, safety guardrails** — real-time checklists, mid-turn message queuing, and path/read/danger protections.
 
 ## Install
@@ -39,7 +42,11 @@ make build      # produces ./cool-code
 # or: go build -o cool-code .
 ```
 
-### Set your API key
+### Connect a provider
+
+The easiest way: start `cool-code` and run **`/connect`** — pick a provider, paste your API key, and it's stored in `~/.coolcode/credentials.json` (mode 0600). The chosen provider and a default model are saved as global defaults in `~/.coolcode/settings.json`; a project `.coolcode.json` still wins when present.
+
+Env vars keep working as a fallback:
 
 ```bash
 export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here   # Gemini (default)
@@ -193,4 +200,6 @@ Requires Go 1.24+. External tools used at runtime when present: `git`, `rg` (rip
 ## Future scope
 
 - **Semantic codebase index** — a local embedding index kept in sync via a Merkle tree of file hashes, exposed as a `codebase_search` tool.
-- **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **subagents** (natural fit for Go's concurrency), **hooks**, **streaming output**, **`@file` mentions**, **usage/cost tracking**, and **multimodal input**.
+- **Subscription sign-in for `/connect`** (Claude Pro/Max, ChatGPT/Codex OAuth).
+- **Full-toolset subagents** (explore-only subagents shipped; write-capable ones need permission routing).
+- **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **hooks**, **`@file` mentions**, **cost tracking**, and **multimodal input**.
