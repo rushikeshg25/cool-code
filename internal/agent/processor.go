@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -499,6 +501,54 @@ func (p *Processor) ReloadSkills() { p.ctxMgr.reloadSkills() }
 
 // RootDir returns the project root.
 func (p *Processor) RootDir() string { return p.rootDir }
+
+// AddDir grants the session access to an additional directory (/add-dir). It
+// resolves ~ and relative paths against the project root, validates the target,
+// and returns the resolved absolute path.
+func (p *Processor) AddDir(path string) (string, error) {
+	if path == "" {
+		return "", errors.New("usage: /add-dir <path>")
+	}
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(p.rootDir, path)
+	}
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", errors.New("directory not found: " + abs)
+	}
+	if !info.IsDir() {
+		return "", errors.New("not a directory: " + abs)
+	}
+
+	p.mu.Lock()
+	roots := p.toolCtx.Roots()
+	p.mu.Unlock()
+	for _, root := range roots {
+		if tools.EnsureAbsoluteWithinRoot(abs, root) == "" {
+			return "", errors.New(abs + " is already accessible (inside " + root + ")")
+		}
+	}
+
+	p.mu.Lock()
+	p.toolCtx.ExtraDirs = append(append([]string(nil), p.toolCtx.ExtraDirs...), abs)
+	p.mu.Unlock()
+	p.ctxMgr.addExtraDir(abs)
+	return abs, nil
+}
+
+// ExtraDirs returns the directories added via AddDir.
+func (p *Processor) ExtraDirs() []string { return p.ctxMgr.extraDirList() }
 
 // Connected reports whether a provider is configured.
 func (p *Processor) Connected() bool { return p.provider != nil }

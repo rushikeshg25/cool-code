@@ -20,6 +20,7 @@ type Data struct {
 	Messages     json.RawMessage `json:"messages"`
 	Summary      string          `json:"summary"`
 	PinnedFiles  []string        `json:"pinnedFiles"`
+	ExtraDirs    []string        `json:"extraDirs,omitempty"`
 	MessageCount int             `json:"messageCount"`
 }
 

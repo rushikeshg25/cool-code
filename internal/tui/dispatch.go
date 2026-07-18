@@ -43,6 +43,23 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		} else {
 			m.appendSystem("Current mode: " + strings.ToUpper(string(m.mode)) + " (use /mode plan|agent|ask)")
 		}
+	case "/add-dir":
+		if arg == "" {
+			dirs := m.proc.ExtraDirs()
+			if len(dirs) == 0 {
+				m.appendSystem("No additional directories. Usage: /add-dir <path>")
+			} else {
+				m.appendSystem("Additional directories:\n  " + strings.Join(dirs, "\n  "))
+			}
+			break
+		}
+		resolved, err := m.proc.AddDir(arg)
+		if err != nil {
+			m.appendSystem("add-dir failed: " + err.Error())
+			break
+		}
+		m.fileCache = nil // extra-dir files become @-completable
+		m.appendSystem("Added directory: " + resolved + " (read/write enabled; search tools still cover only the primary root)")
 	case "/pin":
 		if arg == "" {
 			m.appendSystem("Usage: /pin <file>")

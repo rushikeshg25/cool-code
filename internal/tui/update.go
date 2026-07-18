@@ -336,6 +336,10 @@ func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
 	var messages []llm.Message
 	_ = json.Unmarshal(data.Messages, &messages)
 	m.proc.Restore(messages, data.Summary, data.PinnedFiles, types.AgentMode(data.Mode))
+	for _, d := range data.ExtraDirs {
+		_, _ = m.proc.AddDir(d) // dir may have been removed since; ignore
+	}
+	m.fileCache = nil
 	m.sessionID = data.ID
 	m.mode = m.proc.Mode()
 	m.history = nil

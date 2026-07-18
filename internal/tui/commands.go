@@ -28,6 +28,7 @@ var commands = []slashCommand{
 	{"/help", "Show available commands"},
 	{"/connect", "Connect a model provider (API key)"},
 	{"/mode", "Show or switch mode (plan | agent | ask)"},
+	{"/add-dir", "Grant access to an additional directory (e.g. /add-dir ../other)"},
 	{"/pin", "Pin a file into context (e.g. /pin src/main.go)"},
 	{"/unpin", "Unpin a file (or list pinned files)"},
 	{"/context", "Preview context, pinned files, and token usage"},
@@ -115,10 +116,15 @@ func matchFiles(files []string, token string) []slashCommand {
 	return out
 }
 
-// projectFiles lazily loads and caches the project file list for completion.
+// projectFiles lazily loads and caches the file list for @-mention completion:
+// project-relative paths from the primary root plus absolute paths from any
+// /add-dir directories (absolute so the reference is unambiguous).
 func (m *model) projectFiles() []string {
 	if m.fileCache == nil {
 		m.fileCache = tools.ProjectFiles(m.rootDir)
+		for _, dir := range m.proc.ExtraDirs() {
+			m.fileCache = append(m.fileCache, tools.ProjectFilesAbs(dir)...)
+		}
 	}
 	return m.fileCache
 }

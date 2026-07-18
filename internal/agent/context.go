@@ -32,6 +32,8 @@ type contextManager struct {
 	fileTree      string
 	skillsCatalog string
 	pinned        []string
+	extraDirs     []string // additional /add-dir roots
+	extraTrees    []string // rendered tree per extra dir, parallel to extraDirs
 }
 
 func newContextManager(rootDir string, cfg config.Config, checker project.GitIgnoreChecker) *contextManager {
@@ -136,6 +138,13 @@ func (c *contextManager) buildSystemLocked() string {
 	state.WriteString("--- Project State ---\n")
 	state.WriteString("CWD: " + c.rootDir + "\n")
 	state.WriteString("File Tree:\n" + c.fileTree)
+	if len(c.extraDirs) > 0 {
+		state.WriteString("\n--- Additional Directories ---\n")
+		state.WriteString("Read/write allowed; use absolute paths. Search tools cover only the primary root.\n")
+		for i, dir := range c.extraDirs {
+			state.WriteString(dir + "\n" + c.extraTrees[i])
+		}
+	}
 	if len(c.pinned) > 0 {
 		state.WriteString("\n--- Pinned Files ---\n")
 		for _, p := range c.pinned {
@@ -204,6 +213,28 @@ func (c *contextManager) refreshTree() {
 	c.mu.Lock()
 	c.fileTree = tree
 	c.mu.Unlock()
+}
+
+// extraDirTreeDepth caps additional-directory trees so a large extra dir
+// cannot blow the prompt token budget.
+const extraDirTreeDepth = 3
+
+// addExtraDir registers an /add-dir root and renders its (depth-capped) tree
+// for the system prompt. The tree is built outside the lock like refreshTree.
+func (c *contextManager) addExtraDir(dir string) {
+	checker := project.NewGitIgnoreChecker(dir)
+	tree := project.FolderStructure(dir, checker, extraDirTreeDepth)
+	c.mu.Lock()
+	c.extraDirs = append(c.extraDirs, dir)
+	c.extraTrees = append(c.extraTrees, tree)
+	c.mu.Unlock()
+}
+
+// extraDirList returns a copy of the registered /add-dir roots.
+func (c *contextManager) extraDirList() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.extraDirs...)
 }
 
 func (c *contextManager) reloadSkills() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/rushikeshg25/cool-code/internal/llm"
 	"github.com/rushikeshg25/cool-code/internal/tools"
@@ -46,6 +47,9 @@ var subagentToolDefs = func() []llm.ToolDef {
 // model can react to them. report receives short state updates for the TUI.
 func (p *Processor) runSubagent(ctx context.Context, task string, report func(state string)) string {
 	system := subagentPrompt + "\n\n--- Project State ---\nCWD: " + p.rootDir + "\nFile Tree:\n" + p.ctxMgr.tree()
+	if extras := p.ctxMgr.extraDirList(); len(extras) > 0 {
+		system += "\nAdditional directories (use absolute paths): " + strings.Join(extras, ", ")
+	}
 	messages := []llm.Message{{Role: llm.RoleUser, Text: task}}
 	toolCtx := p.toolCtx
 	toolCtx.Ctx = ctx

@@ -120,7 +120,7 @@ var editFileTool = Tool{
 		if a.ExpectedReplacements != nil && *a.ExpectedReplacements > 0 {
 			expected = *a.ExpectedReplacements
 		}
-		if v := EnsureAbsoluteWithinRoot(a.FilePath, ctx.RootDir); v != "" {
+		if v := EnsureAbsoluteWithinRoots(a.FilePath, ctx.Roots()); v != "" {
 			return fail("Edit blocked", v)
 		}
 		info, err := os.Stat(a.FilePath)
@@ -182,7 +182,7 @@ var newFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if v := EnsureAbsoluteWithinRoot(a.FilePath, ctx.RootDir); v != "" {
+		if v := EnsureAbsoluteWithinRoots(a.FilePath, ctx.Roots()); v != "" {
 			return fail("Invalid path", v)
 		}
 		if err := os.MkdirAll(filepath.Dir(a.FilePath), 0o755); err != nil {
@@ -214,10 +214,10 @@ var renameFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if v := EnsureAbsoluteWithinRoot(a.FromPath, ctx.RootDir); v != "" {
+		if v := EnsureAbsoluteWithinRoots(a.FromPath, ctx.Roots()); v != "" {
 			return fail("Invalid path", v)
 		}
-		if v := EnsureAbsoluteWithinRoot(a.ToPath, ctx.RootDir); v != "" {
+		if v := EnsureAbsoluteWithinRoots(a.ToPath, ctx.Roots()); v != "" {
 			return fail("Invalid path", v)
 		}
 		if _, err := os.Stat(a.FromPath); err != nil {
@@ -411,7 +411,7 @@ var newModuleTool = Tool{
 			baseDir = "src"
 		}
 		moduleDir := filepath.Join(ctx.RootDir, baseDir, a.ModuleName)
-		if v := EnsureAbsoluteWithinRoot(moduleDir, ctx.RootDir); v != "" {
+		if v := EnsureAbsoluteWithinRoots(moduleDir, ctx.Roots()); v != "" {
 			return fail("Invalid path", v)
 		}
 		if err := os.MkdirAll(moduleDir, 0o755); err != nil {

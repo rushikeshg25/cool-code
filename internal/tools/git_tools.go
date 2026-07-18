@@ -38,7 +38,7 @@ var gitDiffTool = Tool{
 		_ = json.Unmarshal(args, &a)
 		fileArg := ""
 		if a.FilePath != "" {
-			if v := EnsureAbsoluteWithinRoot(a.FilePath, ctx.RootDir); v != "" {
+			if v := EnsureAbsoluteWithinRoots(a.FilePath, ctx.Roots()); v != "" {
 				return fail("Invalid path", v)
 			}
 			fileArg = " -- '" + shellEscapeSingleQuotes(toRelative(a.FilePath, ctx.RootDir)) + "'"
@@ -85,7 +85,7 @@ var gitCommitTool = Tool{
 		} else if len(a.Files) > 0 {
 			var rels []string
 			for _, f := range a.Files {
-				if v := EnsureAbsoluteWithinRoot(f, ctx.RootDir); v != "" {
+				if v := EnsureAbsoluteWithinRoots(f, ctx.Roots()); v != "" {
 					return fail("Invalid path", v)
 				}
 				rels = append(rels, "'"+shellEscapeSingleQuotes(toRelative(f, ctx.RootDir))+"'")

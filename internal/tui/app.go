@@ -147,13 +147,13 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 	ki.EchoMode = textinput.EchoPassword
 
 	return &model{
-		proc:      proc,
-		rootDir:   rootDir,
-		version:   version,
-		copy:      copyOut,
-		sessionID: sessionID,
-		ti:        ti,
-		sp:        sp,
+		proc:       proc,
+		rootDir:    rootDir,
+		version:    version,
+		copy:       copyOut,
+		sessionID:  sessionID,
+		ti:         ti,
+		sp:         sp,
 		mode:       proc.Mode(),
 		tasks:      proc.TaskList(),
 		streamIdx:  -1,
@@ -245,11 +245,11 @@ func (m *model) appendEntry(kind entryKind, raw string) {
 	m.syncViewport()
 }
 
-func (m *model) appendRaw(s string)         { m.appendEntry(entryRaw, s) }
-func (m *model) appendUser(text string)     { m.appendEntry(entryUser, text) }
-func (m *model) appendAssistant(md string)  { m.appendEntry(entryAssistant, md) }
-func (m *model) appendTool(display string)  { m.appendEntry(entryTool, display) }
-func (m *model) appendSystem(text string)   { m.appendEntry(entrySystem, text) }
+func (m *model) appendRaw(s string)        { m.appendEntry(entryRaw, s) }
+func (m *model) appendUser(text string)    { m.appendEntry(entryUser, text) }
+func (m *model) appendAssistant(md string) { m.appendEntry(entryAssistant, md) }
+func (m *model) appendTool(display string) { m.appendEntry(entryTool, display) }
+func (m *model) appendSystem(text string)  { m.appendEntry(entrySystem, text) }
 
 // rerenderHistory refreshes every entry's rendering, e.g. after a resize.
 func (m *model) rerenderHistory() {
@@ -308,6 +308,7 @@ func (m *model) persist() {
 		Messages:     raw,
 		Summary:      summary,
 		PinnedFiles:  pinned,
+		ExtraDirs:    m.proc.ExtraDirs(),
 		MessageCount: count,
 	})
 }

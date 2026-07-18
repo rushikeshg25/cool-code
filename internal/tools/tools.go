@@ -17,10 +17,18 @@ import (
 type Context struct {
 	// Ctx cancels long-running tool work (shell commands, web requests) when
 	// the turn is aborted. May be nil; use Context() for a non-nil value.
-	Ctx       context.Context
-	RootDir   string
+	Ctx     context.Context
+	RootDir string
+	// ExtraDirs are additional directories (added via /add-dir) that path-jailed
+	// tools may read and write alongside RootDir.
+	ExtraDirs []string
 	Config    config.Config
 	GitIgnore project.GitIgnoreChecker
+}
+
+// Roots returns every directory tools may operate in: RootDir plus ExtraDirs.
+func (c Context) Roots() []string {
+	return append([]string{c.RootDir}, c.ExtraDirs...)
 }
 
 // Context returns the cancellation context, defaulting to context.Background().
