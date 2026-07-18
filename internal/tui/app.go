@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/rushikeshg25/cool-code/internal/agent"
+	"github.com/rushikeshg25/cool-code/internal/llm"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
@@ -97,6 +98,10 @@ type model struct {
 
 	planMenu bool
 	planIdx  int
+
+	sessionMenu bool
+	sessionIdx  int
+	sessionList []session.Data
 
 	connectMenu bool
 	connectIdx  int
@@ -251,6 +256,25 @@ func (m *model) rerenderHistory() {
 	for i := range m.history {
 		if m.history[i].kind != entryRaw {
 			m.history[i].rendered = m.renderEntry(m.history[i])
+		}
+	}
+}
+
+// repopulateTranscript rebuilds the visible transcript from the processor's
+// current message history, so a resumed conversation is shown and not just
+// restored into context. Shared by startup resume and in-session /sessions.
+func (m *model) repopulateTranscript() {
+	messages, _, _, _, _ := m.proc.Snapshot()
+	for _, msg := range messages {
+		switch msg.Role {
+		case llm.RoleUser:
+			if !strings.HasPrefix(msg.Text, "[SYSTEM:") {
+				m.appendUser(msg.Text)
+			}
+		case llm.RoleAssistant:
+			if msg.Text != "" {
+				m.appendAssistant(msg.Text)
+			}
 		}
 	}
 }

@@ -2,7 +2,9 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/atotto/clipboard"
@@ -11,6 +13,9 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/creds"
+	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/session"
+	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -142,6 +147,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.connectMenu {
 		return m.handleConnectMenu(msg)
+	}
+
+	// Session picker (/sessions).
+	if m.sessionMenu {
+		return m.handleSessionMenu(msg)
 	}
 
 	switch msg.Type {
@@ -288,6 +298,54 @@ func (m *model) handleConnectMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.selectConnectOption()
 	}
+	return m, nil
+}
+
+func (m *model) handleSessionMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	n := len(m.sessionList)
+	switch msg.String() {
+	case "up":
+		m.sessionIdx = (m.sessionIdx + n - 1) % n
+	case "down":
+		m.sessionIdx = (m.sessionIdx + 1) % n
+	case "esc":
+		m.sessionMenu = false
+	case "enter":
+		return m.resumeSelectedSession()
+	default:
+		// Number keys 1-9 jump to and select a session.
+		if len(msg.String()) == 1 && msg.String()[0] >= '1' && msg.String()[0] <= '9' {
+			if idx := int(msg.String()[0] - '1'); idx < n {
+				m.sessionIdx = idx
+				return m.resumeSelectedSession()
+			}
+		}
+	}
+	return m, nil
+}
+
+// resumeSelectedSession restores the highlighted session into the processor and
+// rebuilds the visible transcript, matching a startup --resume.
+func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
+	m.sessionMenu = false
+	data := session.Load(m.sessionList[m.sessionIdx].ID)
+	if data == nil {
+		m.appendSystem("Could not load that session.")
+		return m, nil
+	}
+	var messages []llm.Message
+	_ = json.Unmarshal(data.Messages, &messages)
+	m.proc.Restore(messages, data.Summary, data.PinnedFiles, types.AgentMode(data.Mode))
+	m.sessionID = data.ID
+	m.mode = m.proc.Mode()
+	m.history = nil
+	m.repopulateTranscript()
+	short := data.ID
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	m.appendSystem(fmt.Sprintf("Resumed session %s (%d messages).", short, data.MessageCount))
+	m.syncViewport()
 	return m, nil
 }
 

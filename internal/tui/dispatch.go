@@ -86,19 +86,12 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 			m.appendSystem("No saved sessions for this directory.")
 			break
 		}
-		var b strings.Builder
-		b.WriteString("Saved sessions (newest first):")
-		for i, s := range sessions {
-			if i >= 10 {
-				break
-			}
-			id := s.ID
-			if len(id) > 8 {
-				id = id[:8]
-			}
-			b.WriteString(fmt.Sprintf("\n  %s  %s  %d msgs", id, s.UpdatedAt, s.MessageCount))
+		if len(sessions) > 10 {
+			sessions = sessions[:10]
 		}
-		m.appendSystem(b.String())
+		m.sessionList = sessions
+		m.sessionIdx = 0
+		m.sessionMenu = true
 	case "/install-skill":
 		if arg == "" {
 			m.appendSystem("Usage: /install-skill <local-path|git-url> [--global]")

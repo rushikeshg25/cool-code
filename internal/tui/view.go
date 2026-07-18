@@ -120,6 +120,23 @@ func (m *model) renderInputRegion() string {
 		}
 		b.WriteString(faintStyle.Render("↑/↓ + Enter, or press 1-5 — Esc to cancel"))
 		return b.String()
+	case m.sessionMenu:
+		var b strings.Builder
+		b.WriteString(menuTitle.Render("Resume a session") + "\n")
+		for i, s := range m.sessionList {
+			short := s.ID
+			if len(short) > 8 {
+				short = short[:8]
+			}
+			line := fmt.Sprintf("%d. %s  %s  %d msgs", i+1, short, s.UpdatedAt, s.MessageCount)
+			if i == m.sessionIdx {
+				b.WriteString(menuSel.Render("› "+line) + "\n")
+			} else {
+				b.WriteString(menuNorm.Render("  "+line) + "\n")
+			}
+		}
+		b.WriteString(faintStyle.Render("↑/↓ + Enter, or press a number — Esc to cancel"))
+		return b.String()
 	case m.planMenu:
 		var b strings.Builder
 		b.WriteString(menuTitle.Render("Plan ready. What next?") + "\n")
