@@ -201,6 +201,14 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.KeyEnter:
 		if !msg.Alt {
+			// When the slash-command dropdown is open and no arguments have
+			// been typed, Enter accepts the highlighted command and runs it.
+			// Typed arguments (e.g. "/pin foo.go") are preserved as-is.
+			if len(m.suggestions) > 0 {
+				if fields := strings.Fields(m.ti.Value()); len(fields) <= 1 {
+					m.ti.SetValue(m.suggestions[m.suggestIdx%len(m.suggestions)].name)
+				}
+			}
 			return m.submit()
 		}
 		// Alt+Enter falls through to the textarea's newline binding.
