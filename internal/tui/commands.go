@@ -14,6 +14,7 @@ type slashCommand struct {
 
 var commands = []slashCommand{
 	{"/help", "Show available commands"},
+	{"/connect", "Connect a model provider (API key)"},
 	{"/mode", "Show or switch mode (plan | agent | ask)"},
 	{"/pin", "Pin a file into context (e.g. /pin src/main.go)"},
 	{"/unpin", "Unpin a file (or list pinned files)"},

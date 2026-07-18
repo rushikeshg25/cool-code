@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,9 @@ type Options struct {
 	Mode           types.AgentMode
 	Quiet          bool
 	AllowDangerous bool
+	// AllowMissingKey builds the Processor without a provider when no API key
+	// is configured; ProcessQuery then directs the user to /connect.
+	AllowMissingKey bool
 	// Confirm is called for dangerous actions; returns true to proceed.
 	Confirm func(message string) bool
 	// ConfirmEdit is called for edits when confirmEdits is enabled.
@@ -66,7 +70,11 @@ const updateTaskListTool = "update_task_list"
 func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 	provider, err := llm.New(cfg.LLM)
 	if err != nil {
-		return nil, err
+		var mk *llm.MissingKeyError
+		if !(opts.AllowMissingKey && errors.As(err, &mk)) {
+			return nil, err
+		}
+		provider = nil
 	}
 	checker := project.NewGitIgnoreChecker(rootDir)
 	cm := newContextManager(rootDir, cfg, checker)
@@ -129,6 +137,9 @@ func (p *Processor) buildToolDefs() {
 // ProcessQuery runs one user query to completion, returning the final assistant
 // text. Reporter may be nil.
 func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Reporter) (string, error) {
+	if p.provider == nil {
+		return "", errors.New("no API key configured — run /connect to set one up")
+	}
 	p.ctxMgr.addUser(query)
 	if reporter != nil {
 		reporter.Status(randomThinking())
@@ -396,8 +407,12 @@ func (p *Processor) GetStatus() Status {
 	p.mu.Lock()
 	usage := p.lastUsage
 	p.mu.Unlock()
+	model := p.cfg.LLM.Model + " (not connected)"
+	if p.provider != nil {
+		model = p.provider.Model()
+	}
 	s := Status{
-		Model:        p.provider.Model(),
+		Model:        model,
 		Mode:         p.getMode(),
 		MessageCount: count,
 		TotalTokens:  tokens,
@@ -425,6 +440,18 @@ func (p *Processor) SetMode(mode types.AgentMode) {
 	p.mode = mode
 	p.mu.Unlock()
 	p.ctxMgr.setMode(mode)
+}
+
+// ConfigureLLM rebuilds the provider from new LLM settings (after /connect).
+// Only callable between turns: slash commands never run while processing.
+func (p *Processor) ConfigureLLM(llmCfg config.LLM) error {
+	provider, err := llm.New(llmCfg)
+	if err != nil {
+		return err
+	}
+	p.cfg.LLM = llmCfg
+	p.provider = provider
+	return nil
 }
 
 // SetConfirmHandlers wires interactive confirmation callbacks.
@@ -472,6 +499,9 @@ func (p *Processor) ReloadSkills() { p.ctxMgr.reloadSkills() }
 
 // RootDir returns the project root.
 func (p *Processor) RootDir() string { return p.rootDir }
+
+// Connected reports whether a provider is configured.
+func (p *Processor) Connected() bool { return p.provider != nil }
 
 // Snapshot returns copies of the serializable session state.
 func (p *Processor) Snapshot() (messages []llm.Message, summary string, pinned []string, mode types.AgentMode, count int) {

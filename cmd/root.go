@@ -80,14 +80,18 @@ func runInteractive(flags rootFlags) error {
 	}
 
 	proc, err := agent.New(rootDir, cfg, agent.Options{
-		Mode:           types.ModeAgent,
-		AllowDangerous: cfg.AllowDangerous(),
+		Mode:            types.ModeAgent,
+		AllowDangerous:  cfg.AllowDangerous(),
+		AllowMissingKey: true,
 	})
 	if err != nil {
 		return handleProviderError(err)
 	}
 
 	banner := tui.Banner(Version)
+	if !proc.Connected() {
+		banner += "\n  No API key configured — run /connect to link a provider."
+	}
 
 	sessionID := session.NewID()
 	var restoreFrom *session.Data

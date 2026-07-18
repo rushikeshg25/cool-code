@@ -65,19 +65,57 @@ func Path(rootDir string) string {
 	return filepath.Join(rootDir, ".coolcode.json")
 }
 
-// Load reads .coolcode.json merged over defaults; missing/invalid falls back
-// to defaults.
-func Load(rootDir string) Config {
-	def := Default()
-	raw, err := os.ReadFile(Path(rootDir))
+// GlobalPath returns the user-level settings file (~/.coolcode/settings.json).
+func GlobalPath() string {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return def
+		return ""
+	}
+	return filepath.Join(home, ".coolcode", "settings.json")
+}
+
+// Load returns defaults merged with the user's global settings, then the
+// project .coolcode.json (project wins). Missing/invalid files are skipped.
+func Load(rootDir string) Config {
+	cfg := Default()
+	if p := GlobalPath(); p != "" {
+		cfg = mergeFile(cfg, p)
+	}
+	return mergeFile(cfg, Path(rootDir))
+}
+
+func mergeFile(base Config, path string) Config {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return base
 	}
 	var over Config
 	if err := json.Unmarshal(raw, &over); err != nil {
-		return def
+		return base
 	}
-	return merge(def, over)
+	return merge(base, over)
+}
+
+// SetGlobalLLM persists model/provider defaults to the global settings file,
+// preserving any other settings already stored there.
+func SetGlobalLLM(llm LLM) error {
+	p := GlobalPath()
+	if p == "" {
+		return os.ErrNotExist
+	}
+	var current Config
+	if raw, err := os.ReadFile(p); err == nil {
+		_ = json.Unmarshal(raw, &current)
+	}
+	current.LLM = llm
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(current, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, append(data, '\n'), 0o644)
 }
 
 // Save writes the config back to disk as pretty JSON.

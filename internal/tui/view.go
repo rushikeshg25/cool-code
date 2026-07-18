@@ -102,6 +102,24 @@ func (m *model) renderInputRegion() string {
 			confirmBox.Render(colorizeDiff(m.confirmMsg)),
 			faintStyle.Render("Proceed? [y/N]"),
 		)
+	case m.connectFor >= 0:
+		return lipgloss.JoinVertical(lipgloss.Left,
+			menuTitle.Render("Connect "+connectOptions[m.connectFor].provider),
+			m.keyInput.View(),
+			faintStyle.Render("Enter to save · Esc to cancel"),
+		)
+	case m.connectMenu:
+		var b strings.Builder
+		b.WriteString(menuTitle.Render("Connect a provider") + "\n")
+		for i, opt := range connectOptions {
+			if i == m.connectIdx {
+				b.WriteString(menuSel.Render(fmt.Sprintf("› %d. %s", i+1, opt.label)) + "\n")
+			} else {
+				b.WriteString(menuNorm.Render(fmt.Sprintf("  %d. %s", i+1, opt.label)) + "\n")
+			}
+		}
+		b.WriteString(faintStyle.Render("↑/↓ + Enter, or press 1-5 — Esc to cancel"))
+		return b.String()
 	case m.planMenu:
 		var b strings.Builder
 		b.WriteString(menuTitle.Render("Plan ready. What next?") + "\n")

@@ -8,6 +8,9 @@ import (
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/rushikeshg25/cool-code/internal/config"
+	"github.com/rushikeshg25/cool-code/internal/creds"
 )
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -133,6 +136,14 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePlanMenu(msg)
 	}
 
+	// /connect key entry, then provider menu.
+	if m.connectFor >= 0 {
+		return m.handleConnectKey(msg)
+	}
+	if m.connectMenu {
+		return m.handleConnectMenu(msg)
+	}
+
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		if m.processing {
@@ -245,6 +256,72 @@ func (m *model) startImplementation() (tea.Model, tea.Cmd) {
 	m.proc.SetMode("agent")
 	m.mode = "agent"
 	return m.runQuery("The plan above is approved. Proceed with implementing it now.")
+}
+
+func (m *model) handleConnectMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up":
+		m.connectIdx = (m.connectIdx + len(connectOptions) - 1) % len(connectOptions)
+	case "down":
+		m.connectIdx = (m.connectIdx + 1) % len(connectOptions)
+	case "esc":
+		m.connectMenu = false
+	case "1", "2", "3", "4", "5":
+		m.connectIdx = int(msg.String()[0] - '1')
+		return m.selectConnectOption()
+	case "enter":
+		return m.selectConnectOption()
+	}
+	return m, nil
+}
+
+func (m *model) selectConnectOption() (tea.Model, tea.Cmd) {
+	opt := connectOptions[m.connectIdx]
+	m.connectMenu = false
+	if opt.provider == "" {
+		m.appendSystem("Subscription sign-in isn't supported yet — pick an API key option.")
+		return m, nil
+	}
+	m.connectFor = m.connectIdx
+	m.keyInput.Reset()
+	return m, m.keyInput.Focus()
+}
+
+func (m *model) handleConnectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.connectFor = -1
+		m.keyInput.Blur()
+		m.appendSystem("Connect cancelled.")
+		return m, nil
+	case tea.KeyEnter:
+		opt := connectOptions[m.connectFor]
+		key := strings.TrimSpace(m.keyInput.Value())
+		m.connectFor = -1
+		m.keyInput.Blur()
+		m.keyInput.Reset()
+		if key == "" {
+			m.appendSystem("Connect cancelled (empty key).")
+			return m, nil
+		}
+		if err := creds.SetAPIKey(opt.provider, key); err != nil {
+			m.appendSystem("Failed to store key: " + err.Error())
+			return m, nil
+		}
+		if err := config.SetGlobalLLM(config.LLM{Model: opt.model, Provider: opt.provider}); err != nil {
+			m.appendSystem("Key stored, but saving global settings failed: " + err.Error())
+		}
+		cfg := config.Load(m.rootDir)
+		if err := m.proc.ConfigureLLM(cfg.LLM); err != nil {
+			m.appendSystem("Key stored, but provider setup failed: " + err.Error())
+			return m, nil
+		}
+		m.appendSystem("Connected " + opt.provider + " — model " + cfg.LLM.Model + ". Key stored in " + creds.Path() + ".")
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.keyInput, cmd = m.keyInput.Update(msg)
+	return m, cmd
 }
 
 func (m *model) respondConfirm(v bool) {

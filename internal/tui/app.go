@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -94,6 +95,26 @@ type model struct {
 
 	planMenu bool
 	planIdx  int
+
+	connectMenu bool
+	connectIdx  int
+	connectFor  int // index into connectOptions awaiting key entry, -1 = none
+	keyInput    textinput.Model
+}
+
+// connectOption is one /connect choice.
+type connectOption struct {
+	label    string
+	provider string // "" = not yet supported
+	model    string // global default model applied on connect
+}
+
+var connectOptions = []connectOption{
+	{"Claude API key (Anthropic)", "anthropic", "claude-sonnet-4-5"},
+	{"OpenAI API key", "openai", "gpt-5"},
+	{"Gemini API key (Google)", "google", "gemini-2.5-flash"},
+	{"Claude Pro/Max subscription — coming soon", "", ""},
+	{"ChatGPT/Codex subscription — coming soon", "", ""},
 }
 
 func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sessionID string) *model {
@@ -113,6 +134,11 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 	sp.Spinner = spinner.Dot
 	sp.Style = spinnerStyle
 
+	ki := textinput.New()
+	ki.Placeholder = "paste API key"
+	ki.Prompt = "❯ "
+	ki.EchoMode = textinput.EchoPassword
+
 	return &model{
 		proc:      proc,
 		rootDir:   rootDir,
@@ -121,9 +147,11 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 		sessionID: sessionID,
 		ti:        ti,
 		sp:        sp,
-		mode:      proc.Mode(),
-		tasks:     proc.TaskList(),
-		streamIdx: -1,
+		mode:       proc.Mode(),
+		tasks:      proc.TaskList(),
+		streamIdx:  -1,
+		connectFor: -1,
+		keyInput:   ki,
 	}
 }
 

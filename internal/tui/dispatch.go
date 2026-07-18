@@ -32,6 +32,9 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 	case "/help":
 		m.appendSystem(m.helpText())
+	case "/connect":
+		m.connectMenu = true
+		m.connectIdx = 0
 	case "/mode":
 		if arg != "" && types.AgentMode(arg).Valid() {
 			m.proc.SetMode(types.AgentMode(arg))

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
+	"github.com/rushikeshg25/cool-code/internal/creds"
 )
 
 // Role identifies the author of a message.
@@ -120,14 +121,18 @@ func (e *MissingKeyError) Error() string {
 }
 
 // New builds a Provider for the given config, returning *MissingKeyError when
-// the required API key is absent.
+// the required API key is absent. Keys come from the /connect credentials
+// store first, then the provider's env var.
 func New(cfg config.LLM) (Provider, error) {
 	name := ResolveProvider(cfg)
 	info, ok := providers[name]
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", name)
 	}
-	key := os.Getenv(info.envKey)
+	key := creds.APIKey(name)
+	if key == "" {
+		key = os.Getenv(info.envKey)
+	}
 	if key == "" {
 		return nil, &MissingKeyError{Provider: name, EnvKey: info.envKey, KeyURL: info.keyURL}
 	}
