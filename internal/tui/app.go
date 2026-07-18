@@ -89,6 +89,8 @@ type model struct {
 
 	suggestions []slashCommand
 	suggestIdx  int
+	suggestMode suggestKind
+	fileCache   []string // project-relative paths for @-mention completion
 
 	confirmMsg  string
 	confirmResp chan bool

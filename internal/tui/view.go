@@ -153,7 +153,11 @@ func (m *model) renderSuggestions() string {
 			b.WriteString("\n")
 		}
 	}
-	b.WriteString("\n" + faintStyle.Render("  ↑/↓ navigate · Enter run · Tab complete"))
+	hint := "  ↑/↓ navigate · Enter run · Tab complete"
+	if m.suggestMode == suggestFile {
+		hint = "  ↑/↓ navigate · Tab/Enter insert path"
+	}
+	b.WriteString("\n" + faintStyle.Render(hint))
 	return b.String()
 }
 

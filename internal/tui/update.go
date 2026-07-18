@@ -163,10 +163,14 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyTab:
 		if len(m.suggestions) > 0 {
-			m.ti.SetValue(m.suggestions[m.suggestIdx%len(m.suggestions)].name + " ")
-			m.ti.CursorEnd()
-			m.suggestIdx = 0
-			m.refreshSuggestions()
+			if m.suggestMode == suggestFile {
+				m.applyFileSuggestion()
+			} else {
+				m.ti.SetValue(m.suggestions[m.suggestIdx%len(m.suggestions)].name + " ")
+				m.ti.CursorEnd()
+				m.suggestIdx = 0
+				m.refreshSuggestions()
+			}
 		}
 		return m, nil
 	case tea.KeyUp:
@@ -205,6 +209,10 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// been typed, Enter accepts the highlighted command and runs it.
 			// Typed arguments (e.g. "/pin foo.go") are preserved as-is.
 			if len(m.suggestions) > 0 {
+				if m.suggestMode == suggestFile {
+					m.applyFileSuggestion()
+					return m, nil
+				}
 				if fields := strings.Fields(m.ti.Value()); len(fields) <= 1 {
 					m.ti.SetValue(m.suggestions[m.suggestIdx%len(m.suggestions)].name)
 				}
@@ -343,12 +351,45 @@ func (m *model) respondConfirm(v bool) {
 func (m *model) refreshSuggestions() {
 	if m.processing || m.ti.LineCount() > 1 {
 		m.suggestions = nil
+		m.suggestMode = suggestNone
 		return
 	}
-	m.suggestions = matchCommands(m.ti.Value())
+	val := m.ti.Value()
+	switch {
+	case strings.HasPrefix(val, "/"):
+		m.suggestMode = suggestCommand
+		m.suggestions = matchCommands(val)
+	case hasAtToken(val):
+		token, _, _ := atToken(val)
+		m.suggestMode = suggestFile
+		m.suggestions = matchFiles(m.projectFiles(), token)
+	default:
+		m.suggestMode = suggestNone
+		m.suggestions = nil
+	}
 	if m.suggestIdx >= len(m.suggestions) {
 		m.suggestIdx = 0
 	}
+}
+
+// hasAtToken reports whether the input ends in a completable "@" mention.
+func hasAtToken(val string) bool {
+	_, _, ok := atToken(val)
+	return ok
+}
+
+// applyFileSuggestion replaces the trailing "@token" with the highlighted path.
+func (m *model) applyFileSuggestion() {
+	val := m.ti.Value()
+	_, at, ok := atToken(val)
+	if !ok || len(m.suggestions) == 0 {
+		return
+	}
+	sel := m.suggestions[m.suggestIdx%len(m.suggestions)].name
+	m.ti.SetValue(val[:at] + sel + " ")
+	m.ti.CursorEnd()
+	m.suggestIdx = 0
+	m.refreshSuggestions()
 }
 
 func (m *model) submit() (tea.Model, tea.Cmd) {
