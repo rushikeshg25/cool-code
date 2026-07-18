@@ -23,6 +23,7 @@ var commands = []slashCommand{
 	{"/install-skill", "Install a skill from a local path or git URL"},
 	{"/clear", "Clear the screen"},
 	{"/exit", "Exit the session"},
+	{"/quit", "Exit the session"},
 }
 
 var modeCycle = []types.AgentMode{types.ModePlan, types.ModeAgent, types.ModeAsk}

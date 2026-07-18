@@ -153,6 +153,7 @@ func (m *model) renderSuggestions() string {
 			b.WriteString("\n")
 		}
 	}
+	b.WriteString("\n" + faintStyle.Render("  ↑/↓ navigate · Enter run · Tab complete"))
 	return b.String()
 }
 
