@@ -224,6 +224,15 @@ Requires Go 1.24+. External tools used at runtime when present: `git`, `rg` (rip
 
 ## Changelog
 
+### 2.2 — Responsive TUI, proxy endpoints & multi-root workspaces (2026-08)
+
+- Responsive compact TUI, persistent composer, bounded menus and overlays.
+- Distinct `PLAN READY` cards and improved Markdown formatting.
+- `/add-dir` multi-root workspace support and cross-directory completion.
+- OpenAI-compatible proxy/base URL and API-key environment configuration.
+- Reasoning effort via `--effort`, `/effort`, and `llm.reasoningEffort`.
+- Terminal OSC reply filtering and render regression tests.
+
 ### 2.1 — Subagents, concurrency & quality of life (2026-07)
 
 - **Explore subagents** — new `spawn_agent` tool; the agent fans out concurrent read-only mini-agents (own history, 15-iteration cap, cannot nest) with live per-agent status lines in the TUI.
