@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -27,6 +28,7 @@ type rootFlags struct {
 	copy           bool
 	continueSess   bool
 	resumeID       string
+	effort         string
 }
 
 // Execute runs the root command.
@@ -51,6 +53,7 @@ func Execute() {
 	root.Flags().BoolVar(&flags.copy, "copy", false, "Copy final responses to the clipboard")
 	root.Flags().BoolVar(&flags.continueSess, "continue", false, "Resume the most recent session for this directory")
 	root.Flags().StringVar(&flags.resumeID, "resume", "", "Resume a specific session by id")
+	root.Flags().StringVar(&flags.effort, "effort", "", "Reasoning effort: minimal, low, medium, high, or xhigh")
 
 	root.SetVersionTemplate("cool-code v{{.Version}}\n")
 	root.AddCommand(configCmd(), scanCmd(), skillCmd(), taskCmd())
@@ -74,6 +77,13 @@ func runInteractive(flags rootFlags) error {
 	}
 
 	cfg := config.Load(rootDir)
+	if flags.effort != "" {
+		flags.effort = strings.ToLower(flags.effort)
+		if !config.ValidReasoningEffort(flags.effort) {
+			return fmt.Errorf("invalid effort %q (use minimal, low, medium, high, or xhigh)", flags.effort)
+		}
+		cfg.LLM.ReasoningEffort = flags.effort
+	}
 	if flags.allowDangerous {
 		t := true
 		cfg.Features.AllowDangerous = &t

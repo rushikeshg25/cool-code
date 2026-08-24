@@ -129,18 +129,17 @@ func New(cfg config.LLM) (Provider, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", name)
 	}
-	key := creds.APIKey(name)
+	key, keyEnv := resolveAPIKey(cfg, name, info.envKey)
 	if key == "" {
-		key = os.Getenv(info.envKey)
-	}
-	if key == "" {
-		return nil, &MissingKeyError{Provider: name, EnvKey: info.envKey, KeyURL: info.keyURL}
+		return nil, &MissingKeyError{Provider: name, EnvKey: keyEnv, KeyURL: info.keyURL}
 	}
 	base := baseProvider{
-		model:       cfg.Model,
-		apiKey:      key,
-		temperature: cfg.Temperature,
-		maxTokens:   4096,
+		model:           cfg.Model,
+		apiKey:          key,
+		baseURL:         resolveBaseURL(cfg, name),
+		reasoningEffort: cfg.ReasoningEffort,
+		temperature:     cfg.Temperature,
+		maxTokens:       4096,
 	}
 	if cfg.MaxTokens != nil && *cfg.MaxTokens > 0 {
 		base.maxTokens = *cfg.MaxTokens
@@ -155,11 +154,50 @@ func New(cfg config.LLM) (Provider, error) {
 	}
 }
 
+// resolveAPIKey supports proxy credentials without persisting the secret in
+// .coolcode.json. apiKeyEnv stores only the name of the environment variable.
+func resolveAPIKey(cfg config.LLM, provider, providerEnv string) (key, envName string) {
+	if cfg.APIKeyEnv != "" {
+		return os.Getenv(cfg.APIKeyEnv), cfg.APIKeyEnv
+	}
+	if key = os.Getenv("COOLCODE_API_KEY"); key != "" {
+		return key, "COOLCODE_API_KEY"
+	}
+	if key = creds.APIKey(provider); key != "" {
+		return key, providerEnv
+	}
+	return os.Getenv(providerEnv), providerEnv
+}
+
+// resolveBaseURL returns an optional provider endpoint override. The generic
+// COOLCODE variable is useful for OpenAI-compatible gateways and CLI proxies;
+// provider-specific variables preserve common ecosystem conventions.
+func resolveBaseURL(cfg config.LLM, provider string) string {
+	if cfg.BaseURL != "" {
+		return cfg.BaseURL
+	}
+	if base := os.Getenv("COOLCODE_API_BASE_URL"); base != "" {
+		return base
+	}
+	var env string
+	switch provider {
+	case "openai":
+		env = "OPENAI_BASE_URL"
+	case "anthropic":
+		env = "ANTHROPIC_BASE_URL"
+	case "google":
+		env = "GOOGLE_GENERATIVE_AI_BASE_URL"
+	}
+	return os.Getenv(env)
+}
+
 type baseProvider struct {
-	model       string
-	apiKey      string
-	temperature *float64
-	maxTokens   int
+	model           string
+	apiKey          string
+	baseURL         string
+	reasoningEffort string
+	temperature     *float64
+	maxTokens       int
 }
 
 func (b baseProvider) Model() string { return b.model }

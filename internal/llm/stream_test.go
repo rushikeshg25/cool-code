@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -172,5 +173,49 @@ func TestGeminiStreamAssembly(t *testing.T) {
 	}
 	if msg.Usage.Input != 5 || msg.Usage.Output != 2 {
 		t.Fatalf("usage = %+v", msg.Usage)
+	}
+}
+
+func TestOpenAICompatibleProxyStream(t *testing.T) {
+	var requestPath string
+	var authorization string
+	var streamed bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		authorization = r.Header.Get("Authorization")
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		streamed, _ = body["stream"].(bool)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"proxy ok\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := &openaiProvider{baseProvider{
+		model:     "proxy-model",
+		apiKey:    "proxy-key",
+		baseURL:   srv.URL + "/v1",
+		maxTokens: 32,
+	}}
+	var deltas strings.Builder
+	msg, err := provider.Stream(context.Background(), Request{
+		Messages: []Message{{Role: RoleUser, Text: "say proxy ok"}},
+	}, func(delta string) { deltas.WriteString(delta) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestPath != "/v1/chat/completions" {
+		t.Fatalf("request path = %q", requestPath)
+	}
+	if authorization != "Bearer proxy-key" {
+		t.Fatalf("authorization header = %q", authorization)
+	}
+	if !streamed {
+		t.Fatal("proxy request did not enable streaming")
+	}
+	if msg.Text != "proxy ok" || deltas.String() != "proxy ok" {
+		t.Fatalf("proxy response = %q, deltas = %q", msg.Text, deltas.String())
 	}
 }

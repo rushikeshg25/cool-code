@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,52 @@ var (
 	openaiURL     = "https://api.openai.com/v1/chat/completions"
 	googleBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/"
 )
+
+// providerEndpoint turns a configured API base into the concrete endpoint
+// used by a provider. Full endpoint URLs are accepted as well as conventional
+// roots such as http://localhost:8317/v1.
+func providerEndpoint(provider, base string) string {
+	if base == "" {
+		switch provider {
+		case "anthropic":
+			return anthropicURL
+		case "openai":
+			return openaiURL
+		default:
+			return googleBaseURL
+		}
+	}
+
+	base = strings.TrimRight(base, "/")
+	var suffix string
+	switch provider {
+	case "anthropic":
+		if strings.HasSuffix(base, "/messages") {
+			return base
+		}
+		suffix = "messages"
+	case "openai":
+		if strings.HasSuffix(base, "/chat/completions") {
+			return base
+		}
+		suffix = "chat/completions"
+	default:
+		if strings.HasSuffix(base, "/models") {
+			return base + "/"
+		}
+		suffix = "models/"
+	}
+
+	u, err := url.Parse(base + "/")
+	if err != nil {
+		return base + "/" + suffix
+	}
+	rel, err := url.Parse(suffix)
+	if err != nil {
+		return base + "/" + suffix
+	}
+	return u.ResolveReference(rel).String()
+}
 
 const maxAttempts = 3
 

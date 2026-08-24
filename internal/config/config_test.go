@@ -39,6 +39,32 @@ func TestGetSetByPath(t *testing.T) {
 	if _, ok := GetByPath(c, "llm.missing"); ok {
 		t.Fatal("expected missing key to be absent")
 	}
+	if err := SetByPath(&c, "llm.baseUrl", "http://localhost:8317/v1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetByPath(&c, "llm.apiKeyEnv", "CLIPROXY_API_KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if c.LLM.BaseURL != "http://localhost:8317/v1" || c.LLM.APIKeyEnv != "CLIPROXY_API_KEY" {
+		t.Fatalf("proxy config = %+v", c.LLM)
+	}
+	if err := SetByPath(&c, "llm.reasoningEffort", "high"); err != nil {
+		t.Fatal(err)
+	}
+	if c.LLM.ReasoningEffort != "high" {
+		t.Fatalf("reasoning effort = %q", c.LLM.ReasoningEffort)
+	}
+}
+
+func TestValidReasoningEffort(t *testing.T) {
+	for _, effort := range []string{"", "minimal", "low", "medium", "high", "xhigh"} {
+		if !ValidReasoningEffort(effort) {
+			t.Errorf("expected %q to be valid", effort)
+		}
+	}
+	if ValidReasoningEffort("maximum") {
+		t.Fatal("maximum should not be accepted")
+	}
 }
 
 func TestParseValue(t *testing.T) {

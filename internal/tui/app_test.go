@@ -95,6 +95,21 @@ func TestShiftTabCyclesMode(t *testing.T) {
 	}
 }
 
+func TestSlashEffortUpdatesProviderAndProjectConfig(t *testing.T) {
+	m := newTestModel(t)
+	m = typeLine(t, m, "/effort high")
+	if got := m.proc.GetStatus().Effort; got != "high" {
+		t.Fatalf("processor effort = %q", got)
+	}
+	cfg := config.Load(m.rootDir)
+	if cfg.LLM.ReasoningEffort != "high" {
+		t.Fatalf("saved effort = %q", cfg.LLM.ReasoningEffort)
+	}
+	if !strings.Contains(lastSystemEntry(m), "HIGH") {
+		t.Fatalf("effort confirmation = %q", lastSystemEntry(m))
+	}
+}
+
 func TestExitQuits(t *testing.T) {
 	m := newTestModel(t)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/exit")})

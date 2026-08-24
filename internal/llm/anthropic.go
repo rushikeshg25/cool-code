@@ -102,7 +102,7 @@ func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message,
 			OutputTokens int `json:"output_tokens"`
 		} `json:"usage"`
 	}
-	if err := postJSON(ctx, anthropicURL, headers, body, &resp); err != nil {
+	if err := postJSON(ctx, providerEndpoint("anthropic", p.baseURL), headers, body, &resp); err != nil {
 		return Message{}, err
 	}
 
@@ -136,7 +136,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req Request, onDelta fun
 	}
 	blocks := map[int]*blockState{}
 
-	err := streamSSE(ctx, anthropicURL, headers, body, func(event string, data []byte) {
+	err := streamSSE(ctx, providerEndpoint("anthropic", p.baseURL), headers, body, func(event string, data []byte) {
 		var ev struct {
 			Type  string `json:"type"`
 			Index int    `json:"index"`

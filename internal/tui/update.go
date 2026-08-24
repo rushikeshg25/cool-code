@@ -24,7 +24,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		widthChanged := m.width != msg.Width
 		m.width = msg.Width
 		m.height = msg.Height
-		m.ti.SetWidth(msg.Width - 4)
+		m.ti.SetWidth(maxInt(10, msg.Width-6))
+		m.keyInput.Width = maxInt(10, msg.Width-4)
 		if !m.ready {
 			m.vp = newViewport(msg.Width, m.viewportHeight())
 			m.ready = true
@@ -67,6 +68,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		m.confirmMsg = msg.message
 		m.confirmResp = msg.resp
+		m.confirmOff = 0
 		return m, nil
 
 	case doneMsg:
@@ -96,6 +98,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 	m.processing = false
 	m.status = ""
+	m.ti.Placeholder = "Ask, plan, or build something…"
 	m.cancelTurn = nil
 	m.subagents = nil
 	m.streamIdx = -1
@@ -109,6 +112,9 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.tasks = m.proc.TaskList()
+	if m.proc.Mode() == types.ModePlan && msg.final != "" {
+		m.promoteLastPlan(msg.final)
+	}
 	m.persist()
 	if m.copy && msg.final != "" {
 		if err := clipboard.WriteAll(msg.final); err != nil {
@@ -125,6 +131,11 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Some terminals answer foreground/background color capability probes with
+	// OSC 10/11 sequences. They are terminal metadata, never user input.
+	if isTerminalColorReply(msg) {
+		return m, nil
+	}
 	// Confirmation overlay takes priority.
 	if m.confirmMsg != "" {
 		switch strings.ToLower(msg.String()) {
@@ -132,6 +143,14 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.respondConfirm(true)
 		case "n", "esc", "enter":
 			m.respondConfirm(false)
+		case "up":
+			m.confirmOff = maxInt(0, m.confirmOff-1)
+		case "down":
+			m.confirmOff++
+		case "pgup":
+			m.confirmOff = maxInt(0, m.confirmOff-maxInt(3, m.height/2))
+		case "pgdown":
+			m.confirmOff += maxInt(3, m.height/2)
 		}
 		return m, nil
 	}
@@ -237,6 +256,11 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.fitInputHeight()
 	m.refreshSuggestions()
 	return m, cmd
+}
+
+func isTerminalColorReply(msg tea.KeyMsg) bool {
+	raw := string(msg.Runes)
+	return strings.Contains(raw, "]10;rgb:") || strings.Contains(raw, "]11;rgb:")
 }
 
 // setInput replaces the input contents (history recall).
@@ -478,6 +502,7 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 
 func (m *model) runQuery(text string) (tea.Model, tea.Cmd) {
 	m.processing = true
+	m.ti.Placeholder = "Queue a follow-up…"
 	m.appendUser(text)
 	m.status = "Thinking…"
 	ctx, cancel := context.WithCancel(context.Background())
