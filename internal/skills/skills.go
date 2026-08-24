@@ -71,6 +71,10 @@ func Discover(rootDir string) []Skill {
 	seen := map[string]bool{}
 	var out []Skill
 	for _, base := range skillDirs(rootDir) {
+		baseInfo, err := os.Lstat(base)
+		if err != nil || !baseInfo.IsDir() {
+			continue
+		}
 		entries, err := os.ReadDir(base)
 		if err != nil {
 			continue
@@ -80,7 +84,8 @@ func Discover(rootDir string) []Skill {
 				continue
 			}
 			file := filepath.Join(base, entry.Name(), skillFile)
-			if _, err := os.Stat(file); err != nil {
+			info, err := os.Lstat(file)
+			if err != nil || !info.Mode().IsRegular() {
 				continue
 			}
 			skill, err := ParseFile(file, entry.Name())

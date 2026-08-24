@@ -5,10 +5,10 @@ LDFLAGS := -s -w -X github.com/rushikeshg25/cool-code/cmd.Version=$(VERSION)
 .PHONY: build install test vet fmt tidy clean run
 
 build: ## Build the binary
-	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) .
 
 install: ## Install to GOBIN
-	go install -ldflags "$(LDFLAGS)" .
+	go install -trimpath -ldflags "$(LDFLAGS)" .
 
 test: ## Run tests
 	go test ./...

@@ -32,6 +32,14 @@ func load() file {
 	if p == "" {
 		return f
 	}
+	parent, err := os.Lstat(filepath.Dir(p))
+	if err != nil || !parent.IsDir() {
+		return f
+	}
+	info, err := os.Lstat(p)
+	if err != nil || !info.Mode().IsRegular() {
+		return f
+	}
 	raw, err := os.ReadFile(p)
 	if err != nil {
 		return f
@@ -56,14 +64,27 @@ func SetAPIKey(provider, key string) error {
 	}
 	f := load()
 	f.Providers[provider] = entry{APIKey: key}
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	dir := filepath.Dir(p)
+	if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return os.ErrPermission
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, append(data, '\n'), 0o600)
+	if info, err := os.Lstat(p); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return os.ErrPermission
+	}
+	if err := os.WriteFile(p, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(p, 0o600)
 }
 
 // Path exposes the credentials file location for user-facing messages.

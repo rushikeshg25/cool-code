@@ -95,7 +95,7 @@ func (p *googleProvider) buildBody(req Request) map[string]any {
 
 func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, error) {
 	body := p.buildBody(req)
-	url := providerEndpoint("google", p.baseURL) + p.model + ":generateContent?key=" + p.apiKey
+	url := providerEndpoint("google", p.baseURL) + p.model + ":generateContent"
 
 	var resp struct {
 		Candidates []struct {
@@ -106,7 +106,7 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, er
 			CandidatesTokenCount int `json:"candidatesTokenCount"`
 		} `json:"usageMetadata"`
 	}
-	if err := postJSON(ctx, url, nil, body, &resp); err != nil {
+	if err := postJSON(ctx, url, p.authHeaders(), body, &resp); err != nil {
 		return Message{}, err
 	}
 	out := Message{Role: RoleAssistant, Usage: Usage{
@@ -139,10 +139,10 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, er
 // chunk is a partial generateContent response.
 func (p *googleProvider) Stream(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
 	body := p.buildBody(req)
-	url := providerEndpoint("google", p.baseURL) + p.model + ":streamGenerateContent?alt=sse&key=" + p.apiKey
+	url := providerEndpoint("google", p.baseURL) + p.model + ":streamGenerateContent?alt=sse"
 
 	out := Message{Role: RoleAssistant}
-	err := streamSSE(ctx, url, nil, body, func(_ string, data []byte) {
+	err := streamSSE(ctx, url, p.authHeaders(), body, func(_ string, data []byte) {
 		var chunk struct {
 			Candidates []struct {
 				Content geminiContent `json:"content"`
@@ -183,6 +183,13 @@ func (p *googleProvider) Stream(ctx context.Context, req Request, onDelta func(s
 		return Message{}, err
 	}
 	return out, nil
+}
+
+func (p *googleProvider) authHeaders() map[string]string {
+	if p.baseURL != "" {
+		return map[string]string{"Authorization": "Bearer " + p.apiKey}
+	}
+	return map[string]string{"x-goog-api-key": p.apiKey}
 }
 
 func isFuncRespTurn(c geminiContent) bool {

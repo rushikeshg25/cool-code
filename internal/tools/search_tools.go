@@ -43,6 +43,9 @@ var globTool = Tool{
 				continue
 			}
 			abs := filepath.Join(ctx.RootDir, rel)
+			if BlockedPath(abs, ctx.Config) != "" {
+				continue
+			}
 			if info, err := os.Stat(abs); err == nil && !info.IsDir() {
 				out = append(out, abs)
 			}
@@ -88,8 +91,22 @@ var grepTool = Tool{
 		if searchPath == "" {
 			searchPath = ctx.RootDir
 		}
+		if reason := EnsureAbsoluteWithinRoots(searchPath, ctx.Roots()); reason != "" {
+			return fail("Search blocked", reason)
+		}
+		if info, err := os.Stat(searchPath); err == nil && !info.IsDir() {
+			if reason := ValidateReadPath(searchPath, ctx); reason != "" {
+				return fail("Search blocked", reason)
+			}
+		}
 		var matches []string
 		search := func(file string) {
+			if ValidateReadPath(file, ctx) != "" {
+				return
+			}
+			if rel, err := filepath.Rel(ctx.RootDir, file); err == nil && ctx.GitIgnore != nil && ctx.GitIgnore(rel) {
+				return
+			}
 			info, err := os.Stat(file)
 			if err != nil || info.Size() > maxGrepFileSize {
 				return
@@ -154,11 +171,23 @@ var findSymbolTool = Tool{
 		if searchPath == "" {
 			searchPath = ctx.RootDir
 		}
+		if reason := EnsureAbsoluteWithinRoots(searchPath, ctx.Roots()); reason != "" {
+			return fail("Search blocked", reason)
+		}
+		if info, err := os.Stat(searchPath); err == nil && !info.IsDir() {
+			if reason := ValidateReadPath(searchPath, ctx); reason != "" {
+				return fail("Search blocked", reason)
+			}
+		}
 		includeFlag := ""
 		if a.Include != "" {
 			includeFlag = " -g '" + shellEscapeSingleQuotes(a.Include) + "'"
 		}
-		command := "rg -n --hidden --glob '!.git/*' --glob '!node_modules/*'" + includeFlag +
+		excludeFlags := ""
+		for _, pattern := range ctx.Config.Guardrails.BlockReadPatterns {
+			excludeFlags += " -g '!" + shellEscapeSingleQuotes(pattern) + "'"
+		}
+		command := "rg -n --hidden --glob '!.git/*' --glob '!node_modules/*'" + includeFlag + excludeFlags +
 			" '" + shellEscapeSingleQuotes(a.Pattern) + "' '" + shellEscapeSingleQuotes(searchPath) + "'"
 		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
 		display := "Symbol search results"

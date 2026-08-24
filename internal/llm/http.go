@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -13,9 +14,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rushikeshg25/cool-code/internal/security"
 )
 
-var httpClient = &http.Client{Timeout: 5 * time.Minute}
+var httpClient = &http.Client{
+	Timeout: 5 * time.Minute,
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return errors.New("provider redirects are disabled")
+	},
+}
 
 // Provider endpoints, as vars so tests can point them at a local server.
 var (
@@ -71,6 +79,7 @@ func providerEndpoint(provider, base string) string {
 }
 
 const maxAttempts = 3
+const maxResponseBytes = 16 * 1024 * 1024
 
 // postJSON sends body as JSON to url with the given headers and decodes the
 // response into out. Non-2xx responses return an error containing the body.
@@ -100,15 +109,18 @@ func postJSON(ctx context.Context, url string, headers map[string]string, body a
 			if ctx.Err() != nil {
 				return err
 			}
-			lastErr = &httpError{err: err}
+			lastErr = &httpError{err: errors.New("provider request failed")}
 			continue
 		}
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 		resp.Body.Close()
+		if len(data) > maxResponseBytes {
+			return errors.New("provider response exceeded size limit")
+		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			lastErr = &httpError{
 				retryAfter: resp.Header.Get("Retry-After"),
-				err:        fmt.Errorf("%s: HTTP %d: %s", url, resp.StatusCode, truncateErr(string(data))),
+				err:        httpStatusError(resp.StatusCode, data),
 			}
 			if !shouldRetry(resp.StatusCode) {
 				return lastErr.err
@@ -184,15 +196,15 @@ func streamSSE(ctx context.Context, url string, headers map[string]string, body 
 			if ctx.Err() != nil {
 				return err
 			}
-			lastErr = &httpError{err: err}
+			lastErr = &httpError{err: errors.New("provider request failed")}
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			data, _ := io.ReadAll(resp.Body)
+			data, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 			resp.Body.Close()
 			lastErr = &httpError{
 				retryAfter: resp.Header.Get("Retry-After"),
-				err:        fmt.Errorf("%s: HTTP %d: %s", url, resp.StatusCode, truncateErr(string(data))),
+				err:        httpStatusError(resp.StatusCode, data),
 			}
 			if !shouldRetry(resp.StatusCode) {
 				return lastErr.err
@@ -229,8 +241,31 @@ func scanSSE(r io.Reader, onEvent func(event string, data []byte)) error {
 }
 
 func truncateErr(s string) string {
-	if len(s) > 800 {
-		return s[:800] + "…"
+	s = security.Redact(strings.TrimSpace(s))
+	if len(s) > 300 {
+		return s[:300] + "..."
 	}
 	return s
+}
+
+func httpStatusError(status int, data []byte) error {
+	message := ""
+	var body map[string]any
+	if json.Unmarshal(data, &body) == nil {
+		if value, ok := body["message"].(string); ok {
+			message = value
+		}
+		if nested, ok := body["error"].(map[string]any); ok {
+			if value, ok := nested["message"].(string); ok {
+				message = value
+			}
+		} else if value, ok := body["error"].(string); ok {
+			message = value
+		}
+	}
+	message = truncateErr(message)
+	if message == "" {
+		return fmt.Errorf("provider request failed: HTTP %d", status)
+	}
+	return fmt.Errorf("provider request failed: HTTP %d: %s", status, message)
 }

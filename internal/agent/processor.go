@@ -13,6 +13,7 @@ import (
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
 	"github.com/rushikeshg25/cool-code/internal/project"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/tools"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
@@ -140,9 +141,9 @@ func (p *Processor) buildToolDefs() {
 // text. Reporter may be nil.
 func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Reporter) (string, error) {
 	if p.provider == nil {
-		return "", errors.New("no API key configured — run /connect to set one up")
+		return "", errors.New("no API key configured - run /connect to set one up")
 	}
-	p.ctxMgr.addUser(query)
+	p.ctxMgr.addUser(security.Redact(query))
 	if reporter != nil {
 		reporter.Status(randomThinking())
 	}
@@ -164,7 +165,10 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		var resp llm.Message
 		var err error
 		if streamer, ok := p.provider.(llm.Streamer); ok && reporter != nil {
-			resp, err = streamer.Stream(ctx, req, reporter.AssistantDelta)
+			// Stage provider text until the response is known to be final. Models
+			// often emit scratch prose before tool calls; streaming it directly
+			// exposes internal work and leaves it below task/plan UI elements.
+			resp, err = streamer.Stream(ctx, req, func(string) {})
 		} else {
 			resp, err = p.provider.Complete(ctx, req)
 		}
@@ -176,16 +180,13 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			p.lastUsage = resp.Usage
 			p.mu.Unlock()
 		}
-		p.ctxMgr.addAssistant(resp)
-
-		if resp.Text != "" {
-			finalText = resp.Text
-			if reporter != nil {
-				reporter.Assistant(resp.Text)
-			}
-		}
+		p.ctxMgr.addAssistant(redactMessage(resp))
 
 		if len(resp.ToolCalls) == 0 {
+			finalText = security.Redact(resp.Text)
+			if finalText != "" && reporter != nil {
+				reporter.Assistant(finalText)
+			}
 			break
 		}
 
@@ -206,8 +207,8 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				results[i] = &types.ToolResult{LLMResult: p.handleTaskList(call, reporter)}
 			case call.Name == spawnAgentTool:
 				spawnIdx = append(spawnIdx, i)
-			case p.getMode() == types.ModeAsk && tools.IsMutating(call.Name):
-				results[i] = &types.ToolResult{LLMResult: "[ASK MODE] Cannot execute tool '" + call.Name + "' in Ask mode. Only reading and answering questions is allowed."}
+			case p.getMode() != types.ModeAgent && tools.IsMutating(call.Name):
+				results[i] = &types.ToolResult{LLMResult: "[READ-ONLY MODE] Cannot execute tool '" + call.Name + "'. Switch to Agent mode to make changes or execute project code."}
 			default:
 				if declined, msg := p.gate(call); declined {
 					results[i] = &types.ToolResult{LLMResult: msg}
@@ -259,10 +260,10 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 						results[i] = &types.ToolResult{Display: "Subagent failed", LLMResult: "Invalid arguments: spawn_agent requires a non-empty task."}
 						continue
 					}
-					label := "agent " + strconv.Itoa(k+1) + ": " + truncateTask(task)
+					label := "agent " + strconv.Itoa(k+1) + ": " + truncateTask(security.Redact(task))
 					setLine := func(k int, state string) {
 						linesMu.Lock()
-						lines[k] = label + " — " + state
+						lines[k] = label + " - " + state
 						linesMu.Unlock()
 						push()
 					}
@@ -314,6 +315,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			if results[i] == nil {
 				continue
 			}
+			results[i].LLMResult = security.Redact(results[i].LLMResult)
 			p.ctxMgr.addToolResult(call, results[i].LLMResult)
 			if executed[i] && reporter != nil {
 				reporter.Tool(call.Name, results[i].Display)
@@ -358,7 +360,7 @@ func (p *Processor) gate(call llm.ToolCall) (bool, string) {
 // handleTaskList records the model's task list and returns the tool result.
 func (p *Processor) handleTaskList(call llm.ToolCall, reporter Reporter) string {
 	var list types.TaskList
-	if err := json.Unmarshal(call.Arguments, &list); err == nil {
+	if err := json.Unmarshal([]byte(security.Redact(string(call.Arguments))), &list); err == nil {
 		p.mu.Lock()
 		p.taskList = &list
 		p.mu.Unlock()
@@ -385,8 +387,17 @@ func (p *Processor) summarize(ctx context.Context) {
 		Messages: []llm.Message{{Role: llm.RoleUser, Text: b.String()}},
 	})
 	if err == nil && resp.Text != "" {
-		p.ctxMgr.applySummary(resp.Text)
+		p.ctxMgr.applySummary(security.Redact(resp.Text))
 	}
+}
+
+func redactMessage(message llm.Message) llm.Message {
+	message.Text = security.Redact(message.Text)
+	message.ToolCalls = append([]llm.ToolCall(nil), message.ToolCalls...)
+	for i := range message.ToolCalls {
+		message.ToolCalls[i].Arguments = json.RawMessage(security.Redact(string(message.ToolCalls[i].Arguments)))
+	}
+	return message
 }
 
 // --- accessors used by the TUI/CLI ---
@@ -489,8 +500,24 @@ func (p *Processor) TaskList() *types.TaskList {
 	return p.taskList
 }
 
-// PinFile pins an absolute file path into context.
-func (p *Processor) PinFile(path string) { p.ctxMgr.pin(path) }
+// PinFile pins an allowed absolute file path into context.
+func (p *Processor) PinFile(path string) error {
+	p.mu.Lock()
+	toolCtx := p.toolCtx
+	p.mu.Unlock()
+	if reason := tools.ValidateReadPath(path, toolCtx); reason != "" {
+		return errors.New(reason)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return errors.New("path is not a file")
+	}
+	p.ctxMgr.pin(path)
+	return nil
+}
 
 // UnpinFile removes a pinned file.
 func (p *Processor) UnpinFile(path string) { p.ctxMgr.unpin(path) }
@@ -524,6 +551,10 @@ func (p *Processor) AddDir(path string) (string, error) {
 	abs, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
 		return "", err
+	}
+	abs, err = filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", errors.New("directory not found: " + abs)
 	}
 	info, err := os.Stat(abs)
 	if err != nil {

@@ -12,14 +12,18 @@ import (
 func TestAddDirValidation(t *testing.T) {
 	root := t.TempDir()
 	extra := t.TempDir()
+	extraResolved, err := filepath.EvalSymlinks(extra)
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := newTestProcessor(t, root, nil, types.ModeAgent)
 
 	// Valid absolute dir.
 	abs, err := p.AddDir(extra)
-	if err != nil || abs != extra {
+	if err != nil || abs != extraResolved {
 		t.Fatalf("AddDir(%q) = %q, %v", extra, abs, err)
 	}
-	if dirs := p.ExtraDirs(); len(dirs) != 1 || dirs[0] != extra {
+	if dirs := p.ExtraDirs(); len(dirs) != 1 || dirs[0] != extraResolved {
 		t.Fatalf("ExtraDirs = %v", dirs)
 	}
 
@@ -66,8 +70,12 @@ func TestAddDirValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(sibling)
+	siblingResolved, err := filepath.EvalSymlinks(sibling)
+	if err != nil {
+		t.Fatal(err)
+	}
 	abs, err = p.AddDir("../" + filepath.Base(sibling))
-	if err != nil || abs != sibling {
+	if err != nil || abs != siblingResolved {
 		t.Fatalf("relative AddDir = %q, %v", abs, err)
 	}
 

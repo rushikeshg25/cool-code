@@ -58,6 +58,7 @@ var shellCommandTool = Tool{
 var runTestsTool = Tool{
 	Name:        "run_tests",
 	Description: "Runs project tests. Auto-detects Go, Rust, Python, or Node when no command is provided.",
+	Mutating:    true,
 	Schema: obj(map[string]any{
 		"command": strProp("Optional command to run tests."),
 	}),
@@ -85,6 +86,7 @@ var runTestsTool = Tool{
 var lintFixTool = Tool{
 	Name:        "lint_fix",
 	Description: "Runs lint/format with auto-fix. Auto-detects Go, Rust, Python, or Node when no command is provided.",
+	Mutating:    true,
 	Schema: obj(map[string]any{
 		"command": strProp("Optional command to run lint/format."),
 	}),
@@ -157,6 +159,10 @@ var addScriptTool = Tool{
 		}
 		if a.Name == "" || a.Command == "" {
 			return fail("Invalid arguments", "name and command are required.")
+		}
+		packagePath := filepath.Join(ctx.RootDir, "package.json")
+		if reason := EnsureAbsoluteWithinRoots(packagePath, ctx.Roots()); reason != "" {
+			return fail("package.json blocked", reason)
 		}
 		pkg, ok := readPackageJSON(ctx.RootDir)
 		if !ok {

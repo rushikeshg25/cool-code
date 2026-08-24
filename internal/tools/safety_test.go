@@ -71,8 +71,8 @@ func TestDangerReason(t *testing.T) {
 		t.Error("rm -rf should be dangerous")
 	}
 	safe, _ := json.Marshal(map[string]any{"command": "ls -la"})
-	if DangerReason("shell_command", safe) != "" {
-		t.Error("ls should be safe")
+	if DangerReason("shell_command", safe) == "" {
+		t.Error("all arbitrary shell commands should require confirmation")
 	}
 	write, _ := json.Marshal(map[string]any{"dryRun": false})
 	if DangerReason("replace_in_files", write) == "" {

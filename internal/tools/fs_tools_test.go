@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
+	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
 func testCtx(root string) Context {
@@ -69,6 +70,44 @@ func TestEditFileOutsideRootRejected(t *testing.T) {
 	raw, _ := os.ReadFile(outside)
 	if string(raw) != "original" {
 		t.Fatalf("file outside root was modified: %s", raw)
+	}
+}
+
+func TestReadAndSearchOutsideRootRejected(t *testing.T) {
+	root := t.TempDir()
+	ctx := testCtx(root)
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	_ = os.WriteFile(outside, []byte("company secret"), 0o644)
+
+	for name, result := range map[string]types.ToolResult{
+		"read": readFileTool.Execute(ctx, args(t, map[string]any{"absolutePath": outside})),
+		"grep": grepTool.Execute(ctx, args(t, map[string]any{"pattern": "secret", "path": outside})),
+		"find": findSymbolTool.Execute(ctx, args(t, map[string]any{"pattern": "secret", "path": outside})),
+	} {
+		if !strings.Contains(result.LLMResult, "within project root") {
+			t.Errorf("%s did not enforce root jail: %s", name, result.LLMResult)
+		}
+	}
+}
+
+func TestSymlinkEscapeRejectedForReadAndWrite(t *testing.T) {
+	root := t.TempDir()
+	ctx := testCtx(root)
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	_ = os.WriteFile(outside, []byte("original"), 0o644)
+	link := filepath.Join(root, "link.txt")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	read := readFileTool.Execute(ctx, args(t, map[string]any{"absolutePath": link}))
+	if !strings.Contains(read.LLMResult, "within project root") {
+		t.Fatalf("symlink read escaped root: %s", read.LLMResult)
+	}
+	editFileTool.Execute(ctx, args(t, map[string]any{"filePath": link, "oldString": "original", "newString": "changed"}))
+	raw, _ := os.ReadFile(outside)
+	if string(raw) != "original" {
+		t.Fatalf("symlink edit escaped root: %s", raw)
 	}
 }
 

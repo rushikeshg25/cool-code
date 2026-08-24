@@ -40,14 +40,11 @@ func configCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rootDir, _ := os.Getwd()
-			cfg := config.Load(rootDir)
-			if err := config.SetByPath(&cfg, args[0], config.ParseValue(args[1])); err != nil {
+			path, err := config.Set(rootDir, args[0], config.ParseValue(args[1]))
+			if err != nil {
 				return err
 			}
-			if err := config.Save(rootDir, cfg); err != nil {
-				return err
-			}
-			fmt.Printf("Updated %s.\nConfig file: %s\n", args[0], config.Path(rootDir))
+			fmt.Printf("Updated %s.\nConfig file: %s\n", args[0], path)
 			return nil
 		},
 	}

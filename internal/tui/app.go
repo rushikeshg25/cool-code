@@ -121,8 +121,8 @@ var connectOptions = []connectOption{
 	{"Claude API key (Anthropic)", "anthropic", "claude-sonnet-4-5"},
 	{"OpenAI API key", "openai", "gpt-5"},
 	{"Gemini API key (Google)", "google", "gemini-2.5-flash"},
-	{"Claude Pro/Max subscription — coming soon", "", ""},
-	{"ChatGPT/Codex subscription — coming soon", "", ""},
+	{"Claude Pro/Max subscription - coming soon", "", ""},
+	{"ChatGPT/Codex subscription - coming soon", "", ""},
 }
 
 func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sessionID string) *model {

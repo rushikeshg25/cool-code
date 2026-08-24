@@ -10,6 +10,7 @@ import (
 	"github.com/rushikeshg25/cool-code/internal/llm"
 	"github.com/rushikeshg25/cool-code/internal/memory"
 	"github.com/rushikeshg25/cool-code/internal/project"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/skills"
 	"github.com/rushikeshg25/cool-code/internal/tools"
 	"github.com/rushikeshg25/cool-code/internal/types"
@@ -47,7 +48,7 @@ func newContextManager(rootDir string, cfg config.Config, checker project.GitIgn
 		cfg:                 cfg,
 		mode:                types.ModeAgent,
 		maxTokens:           cfg.MaxContextTokens(),
-		fileTree:            project.FolderStructure(rootDir, checker, maxDepth),
+		fileTree:            project.FolderStructure(rootDir, privacyChecker(rootDir, cfg, checker), maxDepth),
 		projectInstructions: memory.LoadProjectInstructions(rootDir),
 		skillsCatalog:       skills.Catalog(rootDir),
 	}
@@ -128,10 +129,10 @@ func (c *contextManager) buildSystem() string {
 func (c *contextManager) buildSystemLocked() string {
 	parts := []string{basePrompt, modePrompts[c.mode]}
 	if c.projectInstructions != "" {
-		parts = append(parts, "--- Project Instructions (COOLCODE.md) ---\n"+c.projectInstructions)
+		parts = append(parts, "--- Project Instructions (COOLCODE.md) ---\n"+security.Redact(c.projectInstructions))
 	}
 	if c.skillsCatalog != "" {
-		parts = append(parts, c.skillsCatalog)
+		parts = append(parts, security.Redact(c.skillsCatalog))
 	}
 
 	var state strings.Builder
@@ -147,9 +148,10 @@ func (c *contextManager) buildSystemLocked() string {
 	}
 	if len(c.pinned) > 0 {
 		state.WriteString("\n--- Pinned Files ---\n")
+		toolCtx := tools.Context{RootDir: c.rootDir, ExtraDirs: append([]string(nil), c.extraDirs...), Config: c.cfg, GitIgnore: c.gitIgnore}
 		for _, p := range c.pinned {
 			rel, _ := filepath.Rel(c.rootDir, p)
-			if reason := tools.BlockedPath(p, c.cfg); reason != "" {
+			if reason := tools.ValidateReadPath(p, toolCtx); reason != "" {
 				state.WriteString("File: " + rel + " (blocked by guardrails)\n")
 				continue
 			}
@@ -158,13 +160,13 @@ func (c *contextManager) buildSystemLocked() string {
 				state.WriteString("File: " + rel + " (error reading)\n")
 				continue
 			}
-			state.WriteString("File: " + rel + "\n```\n" + string(raw) + "\n```\n")
+			state.WriteString("File: " + rel + "\n```\n" + security.Redact(string(raw)) + "\n```\n")
 		}
 	}
 	parts = append(parts, state.String())
 
 	if c.summary != "" {
-		parts = append(parts, "--- Summary of Earlier Conversation ---\n"+c.summary)
+		parts = append(parts, "--- Summary of Earlier Conversation ---\n"+security.Redact(c.summary))
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -209,7 +211,7 @@ func (c *contextManager) refreshTree() {
 	if c.cfg.Features.FileTreeMaxDepth != nil {
 		maxDepth = *c.cfg.Features.FileTreeMaxDepth
 	}
-	tree := project.FolderStructure(c.rootDir, c.gitIgnore, maxDepth)
+	tree := project.FolderStructure(c.rootDir, privacyChecker(c.rootDir, c.cfg, c.gitIgnore), maxDepth)
 	c.mu.Lock()
 	c.fileTree = tree
 	c.mu.Unlock()
@@ -223,11 +225,17 @@ const extraDirTreeDepth = 3
 // for the system prompt. The tree is built outside the lock like refreshTree.
 func (c *contextManager) addExtraDir(dir string) {
 	checker := project.NewGitIgnoreChecker(dir)
-	tree := project.FolderStructure(dir, checker, extraDirTreeDepth)
+	tree := project.FolderStructure(dir, privacyChecker(dir, c.cfg, checker), extraDirTreeDepth)
 	c.mu.Lock()
 	c.extraDirs = append(c.extraDirs, dir)
 	c.extraTrees = append(c.extraTrees, tree)
 	c.mu.Unlock()
+}
+
+func privacyChecker(root string, cfg config.Config, checker project.GitIgnoreChecker) project.GitIgnoreChecker {
+	return func(rel string) bool {
+		return (checker != nil && checker(rel)) || tools.BlockedPath(filepath.Join(root, rel), cfg) != ""
+	}
 }
 
 // extraDirList returns a copy of the registered /add-dir roots.

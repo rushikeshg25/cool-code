@@ -5,7 +5,7 @@ import (
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
-// Palette — a restrained, opencode-inspired theme with a single violet accent,
+// Palette - a restrained, opencode-inspired theme with a single violet accent,
 // muted secondary text, and adaptive light/dark values.
 var (
 	accent    = lipgloss.AdaptiveColor{Light: "#6D5AE6", Dark: "#A896FF"}

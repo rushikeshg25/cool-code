@@ -12,13 +12,14 @@ import (
 
 // LLM holds model/provider settings.
 type LLM struct {
-	Model           string   `json:"model"`
-	Provider        string   `json:"provider,omitempty"`
-	BaseURL         string   `json:"baseUrl,omitempty"`
-	APIKeyEnv       string   `json:"apiKeyEnv,omitempty"`
-	ReasoningEffort string   `json:"reasoningEffort,omitempty"`
-	Temperature     *float64 `json:"temperature,omitempty"`
-	MaxTokens       *int     `json:"maxTokens,omitempty"`
+	Model             string   `json:"model"`
+	Provider          string   `json:"provider,omitempty"`
+	BaseURL           string   `json:"baseUrl,omitempty"`
+	APIKeyEnv         string   `json:"apiKeyEnv,omitempty"`
+	AllowInsecureHTTP *bool    `json:"allowInsecureHttp,omitempty"`
+	ReasoningEffort   string   `json:"reasoningEffort,omitempty"`
+	Temperature       *float64 `json:"temperature,omitempty"`
+	MaxTokens         *int     `json:"maxTokens,omitempty"`
 }
 
 // Features holds behavioural toggles.
@@ -57,7 +58,9 @@ func Default() Config {
 		},
 		Guardrails: Guardrails{
 			BlockReadPatterns: []string{
-				".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_ed25519", ".npmrc",
+				".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx",
+				"id_rsa", "id_ed25519", ".npmrc", ".netrc", ".git-credentials",
+				"**/.aws/credentials", "**/.kube/config", "**/.docker/config.json",
 			},
 		},
 	}
@@ -77,18 +80,28 @@ func GlobalPath() string {
 	return filepath.Join(home, ".coolcode", "settings.json")
 }
 
-// Load returns defaults merged with the user's global settings, then the
-// project .coolcode.json (project wins). Missing/invalid files are skipped.
+// Load returns defaults merged with trusted user settings and then safe
+// project-local preferences. Security-sensitive settings are deliberately
+// ignored in .coolcode.json so an untrusted repository cannot redirect
+// credentials, disable guardrails, or silently bypass confirmations.
 func Load(rootDir string) Config {
 	cfg := Default()
 	if p := GlobalPath(); p != "" {
 		cfg = mergeFile(cfg, p)
 	}
-	return mergeFile(cfg, Path(rootDir))
+	raw, err := readRegularFile(Path(rootDir))
+	if err != nil {
+		return cfg
+	}
+	var project Config
+	if json.Unmarshal(raw, &project) != nil {
+		return cfg
+	}
+	return mergeProject(cfg, project)
 }
 
 func mergeFile(base Config, path string) Config {
-	raw, err := os.ReadFile(path)
+	raw, err := readRegularFile(path)
 	if err != nil {
 		return base
 	}
@@ -107,27 +120,85 @@ func SetGlobalLLM(llm LLM) error {
 		return os.ErrNotExist
 	}
 	var current Config
-	if raw, err := os.ReadFile(p); err == nil {
+	if raw, err := readRegularFile(p); err == nil {
 		_ = json.Unmarshal(raw, &current)
 	}
-	current.LLM = llm
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	current = merge(current, Config{LLM: llm})
+	if err := rejectSymlink(p); err != nil {
+		return err
+	}
+	if err := rejectSymlink(filepath.Dir(p)); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(current, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, append(data, '\n'), 0o644)
-}
-
-// Save writes the config back to disk as pretty JSON.
-func Save(rootDir string, c Config) error {
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
+	if err := os.WriteFile(p, append(data, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.WriteFile(Path(rootDir), append(data, '\n'), 0o644)
+	return os.Chmod(p, 0o600)
+}
+
+// Set persists one setting in the appropriate trust scope. Endpoint,
+// provider identity, credential, confirmation, and guardrail settings are
+// global-only; generation and UI preferences remain project-local.
+func Set(rootDir, path string, value any) (string, error) {
+	dest := Path(rootDir)
+	mode := os.FileMode(0o644)
+	if globalOnly(path) {
+		dest = GlobalPath()
+		mode = 0o600
+	}
+	if dest == "" {
+		return "", os.ErrNotExist
+	}
+	var current Config
+	if raw, err := readRegularFile(dest); err == nil {
+		_ = json.Unmarshal(raw, &current)
+	}
+	if err := rejectSymlink(dest); err != nil {
+		return "", err
+	}
+	if err := rejectSymlink(filepath.Dir(dest)); err != nil {
+		return "", err
+	}
+	if err := SetByPath(&current, path, value); err != nil {
+		return "", err
+	}
+	data, err := json.MarshalIndent(current, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return "", err
+	}
+	if mode == 0o600 {
+		if err := os.Chmod(filepath.Dir(dest), 0o700); err != nil {
+			return "", err
+		}
+	}
+	if err := os.WriteFile(dest, append(data, '\n'), mode); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dest, mode); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+func globalOnly(path string) bool {
+	switch path {
+	case "llm.model", "llm.provider", "llm.baseUrl", "llm.apiKeyEnv", "llm.allowInsecureHttp", "features.allowDangerous", "features.confirmEdits":
+		return true
+	}
+	return path == "guardrails" || strings.HasPrefix(path, "guardrails.")
 }
 
 func merge(base, over Config) Config {
@@ -143,6 +214,9 @@ func merge(base, over Config) Config {
 	}
 	if over.LLM.APIKeyEnv != "" {
 		m.LLM.APIKeyEnv = over.LLM.APIKeyEnv
+	}
+	if over.LLM.AllowInsecureHTTP != nil {
+		m.LLM.AllowInsecureHTTP = over.LLM.AllowInsecureHTTP
 	}
 	if over.LLM.ReasoningEffort != "" {
 		m.LLM.ReasoningEffort = over.LLM.ReasoningEffort
@@ -172,6 +246,49 @@ func merge(base, over Config) Config {
 		m.Guardrails.BlockReadPatterns = over.Guardrails.BlockReadPatterns
 	}
 	return m
+}
+
+func readRegularFile(path string) ([]byte, error) {
+	parent, err := os.Lstat(filepath.Dir(path))
+	if err != nil || !parent.IsDir() {
+		return nil, os.ErrPermission
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, os.ErrPermission
+	}
+	return os.ReadFile(path)
+}
+
+func rejectSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return os.ErrPermission
+	}
+	return nil
+}
+
+func mergeProject(base, over Config) Config {
+	// Only preferences that cannot expand host access or redirect secrets are
+	// accepted from a repository-controlled file.
+	over.LLM.BaseURL = ""
+	over.LLM.APIKeyEnv = ""
+	over.LLM.AllowInsecureHTTP = nil
+	over.LLM.Model = ""
+	over.LLM.Provider = ""
+	over.Features.AllowDangerous = nil
+	over.Features.ConfirmEdits = nil
+	over.Guardrails.BlockReadPatterns = nil
+	return merge(base, over)
 }
 
 // ValidReasoningEffort reports whether effort is supported by OpenAI-style

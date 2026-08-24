@@ -84,3 +84,19 @@ func TestPostJSONCancelDuringBackoff(t *testing.T) {
 		t.Fatal("postJSON did not return after cancellation")
 	}
 }
+
+func TestHTTPErrorRedactsSecretsAndEndpoint(t *testing.T) {
+	t.Setenv("COOLCODE_TEST_API_KEY", "super-secret-api-value")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"apiKey=super-secret-api-value"}}`))
+	}))
+	defer srv.Close()
+	err := postJSON(context.Background(), srv.URL+"/internal/provider", nil, map[string]any{}, &struct{}{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "super-secret-api-value") || strings.Contains(err.Error(), srv.URL) {
+		t.Fatalf("sensitive error details leaked: %v", err)
+	}
+}

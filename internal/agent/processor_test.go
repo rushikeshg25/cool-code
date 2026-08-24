@@ -125,6 +125,53 @@ func TestProcessQueryToolLoop(t *testing.T) {
 	}
 }
 
+func TestIntermediateAssistantTextIsNotRendered(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "hello.txt")
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
+	provider := &fakeProvider{responses: []llm.Message{
+		{Role: llm.RoleAssistant, Text: "internal scratch narration", ToolCalls: []llm.ToolCall{toolCall("1", "read_file", map[string]any{"absolutePath": file})}},
+		{Role: llm.RoleAssistant, Text: "Final answer."},
+	}}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+	reporter := &captureReporter{}
+	if _, err := p.ProcessQuery(context.Background(), "read it", reporter); err != nil {
+		t.Fatal(err)
+	}
+	if len(reporter.texts) != 1 || reporter.texts[0] != "Final answer." {
+		t.Fatalf("rendered assistant messages = %v", reporter.texts)
+	}
+}
+
+func TestSecretsAreRedactedBeforeEgressAndPersistence(t *testing.T) {
+	t.Setenv("COOLCODE_TEST_API_KEY", "environment-secret-value")
+	root := t.TempDir()
+	file := filepath.Join(root, "config.txt")
+	_ = os.WriteFile(file, []byte("token=environment-secret-value"), 0o644)
+	provider := &fakeProvider{responses: []llm.Message{
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{toolCall("1", "read_file", map[string]any{"absolutePath": file})}},
+		{Role: llm.RoleAssistant, Text: "The token is environment-secret-value"},
+	}}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+	final, err := p.ProcessQuery(context.Background(), "inspect config", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(final, "environment-secret-value") {
+		t.Fatalf("final response leaked secret: %s", final)
+	}
+	for _, message := range p.ctxMgr.messages {
+		if strings.Contains(message.Text, "environment-secret-value") {
+			t.Fatalf("persisted history leaked secret: %+v", message)
+		}
+	}
+	for _, message := range provider.lastReq.Messages {
+		if strings.Contains(message.Text, "environment-secret-value") {
+			t.Fatalf("outbound request leaked secret: %+v", message)
+		}
+	}
+}
+
 func TestAskModeBlocksMutating(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "x.txt")
@@ -147,12 +194,28 @@ func TestAskModeBlocksMutating(t *testing.T) {
 	}
 	var blocked bool
 	for _, m := range p.ctxMgr.messages {
-		if m.Role == llm.RoleTool && strings.Contains(m.Text, "ASK MODE") {
+		if m.Role == llm.RoleTool && strings.Contains(m.Text, "READ-ONLY MODE") {
 			blocked = true
 		}
 	}
 	if !blocked {
 		t.Fatal("expected an ASK MODE refusal in context")
+	}
+}
+
+func TestPlanModeBlocksMutating(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "planned.txt")
+	provider := &fakeProvider{responses: []llm.Message{
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{toolCall("1", "new_file", map[string]any{"filePath": target, "content": "should not exist"})}},
+		{Role: llm.RoleAssistant, Text: "Plan only."},
+	}}
+	p := newTestProcessor(t, root, provider, types.ModePlan)
+	if _, err := p.ProcessQuery(context.Background(), "plan a file", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("plan mode executed a mutating tool")
 	}
 }
 
@@ -199,7 +262,7 @@ func TestCloseOpenToolCalls(t *testing.T) {
 		toolCall("a", "read_file", nil), toolCall("b", "grep", nil),
 	}})
 	cm.addToolResult(llm.ToolCall{ID: "a", Name: "read_file"}, "result a")
-	// Tool call "b" has no result — as after a mid-turn cancellation.
+	// Tool call "b" has no result - as after a mid-turn cancellation.
 	cm.closeOpenToolCalls("[interrupted]")
 
 	last := cm.messages[len(cm.messages)-1]

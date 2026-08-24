@@ -23,7 +23,7 @@ When requested to fix bugs, add features, refactor, or explain code:
 4. **Verify (Tests):** Verify changes using the project's testing procedures where feasible. Identify the correct commands from README/build config; never assume.
 5. **Verify (Standards):** After making changes, run the project's build, lint, and type-check commands where identified.
 
-You are an agent — keep going until the user's query is completely resolved. Never make assumptions about file contents; read files to confirm. When you have finished, reply with a concise final message (Markdown).`
+You are an agent - keep going until the user's query is completely resolved. Never make assumptions about file contents; read files to confirm. When you have finished, reply with a concise final message (Markdown).`
 
 // subagentPrompt drives read-only explore subagents spawned via spawn_agent.
 const subagentPrompt = `You are a read-only explore subagent inside a coding CLI. You are given one focused investigation task by a parent agent.

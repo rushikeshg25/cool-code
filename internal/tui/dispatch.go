@@ -64,7 +64,7 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 			m.appendSystem("Could not set effort: " + err.Error())
 			break
 		}
-		if err := config.Save(m.rootDir, cfg); err != nil {
+		if _, err := config.Set(m.rootDir, "llm.reasoningEffort", arg); err != nil {
 			m.appendSystem("Effort changed for this session, but could not save it: " + err.Error())
 			break
 		}
@@ -93,8 +93,11 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		}
 		abs := m.resolve(arg)
 		if _, err := os.Stat(abs); err == nil {
-			m.proc.PinFile(abs)
-			m.appendSystem("Pinned: " + arg)
+			if err := m.proc.PinFile(abs); err != nil {
+				m.appendSystem("Pin blocked: " + err.Error())
+			} else {
+				m.appendSystem("Pinned: " + arg)
+			}
 		} else {
 			m.appendSystem("File not found: " + arg)
 		}
@@ -172,7 +175,7 @@ func (m *model) helpText() string {
 	var b strings.Builder
 	b.WriteString("Commands:")
 	for _, c := range commands {
-		b.WriteString("\n  " + c.name + "  —  " + c.desc)
+		b.WriteString("\n  " + c.name + "  -  " + c.desc)
 	}
 	b.WriteString("\n  Shift+Tab cycles mode (plan → agent → ask)")
 	b.WriteString("\nKeys:")

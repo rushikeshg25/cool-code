@@ -58,16 +58,19 @@ var webFetchTool = Tool{
 			return fail("Invalid arguments", err.Error())
 		}
 		u, err := url.Parse(a.URL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-			return fail("Invalid URL", "Only http and https URLs are allowed.")
+		if err != nil {
+			return fail("Invalid URL", "Only absolute HTTPS URLs are allowed.")
 		}
 		ctxT, cancel := context.WithTimeout(ctx.Context(), webTimeout)
 		defer cancel()
+		if err := validateWebURL(ctxT, u); err != nil {
+			return fail("Fetch blocked", err.Error())
+		}
 		req, _ := http.NewRequestWithContext(ctxT, http.MethodGet, u.String(), nil)
 		req.Header.Set("User-Agent", "cool-code/2.0 (+https://github.com/rushikeshg25/cool-code)")
-		res, err := http.DefaultClient.Do(req)
+		res, err := safeWebClient.Do(req)
 		if err != nil {
-			return fail("Fetch failed", "Error fetching "+u.String()+": "+err.Error())
+			return fail("Fetch failed", "Secure fetch failed: "+err.Error())
 		}
 		defer res.Body.Close()
 		raw, _ := io.ReadAll(io.LimitReader(res.Body, 4*1024*1024))
@@ -147,7 +150,7 @@ var webSearchTool = Tool{
 		defer cancel()
 		req, _ := http.NewRequestWithContext(ctxT, http.MethodGet, endpoint, nil)
 		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; cool-code/2.0)")
-		res, err := http.DefaultClient.Do(req)
+		res, err := safeWebClient.Do(req)
 		if err != nil {
 			return fail("Search failed", "Error searching for \""+a.Query+"\": "+err.Error())
 		}

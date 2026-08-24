@@ -14,12 +14,20 @@ const File = "COOLCODE.md"
 // global ~/.coolcode/COOLCODE.md, or "" when neither exists.
 func LoadProjectInstructions(rootDir string) string {
 	home, _ := os.UserHomeDir()
-	candidates := []string{
-		filepath.Join(rootDir, File),
-		filepath.Join(home, ".coolcode", File),
+	candidates := []struct{ base, file string }{
+		{rootDir, filepath.Join(rootDir, File)},
+		{filepath.Join(home, ".coolcode"), filepath.Join(home, ".coolcode", File)},
 	}
 	for _, c := range candidates {
-		if raw, err := os.ReadFile(c); err == nil {
+		baseInfo, err := os.Lstat(c.base)
+		if err != nil || !baseInfo.IsDir() {
+			continue
+		}
+		info, err := os.Lstat(c.file)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if raw, err := os.ReadFile(c.file); err == nil {
 			if content := strings.TrimSpace(string(raw)); content != "" {
 				return content
 			}

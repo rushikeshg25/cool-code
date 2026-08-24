@@ -2,9 +2,9 @@ package tools
 
 import (
 	"encoding/json"
-	"regexp"
 	"strings"
 
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
@@ -59,20 +59,6 @@ func Run(ctx Context, name string, args json.RawMessage) types.ToolResult {
 	return t.Execute(ctx, args)
 }
 
-var riskyShellPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)\brm\b.*(-rf|-fr)\b`),
-	regexp.MustCompile(`(?i)\bsudo\b`),
-	regexp.MustCompile(`(?i)\bmkfs\b`),
-	regexp.MustCompile(`(?i)\bdd\b`),
-	regexp.MustCompile(`(?i)\bshutdown\b|\breboot\b|\bpoweroff\b`),
-	regexp.MustCompile(`(?i)\bkill\s+-9\b`),
-	regexp.MustCompile(`(?i)\bgit\s+reset\s+--hard\b`),
-	regexp.MustCompile(`(?i)\bgit\s+clean\b`),
-	regexp.MustCompile(`(?i)\bgit\s+push\b.*--force\b`),
-	regexp.MustCompile(`(?i)\bcurl\b.*\s*\|\s*(bash|sh)\b`),
-	regexp.MustCompile(`(?i)\bwget\b.*\s*\|\s*(bash|sh)\b`),
-}
-
 // DangerReason returns a short reason string when a tool call is potentially
 // dangerous and should be confirmed, or "" otherwise.
 func DangerReason(name string, args json.RawMessage) string {
@@ -82,11 +68,15 @@ func DangerReason(name string, args json.RawMessage) string {
 			Command string `json:"command"`
 		}
 		_ = json.Unmarshal(args, &a)
-		for _, re := range riskyShellPatterns {
-			if re.MatchString(a.Command) {
-				return "shell command"
-			}
+		command := strings.TrimSpace(security.Redact(a.Command))
+		if len(command) > 160 {
+			command = command[:160] + "..."
 		}
+		return "shell command: " + command
+	case "run_tests", "lint_fix":
+		return "project code execution"
+	case "git_commit":
+		return "create a git commit"
 	case "replace_in_files":
 		var a struct {
 			DryRun *bool `json:"dryRun"`
@@ -111,6 +101,7 @@ func DangerReason(name string, args json.RawMessage) string {
 // lines are prefixed "- " and added lines "+ " so the UI can colorize them.
 func EditPreview(name string, args json.RawMessage) string {
 	truncate := func(s string) string {
+		s = security.Redact(s)
 		if len(s) > 400 {
 			return s[:400] + "\n... (truncated)"
 		}

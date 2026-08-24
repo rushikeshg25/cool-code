@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/rushikeshg25/cool-code/internal/config"
 )
 
@@ -18,18 +19,18 @@ func BlockedPath(filePath string, cfg config.Config) string {
 		return ""
 	}
 	base := filepath.Base(filePath)
+	normalized := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(filePath)), "/")
 	for _, pattern := range patterns {
-		switch {
-		case pattern == base:
+		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+		matched, _ := doublestar.Match(pattern, base)
+		if !matched {
+			matched, _ = doublestar.Match(pattern, normalized)
+		}
+		if !matched {
+			matched, _ = doublestar.Match("**/"+strings.TrimPrefix(pattern, "/"), normalized)
+		}
+		if matched {
 			return "Reading blocked for \"" + base + "\" by guardrails."
-		case strings.HasPrefix(pattern, ".") && strings.HasSuffix(pattern, ".*"):
-			if strings.HasPrefix(base, strings.TrimSuffix(pattern, ".*")) {
-				return "Reading blocked for \"" + base + "\" by guardrails."
-			}
-		case strings.HasPrefix(pattern, "*."):
-			if strings.HasSuffix(base, pattern[1:]) {
-				return "Reading blocked for \"" + base + "\" by guardrails."
-			}
 		}
 	}
 	return ""
@@ -41,12 +42,54 @@ func EnsureAbsoluteWithinRoot(absPath, rootPath string) string {
 	if !filepath.IsAbs(absPath) {
 		return "File path must be absolute"
 	}
-	resolvedRoot, _ := filepath.Abs(rootPath)
-	resolvedPath, _ := filepath.Abs(absPath)
-	if resolvedPath != resolvedRoot && !strings.HasPrefix(resolvedPath, resolvedRoot+string(filepath.Separator)) {
+	resolvedRoot, err := canonicalPath(rootPath)
+	if err != nil {
+		return "Could not resolve project root"
+	}
+	resolvedPath, err := canonicalPath(absPath)
+	if err != nil {
+		return "Could not resolve file path"
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolvedPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 		return "Path must be within project root: " + resolvedRoot
 	}
 	return ""
+}
+
+// ValidateReadPath applies the same root jail and guardrails to every tool
+// capable of returning local file contents to the model.
+func ValidateReadPath(filePath string, ctx Context) string {
+	if reason := EnsureAbsoluteWithinRoots(filePath, ctx.Roots()); reason != "" {
+		return reason
+	}
+	return BlockedPath(filePath, ctx.Config)
+}
+
+// canonicalPath resolves symlinks in the existing portion of path and then
+// appends any not-yet-created suffix. This protects both reads and writes.
+func canonicalPath(path string) (string, error) {
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	cur := abs
+	var suffix []string
+	for {
+		resolved, evalErr := filepath.EvalSymlinks(cur)
+		if evalErr == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return abs, nil
+		}
+		suffix = append(suffix, filepath.Base(cur))
+		cur = parent
+	}
 }
 
 // EnsureAbsoluteWithinRoots verifies absPath is absolute and contained within

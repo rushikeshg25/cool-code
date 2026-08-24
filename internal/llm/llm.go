@@ -5,7 +5,10 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 
@@ -129,14 +132,19 @@ func New(cfg config.LLM) (Provider, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", name)
 	}
-	key, keyEnv := resolveAPIKey(cfg, name, info.envKey)
+	baseURL := resolveBaseURL(cfg, name)
+	allowInsecureHTTP := cfg.AllowInsecureHTTP != nil && *cfg.AllowInsecureHTTP
+	if err := validateBaseURL(baseURL, allowInsecureHTTP); err != nil {
+		return nil, err
+	}
+	key, keyEnv := resolveAPIKey(cfg, name, info.envKey, baseURL != "")
 	if key == "" {
 		return nil, &MissingKeyError{Provider: name, EnvKey: keyEnv, KeyURL: info.keyURL}
 	}
 	base := baseProvider{
 		model:           cfg.Model,
 		apiKey:          key,
-		baseURL:         resolveBaseURL(cfg, name),
+		baseURL:         baseURL,
 		reasoningEffort: cfg.ReasoningEffort,
 		temperature:     cfg.Temperature,
 		maxTokens:       4096,
@@ -156,17 +164,45 @@ func New(cfg config.LLM) (Provider, error) {
 
 // resolveAPIKey supports proxy credentials without persisting the secret in
 // .coolcode.json. apiKeyEnv stores only the name of the environment variable.
-func resolveAPIKey(cfg config.LLM, provider, providerEnv string) (key, envName string) {
+func resolveAPIKey(cfg config.LLM, provider, providerEnv string, customEndpoint bool) (key, envName string) {
 	if cfg.APIKeyEnv != "" {
 		return os.Getenv(cfg.APIKeyEnv), cfg.APIKeyEnv
 	}
 	if key = os.Getenv("COOLCODE_API_KEY"); key != "" {
 		return key, "COOLCODE_API_KEY"
 	}
+	// Never forward a first-party provider credential to a custom host. Proxy
+	// credentials must be supplied explicitly via COOLCODE_API_KEY or the
+	// trusted global apiKeyEnv setting.
+	if customEndpoint {
+		return "", "COOLCODE_API_KEY"
+	}
 	if key = creds.APIKey(provider); key != "" {
 		return key, providerEnv
 	}
 	return os.Getenv(providerEnv), providerEnv
+}
+
+func validateBaseURL(raw string, allowInsecureHTTP bool) error {
+	if raw == "" {
+		return nil
+	}
+	u, err := url.ParseRequestURI(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return errors.New("invalid provider base URL")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("provider base URL must not contain credentials, a query, or a fragment")
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	loopback := host == "localhost"
+	if ip := net.ParseIP(host); ip != nil {
+		loopback = ip.IsLoopback()
+	}
+	if u.Scheme != "https" && !(u.Scheme == "http" && (loopback || allowInsecureHTTP)) {
+		return errors.New("provider base URL must use HTTPS (HTTP is allowed only for loopback)")
+	}
+	return nil
 }
 
 // resolveBaseURL returns an optional provider endpoint override. The generic

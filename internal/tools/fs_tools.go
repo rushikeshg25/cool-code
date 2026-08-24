@@ -32,7 +32,7 @@ var readFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if reason := BlockedPath(a.AbsolutePath, ctx.Config); reason != "" {
+		if reason := ValidateReadPath(a.AbsolutePath, ctx); reason != "" {
 			return fail("Blocked by guardrails", reason)
 		}
 		if v := validateFileForReading(a.AbsolutePath); v != "" {
@@ -267,6 +267,9 @@ var listRecentFilesTool = Tool{
 		}
 		var stats []fm
 		for _, f := range files {
+			if ValidateReadPath(f, ctx) != "" {
+				continue
+			}
 			if info, err := os.Stat(f); err == nil {
 				stats = append(stats, fm{f, info.ModTime()})
 			}
@@ -340,6 +343,9 @@ var replaceInFilesTool = Tool{
 		var results []fileResult
 		total := 0
 		for _, f := range files {
+			if EnsureAbsoluteWithinRoots(f, ctx.Roots()) != "" || BlockedPath(f, ctx.Config) != "" {
+				continue
+			}
 			raw, err := os.ReadFile(f)
 			if err != nil {
 				continue

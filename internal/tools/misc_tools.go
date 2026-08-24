@@ -17,6 +17,12 @@ var projectSummaryTool = Tool{
 	ReadOnly:    true,
 	Schema:      obj(map[string]any{}),
 	Execute: func(ctx Context, _ json.RawMessage) types.ToolResult {
+		packagePath := filepath.Join(ctx.RootDir, "package.json")
+		if _, err := os.Lstat(packagePath); err == nil {
+			if reason := ValidateReadPath(packagePath, ctx); reason != "" {
+				return fail("Project summary blocked", reason)
+			}
+		}
 		scan := project.ScanProject(ctx.RootDir)
 		data, _ := json.MarshalIndent(scan, "", "  ")
 		return types.ToolResult{Display: "Project summary generated", LLMResult: string(data)}
@@ -45,6 +51,9 @@ var generateReadmeSectionTool = Tool{
 			return fail("Invalid arguments", "title is required.")
 		}
 		readmePath := filepath.Join(ctx.RootDir, "README.md")
+		if reason := EnsureAbsoluteWithinRoots(readmePath, ctx.Roots()); reason != "" {
+			return fail("README update blocked", reason)
+		}
 		heading := "## " + a.Title + "\n"
 		var body string
 		switch {

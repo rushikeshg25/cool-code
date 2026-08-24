@@ -19,7 +19,7 @@ import (
 )
 
 // Version is the CLI version, overridable at build time via -ldflags.
-var Version = "2.2.0"
+var Version = "2.2.1"
 
 type rootFlags struct {
 	yes            bool
@@ -100,7 +100,7 @@ func runInteractive(flags rootFlags) error {
 
 	banner := tui.Banner(Version)
 	if !proc.Connected() {
-		banner += "\n  No API key configured — run /connect to link a provider."
+		banner += "\n  No API key configured - run /connect to link a provider."
 	}
 
 	sessionID := session.NewID()
@@ -136,9 +136,27 @@ func runInteractive(flags rootFlags) error {
 	})
 }
 
-// loadEnv loads a local .env without emitting output.
+// loadEnv imports only API-key-shaped values from a local .env. Endpoint,
+// proxy, and process-control variables are intentionally ignored so opening a
+// repository cannot redirect provider traffic or alter command execution.
 func loadEnv() {
-	_ = godotenv.Load()
+	info, err := os.Lstat(".env")
+	if err != nil || !info.Mode().IsRegular() {
+		return
+	}
+	values, err := godotenv.Read()
+	if err != nil {
+		return
+	}
+	for name, value := range values {
+		upper := strings.ToUpper(name)
+		if upper != "COOLCODE_API_KEY" && !strings.HasSuffix(upper, "_API_KEY") {
+			continue
+		}
+		if _, exists := os.LookupEnv(name); !exists {
+			_ = os.Setenv(name, value)
+		}
+	}
 }
 
 // handleProviderError prints a friendly setup hint for a missing API key.

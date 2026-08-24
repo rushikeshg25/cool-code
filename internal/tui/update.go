@@ -381,7 +381,7 @@ func (m *model) selectConnectOption() (tea.Model, tea.Cmd) {
 	opt := connectOptions[m.connectIdx]
 	m.connectMenu = false
 	if opt.provider == "" {
-		m.appendSystem("Subscription sign-in isn't supported yet — pick an API key option.")
+		m.appendSystem("Subscription sign-in isn't supported yet - pick an API key option.")
 		return m, nil
 	}
 	m.connectFor = m.connectIdx
@@ -418,7 +418,7 @@ func (m *model) handleConnectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.appendSystem("Key stored, but provider setup failed: " + err.Error())
 			return m, nil
 		}
-		m.appendSystem("Connected " + opt.provider + " — model " + cfg.LLM.Model + ". Key stored in " + creds.Path() + ".")
+		m.appendSystem("Connected " + opt.provider + " - model " + cfg.LLM.Model + ". Key stored in " + creds.Path() + ".")
 		return m, nil
 	}
 	var cmd tea.Cmd

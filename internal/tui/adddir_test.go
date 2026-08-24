@@ -27,20 +27,24 @@ func TestAddDirCommand(t *testing.T) {
 
 	// Add a valid directory.
 	extra := t.TempDir()
+	extraResolved, err := filepath.EvalSymlinks(extra)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(extra, "note.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	m = typeLine(t, m, "/add-dir "+extra)
-	if !strings.Contains(lastSystemEntry(m), "Added directory: "+extra) {
+	if !strings.Contains(lastSystemEntry(m), "Added directory: "+extraResolved) {
 		t.Fatalf("unexpected message: %q", lastSystemEntry(m))
 	}
-	if dirs := m.proc.ExtraDirs(); len(dirs) != 1 || dirs[0] != extra {
+	if dirs := m.proc.ExtraDirs(); len(dirs) != 1 || dirs[0] != extraResolved {
 		t.Fatalf("ExtraDirs = %v", dirs)
 	}
 
 	// No arg now lists it.
 	m = typeLine(t, m, "/add-dir")
-	if !strings.Contains(lastSystemEntry(m), extra) {
+	if !strings.Contains(lastSystemEntry(m), extraResolved) {
 		t.Fatalf("listing missing dir: %q", lastSystemEntry(m))
 	}
 
@@ -53,7 +57,7 @@ func TestAddDirCommand(t *testing.T) {
 	// Extra-dir files are @-completable as absolute paths.
 	found := false
 	for _, f := range m.projectFiles() {
-		if f == filepath.Join(extra, "note.md") {
+		if f == filepath.Join(extraResolved, "note.md") {
 			found = true
 		}
 	}

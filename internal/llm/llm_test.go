@@ -76,7 +76,7 @@ func TestProviderEndpoint(t *testing.T) {
 
 func TestProxyEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TEST_CLIPROXY_KEY", "proxy-secret")
-	key, env := resolveAPIKey(config.LLM{APIKeyEnv: "TEST_CLIPROXY_KEY"}, "openai", "OPENAI_API_KEY")
+	key, env := resolveAPIKey(config.LLM{APIKeyEnv: "TEST_CLIPROXY_KEY"}, "openai", "OPENAI_API_KEY", true)
 	if key != "proxy-secret" || env != "TEST_CLIPROXY_KEY" {
 		t.Fatalf("resolveAPIKey = %q, %q", key, env)
 	}
@@ -92,5 +92,30 @@ func TestOpenAIBodyIncludesReasoningEffort(t *testing.T) {
 	body, _ := provider.buildBody(Request{Messages: []Message{{Role: RoleUser, Text: "hi"}}})
 	if got := body["reasoning_effort"]; got != "high" {
 		t.Fatalf("reasoning_effort = %v", got)
+	}
+}
+
+func TestCustomEndpointNeverUsesProviderCredential(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "first-party-secret")
+	t.Setenv("COOLCODE_API_KEY", "")
+	key, env := resolveAPIKey(config.LLM{}, "openai", "OPENAI_API_KEY", true)
+	if key != "" || env != "COOLCODE_API_KEY" {
+		t.Fatalf("custom endpoint received provider credential: %q, %q", key, env)
+	}
+}
+
+func TestValidateBaseURL(t *testing.T) {
+	for _, raw := range []string{"https://proxy.example/v1", "http://localhost:8317/v1", "http://127.0.0.1:8317/v1"} {
+		if err := validateBaseURL(raw, false); err != nil {
+			t.Errorf("validateBaseURL(%q): %v", raw, err)
+		}
+	}
+	for _, raw := range []string{"http://proxy.example/v1", "https://user:pass@proxy.example/v1", "https://proxy.example/v1?key=secret"} {
+		if err := validateBaseURL(raw, false); err == nil {
+			t.Errorf("validateBaseURL(%q) should fail", raw)
+		}
+	}
+	if err := validateBaseURL("http://192.168.1.13:8317/v1", true); err != nil {
+		t.Fatalf("explicit insecure proxy opt-in was rejected: %v", err)
 	}
 }

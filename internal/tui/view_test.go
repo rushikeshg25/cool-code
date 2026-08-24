@@ -39,7 +39,7 @@ func TestResponsiveViewFitsCommonTerminalSizes(t *testing.T) {
 		{"processing", func(m *model) {
 			m.processing = true
 			m.status = "Reading the project and running several tools…"
-			m.subagents = []string{"agent 1: inspect the terminal renderer — exploring (4 tools)"}
+			m.subagents = []string{"agent 1: inspect the terminal renderer - exploring (4 tools)"}
 			m.ti.SetValue("a queued follow-up remains visible")
 		}},
 		{"command palette", func(m *model) {
