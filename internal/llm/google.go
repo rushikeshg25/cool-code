@@ -95,7 +95,7 @@ func (p *googleProvider) buildBody(req Request) map[string]any {
 
 func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, error) {
 	body := p.buildBody(req)
-	url := googleBaseURL + p.model + ":generateContent?key=" + p.apiKey
+	url := providerEndpoint("google", p.baseURL) + p.model + ":generateContent?key=" + p.apiKey
 
 	var resp struct {
 		Candidates []struct {
@@ -139,7 +139,7 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, er
 // chunk is a partial generateContent response.
 func (p *googleProvider) Stream(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
 	body := p.buildBody(req)
-	url := googleBaseURL + p.model + ":streamGenerateContent?alt=sse&key=" + p.apiKey
+	url := providerEndpoint("google", p.baseURL) + p.model + ":streamGenerateContent?alt=sse&key=" + p.apiKey
 
 	out := Message{Role: RoleAssistant}
 	err := streamSSE(ctx, url, nil, body, func(_ string, data []byte) {

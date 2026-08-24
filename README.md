@@ -54,6 +54,22 @@ export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here   # Gemini (default)
 # export ANTHROPIC_API_KEY=your_api_key_here            # Anthropic
 ```
 
+OpenAI-compatible gateways and CLI proxies can be configured without storing
+their secret in the project file:
+
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-5.6-sol",
+    "baseUrl": "http://localhost:8317/v1",
+    "apiKeyEnv": "CLIPROXY_API_KEY"
+  }
+}
+```
+
+`COOLCODE_API_BASE_URL` and `COOLCODE_API_KEY` provide equivalent environment-only overrides.
+
 A local `.env` file in the project directory is loaded automatically (see `.env.example`).
 
 ## Usage
@@ -73,6 +89,7 @@ cool-code --allow-dangerous   # skip danger confirmations
 cool-code --copy              # copy final responses to the clipboard
 cool-code --continue          # resume the most recent session for this dir
 cool-code --resume <id>       # resume a specific saved session
+cool-code --effort high       # set reasoning effort for this run
 ```
 
 ### Subcommands
@@ -102,6 +119,7 @@ Type `/` to open the command palette; press Tab to complete the highlighted comm
 
 - `/help` — show available commands
 - `/mode` — show or switch mode
+- `/effort` — show or set reasoning effort (`minimal|low|medium|high|xhigh`)
 - `/pin` / `/unpin` — pin a file's contents into context (or list/unpin)
 - `/context` — preview context, pinned files, and token usage
 - `/sessions` — list saved sessions for this directory

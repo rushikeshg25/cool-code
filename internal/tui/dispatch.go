@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/skills"
 	"github.com/rushikeshg25/cool-code/internal/types"
@@ -43,6 +44,31 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		} else {
 			m.appendSystem("Current mode: " + strings.ToUpper(string(m.mode)) + " (use /mode plan|agent|ask)")
 		}
+	case "/effort":
+		if arg == "" {
+			effort := m.proc.GetStatus().Effort
+			if effort == "" {
+				effort = "provider default"
+			}
+			m.appendSystem("Reasoning effort: " + effort + " (use /effort minimal|low|medium|high|xhigh)")
+			break
+		}
+		arg = strings.ToLower(arg)
+		if !config.ValidReasoningEffort(arg) || arg == "" {
+			m.appendSystem("Invalid effort. Use minimal, low, medium, high, or xhigh.")
+			break
+		}
+		cfg := config.Load(m.rootDir)
+		cfg.LLM.ReasoningEffort = arg
+		if err := m.proc.ConfigureLLM(cfg.LLM); err != nil {
+			m.appendSystem("Could not set effort: " + err.Error())
+			break
+		}
+		if err := config.Save(m.rootDir, cfg); err != nil {
+			m.appendSystem("Effort changed for this session, but could not save it: " + err.Error())
+			break
+		}
+		m.appendSystem("Reasoning effort set to " + strings.ToUpper(arg) + ".")
 	case "/add-dir":
 		if arg == "" {
 			dirs := m.proc.ExtraDirs()

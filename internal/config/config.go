@@ -12,10 +12,13 @@ import (
 
 // LLM holds model/provider settings.
 type LLM struct {
-	Model       string   `json:"model"`
-	Provider    string   `json:"provider,omitempty"`
-	Temperature *float64 `json:"temperature,omitempty"`
-	MaxTokens   *int     `json:"maxTokens,omitempty"`
+	Model           string   `json:"model"`
+	Provider        string   `json:"provider,omitempty"`
+	BaseURL         string   `json:"baseUrl,omitempty"`
+	APIKeyEnv       string   `json:"apiKeyEnv,omitempty"`
+	ReasoningEffort string   `json:"reasoningEffort,omitempty"`
+	Temperature     *float64 `json:"temperature,omitempty"`
+	MaxTokens       *int     `json:"maxTokens,omitempty"`
 }
 
 // Features holds behavioural toggles.
@@ -135,6 +138,15 @@ func merge(base, over Config) Config {
 	if over.LLM.Provider != "" {
 		m.LLM.Provider = over.LLM.Provider
 	}
+	if over.LLM.BaseURL != "" {
+		m.LLM.BaseURL = over.LLM.BaseURL
+	}
+	if over.LLM.APIKeyEnv != "" {
+		m.LLM.APIKeyEnv = over.LLM.APIKeyEnv
+	}
+	if over.LLM.ReasoningEffort != "" {
+		m.LLM.ReasoningEffort = over.LLM.ReasoningEffort
+	}
 	if over.LLM.Temperature != nil {
 		m.LLM.Temperature = over.LLM.Temperature
 	}
@@ -160,6 +172,17 @@ func merge(base, over Config) Config {
 		m.Guardrails.BlockReadPatterns = over.Guardrails.BlockReadPatterns
 	}
 	return m
+}
+
+// ValidReasoningEffort reports whether effort is supported by OpenAI-style
+// reasoning models. Empty leaves the provider default unchanged.
+func ValidReasoningEffort(effort string) bool {
+	switch effort {
+	case "", "minimal", "low", "medium", "high", "xhigh":
+		return true
+	default:
+		return false
+	}
 }
 
 // AllowDangerous reports the effective danger toggle.

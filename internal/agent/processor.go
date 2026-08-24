@@ -394,6 +394,7 @@ func (p *Processor) summarize(ctx context.Context) {
 // Status is a snapshot for the footer.
 type Status struct {
 	Model        string
+	Effort       string
 	Mode         types.AgentMode
 	MessageCount int
 	// TotalTokens is the context size: the last request's real input tokens
@@ -415,6 +416,7 @@ func (p *Processor) GetStatus() Status {
 	}
 	s := Status{
 		Model:        model,
+		Effort:       p.cfg.LLM.ReasoningEffort,
 		Mode:         p.getMode(),
 		MessageCount: count,
 		TotalTokens:  tokens,

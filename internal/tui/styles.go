@@ -44,6 +44,16 @@ var (
 	menuTitle    = lipgloss.NewStyle().Foreground(warn).Bold(true)
 	menuSel      = lipgloss.NewStyle().Foreground(accent).Bold(true)
 	menuNorm     = lipgloss.NewStyle().Foreground(muted)
+
+	composerStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(accentDim).
+			Padding(0, 1)
+	activityStyle = lipgloss.NewStyle().Foreground(muted)
+	taskStyle     = lipgloss.NewStyle().Foreground(muted)
+	taskCount     = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	planTitle     = lipgloss.NewStyle().Foreground(warn).Bold(true)
+	planCard      = lipgloss.NewStyle().BorderLeft(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(accentDim).PaddingLeft(1)
 )
 
 func modeStyle(mode types.AgentMode) lipgloss.Style {

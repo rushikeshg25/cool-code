@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rushikeshg25/cool-code/internal/agent"
 	"github.com/rushikeshg25/cool-code/internal/llm"
@@ -95,6 +95,7 @@ type model struct {
 
 	confirmMsg  string
 	confirmResp chan bool
+	confirmOff  int
 
 	planMenu bool
 	planIdx  int
@@ -176,6 +177,7 @@ const (
 	entryRaw entryKind = iota // pre-styled, never re-rendered (banner)
 	entryUser
 	entryAssistant
+	entryPlan
 	entryTool
 	entrySystem
 	entryStream // assistant text still streaming: plain wrap, no markdown
@@ -197,15 +199,18 @@ func (m *model) contentWidth() int {
 func (m *model) renderEntry(e entry) string {
 	switch e.kind {
 	case entryUser:
-		return userPrefix.Render("❯ ") + userText.Render(e.raw)
+		return userPrefix.Render("› ") + userText.Render(e.raw)
 	case entryAssistant:
 		return renderMarkdown(e.raw, m.contentWidth())
+	case entryPlan:
+		body := planCard.Render(renderMarkdown(e.raw, maxInt(20, m.contentWidth()-3)))
+		return planTitle.Render("◆ PLAN READY") + "\n" + body
 	case entryTool:
-		return toolGlyph.Render("  ● ") + toolStyle.Render(e.raw)
+		return toolGlyph.Render("  ├─ ") + toolStyle.Render(e.raw)
 	case entrySystem:
 		return systemStyle.Render(e.raw)
 	case entryStream:
-		return lipgloss.NewStyle().Width(m.contentWidth()).Render(e.raw)
+		return ansi.Wordwrap(e.raw, m.contentWidth(), " /")
 	default:
 		return e.raw
 	}
@@ -277,6 +282,24 @@ func (m *model) repopulateTranscript() {
 			}
 		}
 	}
+	if m.proc.Mode() == types.ModePlan {
+		m.promoteLastPlan("")
+	}
+}
+
+// promoteLastPlan turns the final assistant response in a Plan-mode turn into
+// a visually distinct plan card. final may be empty when restoring a session.
+func (m *model) promoteLastPlan(final string) {
+	for i := len(m.history) - 1; i >= 0; i-- {
+		entry := &m.history[i]
+		if entry.kind != entryAssistant || (final != "" && entry.raw != final) {
+			continue
+		}
+		entry.kind = entryPlan
+		entry.rendered = m.renderEntry(*entry)
+		m.syncViewport()
+		return
+	}
 }
 
 func (m *model) syncViewport() {
@@ -284,11 +307,18 @@ func (m *model) syncViewport() {
 		return
 	}
 	atBottom := m.vp.AtBottom()
-	parts := make([]string, len(m.history))
+	var b strings.Builder
 	for i, e := range m.history {
-		parts[i] = e.rendered
+		if i > 0 {
+			if e.kind == entryTool && m.history[i-1].kind == entryTool {
+				b.WriteString("\n")
+			} else {
+				b.WriteString("\n\n")
+			}
+		}
+		b.WriteString(e.rendered)
 	}
-	m.vp.SetContent(strings.Join(parts, "\n\n"))
+	m.vp.SetContent(b.String())
 	if atBottom {
 		m.vp.GotoBottom()
 	}

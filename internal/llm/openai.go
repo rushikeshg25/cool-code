@@ -78,6 +78,9 @@ func (p *openaiProvider) buildBody(req Request) (map[string]any, map[string]stri
 	if p.maxTokens > 0 {
 		body["max_completion_tokens"] = p.maxTokens
 	}
+	if p.reasoningEffort != "" {
+		body["reasoning_effort"] = p.reasoningEffort
+	}
 
 	headers := map[string]string{"Authorization": "Bearer " + p.apiKey}
 	return body, headers
@@ -98,7 +101,7 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 			CompletionTokens int `json:"completion_tokens"`
 		} `json:"usage"`
 	}
-	if err := postJSON(ctx, openaiURL, headers, body, &resp); err != nil {
+	if err := postJSON(ctx, providerEndpoint("openai", p.baseURL), headers, body, &resp); err != nil {
 		return Message{}, err
 	}
 	usage := Usage{Input: resp.Usage.PromptTokens, Output: resp.Usage.CompletionTokens}
@@ -137,7 +140,7 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 	calls := map[int]*callState{}
 	var order []int
 
-	err := streamSSE(ctx, openaiURL, headers, body, func(_ string, data []byte) {
+	err := streamSSE(ctx, providerEndpoint("openai", p.baseURL), headers, body, func(_ string, data []byte) {
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
