@@ -14,7 +14,7 @@ Cool-Code combines large language models with a comprehensive set of development
 - **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
-- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns, a sidebar showing the live task list and running subagents. Syntax-highlighted fenced code, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
+- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the window. Syntax-highlighted fenced code, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
 - **Three agent modes** - Plan (read-only investigation → detailed plan), Agent (autonomous execution), Ask (read-only Q&A). After Plan mode produces a plan, choose **Start implementation** to jump straight into Agent mode.
 - **Project memory (`COOLCODE.md`)** - persistent project instructions loaded into every prompt.
 - **Skills** - discoverable, model-invoked instruction modules under `.coolcode/skills/` (compatible with Claude Code skills).
@@ -249,6 +249,19 @@ Requires Go 1.25+. External tools used at runtime when present: `git`, `rg` (rip
 - **`@file` mentions** - the composer already completes paths; it does not yet attach the file's contents.
 
 ## Changelog
+
+### Unreleased
+
+TUI fixes on top of 2.3.0. The persistent header was added without removing
+the banner it replaced, so the name and version rendered twice, and the status
+bar kept printing the mode, model and effort the header already showed. The
+sidebar claimed a full-height column on an idle session to say "No active
+tasks", and the header spanned both columns, which put the model directly above
+the sidebar where it read as its title; the rule now runs through the header row
+and each column has its own title. Context is shown as a percentage of the
+window rather than an absolute token count. The startup warning about
+global-only keys in `.coolcode.json` now fires only for values that actually
+differ from the ones in effect, instead of for every duplicate.
 
 ### 2.3.0: security fixes, two-pane TUI, streaming and cost (2026-08)
 
