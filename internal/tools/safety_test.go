@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
@@ -187,5 +188,35 @@ func TestProtectedWritePathsAreRefused(t *testing.T) {
 	// A name that merely contains ".git" is not a protected component.
 	if _, reason := ResolveWritePath(filepath.Join(root, ".gitignore"), ctx); reason != "" {
 		t.Errorf(".gitignore write refused: %s", reason)
+	}
+}
+
+// TestGuardrailedFilesAreNotWritable covers the edit_file bypass. edit_file
+// checked containment but not the read guardrails, and returned the whole
+// post-edit file, so replacing "=" with "=" in .env disclosed all of it.
+func TestGuardrailedFilesAreNotWritable(t *testing.T) {
+	root := t.TempDir()
+	ctx := Context{RootDir: root, Config: config.Default()}
+	env := filepath.Join(root, ".env")
+	if err := os.WriteFile(env, []byte("SENTRY_DSN=https://abc@sentry.io/1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, reason := ResolveWritePath(env, ctx); reason == "" {
+		t.Fatal("write to a guardrailed file was allowed")
+	}
+	if _, reason := ResolveReadPath(env, ctx); reason == "" {
+		t.Fatal("read of a guardrailed file was allowed")
+	}
+}
+
+// TestGitExcludePathspecsCoverGuardrails keeps a bare git diff from printing
+// the contents of blocked files.
+func TestGitExcludePathspecsCoverGuardrails(t *testing.T) {
+	specs := GitExcludePathspecs(config.Default())
+	joined := strings.Join(specs, " ")
+	for _, want := range []string{":(exclude,glob).env", ":(exclude,glob)**/.env", ":(exclude,glob)**/*.pem"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing pathspec %q in %v", want, specs)
+		}
 	}
 }

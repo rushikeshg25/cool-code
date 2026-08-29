@@ -41,10 +41,16 @@ var gitDiffTool = Tool{
 			gitArgs = append(gitArgs, "--staged")
 		}
 		if a.FilePath != "" {
-			if v := ValidateReadPath(a.FilePath, ctx); v != "" {
+			resolved, v := ResolveReadPath(a.FilePath, ctx)
+			if v != "" {
 				return fail("Invalid path", v)
 			}
-			gitArgs = append(gitArgs, "--", pathArg(toRelative(a.FilePath, ctx.RootDir)))
+			gitArgs = append(gitArgs, "--", pathArg(toRelative(resolved, ctx.RootDir)))
+		} else if specs := GitExcludePathspecs(ctx.Config); len(specs) > 0 {
+			// A bare diff would print every tracked file, guardrailed ones
+			// included, so exclude them by pathspec.
+			gitArgs = append(gitArgs, "--", ".")
+			gitArgs = append(gitArgs, specs...)
 		}
 		res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", gitArgs...)
 		display := "Git diff"

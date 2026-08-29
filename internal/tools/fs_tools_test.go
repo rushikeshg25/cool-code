@@ -39,9 +39,14 @@ func TestNewReadEditFile(t *testing.T) {
 		t.Fatalf("read_file: %s", res.LLMResult)
 	}
 
+	// edit_file reports the replacement count, not the file, so an edit is not
+	// also a full disclosure of the file it touched.
 	res = editFileTool.Execute(ctx, args(t, map[string]any{"filePath": file, "oldString": "hello world", "newString": "goodbye"}))
-	if !strings.Contains(res.LLMResult, "goodbye") {
+	if !strings.Contains(res.LLMResult, "Replaced 1 occurrence(s) in src/a.txt") {
 		t.Fatalf("edit_file: %s", res.LLMResult)
+	}
+	if strings.Contains(res.LLMResult, "second line") {
+		t.Fatalf("edit_file echoed file contents: %s", res.LLMResult)
 	}
 	raw, _ := os.ReadFile(file)
 	if !strings.Contains(string(raw), "goodbye") {

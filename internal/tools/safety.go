@@ -106,7 +106,32 @@ func ResolveWritePath(absPath string, ctx Context) (string, string) {
 	if reason := protectedWrite(resolved, ctx.Roots()); reason != "" {
 		return "", reason
 	}
+	// Guardrailed files are off limits to writes as well as reads. edit_file
+	// in particular reports what it wrote, so an edit is also a disclosure.
+	if blocked := BlockedPath(absPath, ctx.Config); blocked != "" {
+		return "", blocked
+	}
+	if blocked := BlockedPath(resolved, ctx.Config); blocked != "" {
+		return "", blocked
+	}
 	return resolved, ""
+}
+
+// GitExcludePathspecs renders the read guardrails as git pathspecs so the git
+// tools cannot print the contents of a blocked file.
+func GitExcludePathspecs(cfg config.Config) []string {
+	var specs []string
+	for _, pattern := range cfg.Guardrails.BlockReadPatterns {
+		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+		if pattern == "" {
+			continue
+		}
+		specs = append(specs, ":(exclude,glob)"+pattern)
+		if !strings.HasPrefix(pattern, "**/") {
+			specs = append(specs, ":(exclude,glob)**/"+strings.TrimPrefix(pattern, "/"))
+		}
+	}
+	return specs
 }
 
 // protectedWrite reports why resolved must not be written, or "".
@@ -272,8 +297,20 @@ func pathArg(rel string) string {
 	return "./" + rel
 }
 
+// toRelative renders filePath for display relative to rootPath. Both sides are
+// canonicalized first: callers now pass resolved paths, and comparing one of
+// those against an unresolved root (/var against /private/var, say) yields a
+// long "../.." chain instead of a readable name.
 func toRelative(filePath, rootPath string) string {
-	rel, err := filepath.Rel(rootPath, filePath)
+	if rel, err := filepath.Rel(rootPath, filePath); err == nil && !strings.HasPrefix(rel, "..") {
+		return rel
+	}
+	resolvedRoot, rootErr := canonicalPath(rootPath)
+	resolvedFile, fileErr := canonicalPath(filePath)
+	if rootErr != nil || fileErr != nil {
+		return filePath
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolvedFile)
 	if err != nil {
 		return filePath
 	}

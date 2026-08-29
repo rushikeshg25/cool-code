@@ -161,9 +161,13 @@ var editFileTool = Tool{
 		if err := os.WriteFile(resolved, []byte(newContent), info.Mode().Perm()); err != nil {
 			return fail("Edit failed", err.Error())
 		}
+		// Report what changed rather than echoing the file back. Returning the
+		// whole file turned every edit into a full disclosure of it, and it is
+		// the model's own replacement text, so it carries no new information.
 		return types.ToolResult{
-			Display:   "Edited " + filepath.Base(resolved),
-			LLMResult: newContent,
+			Display: "Edited " + filepath.Base(resolved),
+			LLMResult: "Replaced " + itoa(count) + " occurrence(s) in " +
+				toRelative(resolved, ctx.RootDir) + ".",
 		}
 	},
 }
