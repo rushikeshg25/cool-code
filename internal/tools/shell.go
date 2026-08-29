@@ -38,8 +38,8 @@ func execArgv(parent context.Context, dir string, timeout time.Duration, name st
 }
 
 func runCommand(parent context.Context, dir string, timeout time.Duration, name string, args ...string) shellResult {
-	if timeout == 0 {
-		timeout = 30 * time.Second
+	if timeout <= 0 {
+		timeout = defaultCommandTimeout
 	}
 	if parent == nil {
 		parent = context.Background()
@@ -115,4 +115,26 @@ func (r shellResult) combined() string {
 		out += "\nSTDERR:\n" + r.stderr
 	}
 	return out
+}
+
+// Command timeouts. The default stays short so a hung command does not stall a
+// turn, but it used to be the only option: shell_command always passed 0, so
+// 30 seconds was a hard ceiling and builds, installs and long test runs were
+// simply impossible.
+const (
+	defaultCommandTimeout = 30 * time.Second
+	maxCommandTimeout     = 30 * time.Minute
+)
+
+// commandTimeout converts a caller-supplied number of seconds into a bounded
+// duration. Zero or less selects the default.
+func commandTimeout(seconds int) time.Duration {
+	if seconds <= 0 {
+		return defaultCommandTimeout
+	}
+	d := time.Duration(seconds) * time.Second
+	if d > maxCommandTimeout {
+		return maxCommandTimeout
+	}
+	return d
 }

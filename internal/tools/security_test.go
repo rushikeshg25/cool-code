@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSafeCommandEnvDropsSecrets(t *testing.T) {
@@ -152,5 +153,33 @@ func TestBlockedNetworkIPCoversReservedRanges(t *testing.T) {
 		if blockedNetworkIP(ip) {
 			t.Errorf("public address %s was blocked", raw)
 		}
+	}
+}
+
+// TestCommandTimeoutIsBounded covers the ceiling that made long builds
+// impossible: shell_command always passed 0, so 30 seconds could not be raised.
+func TestCommandTimeoutIsBounded(t *testing.T) {
+	if got := commandTimeout(0); got != defaultCommandTimeout {
+		t.Errorf("commandTimeout(0) = %v, want the default", got)
+	}
+	if got := commandTimeout(-5); got != defaultCommandTimeout {
+		t.Errorf("commandTimeout(-5) = %v, want the default", got)
+	}
+	if got := commandTimeout(600); got != 10*time.Minute {
+		t.Errorf("commandTimeout(600) = %v, want 10m", got)
+	}
+	if got := commandTimeout(999999); got != maxCommandTimeout {
+		t.Errorf("commandTimeout(999999) = %v, want the cap", got)
+	}
+}
+
+// TestShellCommandHonoursTimeout drives it through the tool.
+func TestShellCommandHonoursTimeout(t *testing.T) {
+	ctx, _ := guardCtx(t)
+	res := shellCommandTool.Execute(ctx, mustArgs(t, map[string]any{
+		"command": "sleep 2", "timeout": 1,
+	}))
+	if !strings.Contains(res.LLMResult, "timed out") && !res.Failed {
+		t.Errorf("short timeout was not applied: %#v", res)
 	}
 }
