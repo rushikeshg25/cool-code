@@ -102,6 +102,12 @@ func runInteractive(flags rootFlags) error {
 	if !proc.Connected() {
 		banner += "\n  No API key configured - run /connect to link a provider."
 	}
+	// A repository cannot be allowed to set these, but discarding them in
+	// silence misleads whoever wrote the file into thinking they took effect.
+	if ignored := config.IgnoredProjectKeys(rootDir); len(ignored) > 0 {
+		banner += "\n  Ignored global-only keys in .coolcode.json: " + strings.Join(ignored, ", ") +
+			"\n  Set them with `cool-code config set <key> <value>` to apply them."
+	}
 
 	sessionID := session.NewID()
 	var restoreFrom *session.Data
@@ -150,7 +156,15 @@ func loadEnv() {
 	}
 	for name, value := range values {
 		upper := strings.ToUpper(name)
-		if upper != "COOLCODE_API_KEY" && !strings.HasSuffix(upper, "_API_KEY") {
+		if !strings.HasSuffix(upper, "_API_KEY") {
+			continue
+		}
+		// COOLCODE_API_KEY is consulted ahead of the stored /connect
+		// credential and needs no global setting to take effect, so honouring
+		// it from a repository file would let a cloned project substitute the
+		// key every request is billed and logged against. A named *_API_KEY is
+		// inert unless the user's own global llm.apiKeyEnv points at it.
+		if upper == "COOLCODE_API_KEY" {
 			continue
 		}
 		if _, exists := os.LookupEnv(name); !exists {

@@ -66,7 +66,7 @@ export CLIPROXY_API_KEY=your_proxy_key
 
 `COOLCODE_API_BASE_URL` and `COOLCODE_API_KEY` provide equivalent process-environment overrides. Custom endpoints require an explicit proxy key; first-party provider credentials are never forwarded to them. Remote endpoints require HTTPS, while HTTP is accepted only for loopback proxies. A trusted LAN proxy can be explicitly enabled with `cool-code config set llm.allowInsecureHttp true`; this weakens transport security and should not be used across untrusted networks.
 
-A regular, non-symlink `.env` file may supply `COOLCODE_API_KEY` or variables ending in `_API_KEY`. Endpoint and process-control variables in project `.env` files are ignored.
+A regular, non-symlink `.env` file may supply variables ending in `_API_KEY`; point `llm.apiKeyEnv` at one to use it. `COOLCODE_API_KEY` is **not** read from `.env` - it takes effect with no global setting, so a cloned repository could otherwise substitute the credential your requests are billed and logged against. Export it in your shell instead. Endpoint and process-control variables in project `.env` files are ignored.
 
 ## Usage
 
@@ -163,7 +163,9 @@ Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md`
 }
 ```
 
-Provider identity and security-sensitive settings (`llm.model`, `llm.provider`, `llm.baseUrl`, `llm.apiKeyEnv`, `llm.allowInsecureHttp`, `features.allowDangerous`, `features.confirmEdits`, and `guardrails`) are global-only. Set them with `cool-code config set`; repository-controlled values are ignored.
+Provider identity and security-sensitive settings (`llm.model`, `llm.provider`, `llm.baseUrl`, `llm.apiKeyEnv`, `llm.allowInsecureHttp`, `features.allowDangerous`, `features.confirmEdits`) are global-only. Set them with `cool-code config set`; repository-controlled values are ignored, and the CLI lists any it ignored at startup.
+
+`guardrails.blockReadPatterns` is the one exception: a project file may **add** patterns, since that can only narrow what the agent may read. It can never remove one.
 
 ## Safety
 
