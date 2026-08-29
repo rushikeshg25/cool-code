@@ -169,12 +169,15 @@ Provider identity and security-sensitive settings (`llm.model`, `llm.provider`, 
 
 ## Safety
 
-- **Canonical path jail** - reads, searches, writes, pins, and added directories are restricted to explicitly granted roots after resolving symlinks.
-- **Read guardrails** - `blockReadPatterns` applies to reads, searches, pins, context trees, and subagents. `.gitignore` is respected by trees and searches.
+- **Canonical path jail** - reads, searches, writes, pins, and added directories are restricted to explicitly granted roots. Paths are resolved component by component, the way the kernel does, so `..` after a symlink cannot escape, and tools act on the resolved path rather than the string they were given.
+- **Protected paths** - tools cannot write inside `.git` or `.coolcode`, where a hook or config would become code execution.
+- **Read guardrails** - `blockReadPatterns` applies to reads, edits, searches, pins, context trees, git diffs, and subagents. `.gitignore` is respected by trees and searches.
 - **Trusted endpoints** - repositories cannot select proxy hosts, credential variables, guardrails, or bypass flags. Remote proxies require HTTPS and cross-origin redirects are disabled.
-- **Command isolation** - every arbitrary shell command and project-code execution requires confirmation by default. Child processes receive a small environment allowlist without API keys, tokens, cookies, or cloud credentials.
-- **Network isolation** - web fetches require HTTPS and reject loopback, private, link-local, multicast, and cloud metadata addresses, including after redirects and DNS resolution.
-- **Data-loss prevention** - common credentials and sensitive environment values are redacted before provider egress, terminal rendering, and session persistence. Provider errors never include endpoint URLs or raw bodies.
+- **Command isolation** - every arbitrary shell command and project-code execution (`run_tests`, `lint_fix`, `format_file`, `add_script`) requires confirmation by default. Commands assembled from model- or repository-controlled values run as argv with no shell, so a crafted search pattern or filename cannot inject. Child processes receive a small environment allowlist without API keys, tokens, cookies, or cloud credentials.
+- **Network isolation** - web fetches require HTTPS and reject loopback, private, carrier-grade NAT, reserved, link-local, multicast, NAT64, and cloud metadata addresses, including after redirects and DNS resolution.
+- **Data-loss prevention** - common credentials and sensitive environment values are redacted before provider egress, terminal rendering, and session persistence, in subagents as well as the main loop. Provider errors never include endpoint URLs, and any provider message they quote is redacted and truncated.
+- **Terminal integrity** - escape sequences are stripped from model output, tool output, and confirmation prompts, so nothing can rewrite the screen or the command you are approving.
+- **Untrusted content** - `COOLCODE.md`, skills, and fetched pages enter the prompt inside untrusted-content markers, and the agent is told to treat directions found there as data to report rather than follow.
 - **Private persistence** - credentials and sessions use private directories and mode 0600 files; symlink-backed config, credential, session, memory, skill, and `.env` files are rejected.
 - **Read-only modes** - Plan and Ask modes deterministically block mutating tools and project-code execution.
 
