@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/tools"
 )
 
@@ -78,8 +79,12 @@ func (p *Processor) runSubagent(ctx context.Context, task string, report func(st
 		for _, call := range resp.ToolCalls {
 			result := tools.Run(toolCtx, call.Name, call.Arguments)
 			messages = append(messages, llm.Message{
-				Role:       llm.RoleTool,
-				Text:       result.LLMResult,
+				Role: llm.RoleTool,
+				// Redact here as the parent loop does. These messages are
+				// resent to the provider on every later subagent iteration,
+				// and only the subagent's final text passes through the
+				// parent's own redaction.
+				Text:       security.Redact(result.LLMResult),
 				ToolCallID: call.ID,
 				ToolName:   call.Name,
 			})

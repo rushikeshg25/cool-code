@@ -39,6 +39,12 @@ var globTool = Tool{
 			if matchesAny(rel, []string{"**/node_modules/**", "node_modules/**"}) {
 				continue
 			}
+			// glob went straight to doublestar rather than through globFiles,
+			// so "**/.git/**" listed the repository's git directory, whose
+			// config commonly holds a remote URL with an embedded token.
+			if hasDotComponent(rel) {
+				continue
+			}
 			if ctx.GitIgnore != nil && ctx.GitIgnore(rel) {
 				continue
 			}
