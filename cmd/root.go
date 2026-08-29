@@ -30,6 +30,10 @@ type rootFlags struct {
 	continueSess   bool
 	resumeID       string
 	effort         string
+	print          bool
+	printJSON      bool
+	verbose        bool
+	mode           string
 }
 
 // Execute runs the root command.
@@ -43,7 +47,11 @@ func Execute() {
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if flags.print || flags.printJSON {
+				return runPrint(flags, args)
+			}
 			return runInteractive(flags)
 		},
 	}
@@ -55,6 +63,10 @@ func Execute() {
 	root.Flags().BoolVar(&flags.continueSess, "continue", false, "Resume the most recent session for this directory")
 	root.Flags().StringVar(&flags.resumeID, "resume", "", "Resume a specific session by id")
 	root.Flags().StringVar(&flags.effort, "effort", "", "Reasoning effort: minimal, low, medium, high, or xhigh")
+	root.Flags().BoolVarP(&flags.print, "print", "p", false, "Run one turn without the TUI and print the result")
+	root.Flags().BoolVar(&flags.printJSON, "json", false, "Like --print, but emit a JSON object")
+	root.Flags().BoolVarP(&flags.verbose, "verbose", "v", false, "With --print, report tool activity on stderr")
+	root.Flags().StringVar(&flags.mode, "mode", "", "Starting mode: plan, agent, or ask")
 
 	root.SetVersionTemplate("cool-code v{{.Version}}\n")
 	root.AddCommand(configCmd(), scanCmd(), skillCmd(), taskCmd())
