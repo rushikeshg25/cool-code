@@ -82,6 +82,57 @@ func ResolveReadPath(filePath string, ctx Context) (string, string) {
 	return resolved, ""
 }
 
+// protectedWriteComponents names directories a tool must never write into,
+// even though they sit inside the workspace. A write to .git/config or
+// .git/hooks turns the next git command into code execution and outlives the
+// session, and .coolcode holds skills, settings and credentials.
+var protectedWriteComponents = map[string]bool{
+	".git":      true,
+	".coolcode": true,
+}
+
+// protectedWriteNames names individual files a tool must never write.
+var protectedWriteNames = map[string]bool{
+	".coolcode.json": true,
+}
+
+// ResolveWritePath validates absPath for writing and returns the canonical
+// path callers must write to.
+func ResolveWritePath(absPath string, ctx Context) (string, string) {
+	resolved, reason := ResolveWithinRoots(absPath, ctx.Roots())
+	if reason != "" {
+		return "", reason
+	}
+	if reason := protectedWrite(resolved, ctx.Roots()); reason != "" {
+		return "", reason
+	}
+	return resolved, ""
+}
+
+// protectedWrite reports why resolved must not be written, or "".
+func protectedWrite(resolved string, roots []string) string {
+	rel := resolved
+	for _, root := range roots {
+		resolvedRoot, err := canonicalPath(root)
+		if err != nil || !withinRoot(resolved, resolvedRoot) {
+			continue
+		}
+		if candidate, err := filepath.Rel(resolvedRoot, resolved); err == nil {
+			rel = candidate
+			break
+		}
+	}
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if protectedWriteComponents[part] {
+			return "Writing inside \"" + part + "\" is not allowed."
+		}
+	}
+	if base := filepath.Base(rel); protectedWriteNames[base] {
+		return "Writing \"" + base + "\" is not allowed."
+	}
+	return ""
+}
+
 // ResolveWithinRoots validates absPath against roots and returns the canonical
 // path callers must use for I/O.
 func ResolveWithinRoots(absPath string, roots []string) (string, string) {

@@ -121,7 +121,7 @@ var editFileTool = Tool{
 		if a.ExpectedReplacements != nil && *a.ExpectedReplacements > 0 {
 			expected = *a.ExpectedReplacements
 		}
-		resolved, v := ResolveWithinRoots(a.FilePath, ctx.Roots())
+		resolved, v := ResolveWritePath(a.FilePath, ctx)
 		if v != "" {
 			return fail("Edit blocked", v)
 		}
@@ -184,7 +184,7 @@ var newFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		resolved, v := ResolveWithinRoots(a.FilePath, ctx.Roots())
+		resolved, v := ResolveWritePath(a.FilePath, ctx)
 		if v != "" {
 			return fail("Invalid path", v)
 		}
@@ -217,11 +217,11 @@ var renameFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		fromResolved, v := ResolveWithinRoots(a.FromPath, ctx.Roots())
+		fromResolved, v := ResolveWritePath(a.FromPath, ctx)
 		if v != "" {
 			return fail("Invalid path", v)
 		}
-		toResolved, v := ResolveWithinRoots(a.ToPath, ctx.Roots())
+		toResolved, v := ResolveWritePath(a.ToPath, ctx)
 		if v != "" {
 			return fail("Invalid path", v)
 		}
@@ -348,7 +348,13 @@ var replaceInFilesTool = Tool{
 		var results []fileResult
 		total := 0
 		for _, f := range files {
-			if EnsureAbsoluteWithinRoots(f, ctx.Roots()) != "" || BlockedPath(f, ctx.Config) != "" {
+			resolved, reason := ResolveWritePath(f, ctx)
+			if reason != "" || BlockedPath(f, ctx.Config) != "" {
+				continue
+			}
+			f = resolved
+			info, err := os.Stat(f)
+			if err != nil {
 				continue
 			}
 			raw, err := os.ReadFile(f)
@@ -373,7 +379,9 @@ var replaceInFilesTool = Tool{
 				total += count
 				results = append(results, fileResult{toRelative(f, ctx.RootDir), count})
 				if !dryRun {
-					_ = os.WriteFile(f, []byte(replaced), 0o644)
+					// Keep the original mode: rewriting a 0600 file at 0644
+					// would make it world readable.
+					_ = os.WriteFile(f, []byte(replaced), info.Mode().Perm())
 				}
 			}
 		}
@@ -422,7 +430,7 @@ var newModuleTool = Tool{
 			baseDir = "src"
 		}
 		moduleDir := filepath.Join(ctx.RootDir, baseDir, a.ModuleName)
-		if v := EnsureAbsoluteWithinRoots(moduleDir, ctx.Roots()); v != "" {
+		if _, v := ResolveWritePath(moduleDir, ctx); v != "" {
 			return fail("Invalid path", v)
 		}
 		if err := os.MkdirAll(moduleDir, 0o755); err != nil {

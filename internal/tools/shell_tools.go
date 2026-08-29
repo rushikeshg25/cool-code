@@ -127,7 +127,7 @@ var formatFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		resolved, v := ResolveWithinRoots(a.AbsolutePath, ctx.Roots())
+		resolved, v := ResolveWritePath(a.AbsolutePath, ctx)
 		if v != "" {
 			return fail("Invalid path", v)
 		}

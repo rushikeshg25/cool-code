@@ -164,3 +164,28 @@ func TestCanonicalPathStopsAtSymlinkCycles(t *testing.T) {
 		t.Fatal("expected an error for a symlink cycle")
 	}
 }
+
+// TestProtectedWritePathsAreRefused keeps tools out of .git, where a written
+// config or hook becomes code execution on the next git command.
+func TestProtectedWritePathsAreRefused(t *testing.T) {
+	root := t.TempDir()
+	ctx := Context{RootDir: root, Config: config.Default()}
+	for _, rel := range []string{
+		".git/config",
+		".git/hooks/pre-commit",
+		".coolcode/skills/x/SKILL.md",
+		".coolcode.json",
+	} {
+		if _, reason := ResolveWritePath(filepath.Join(root, rel), ctx); reason == "" {
+			t.Errorf("write to %s was allowed", rel)
+		}
+	}
+	// An ordinary file in the workspace still resolves.
+	if _, reason := ResolveWritePath(filepath.Join(root, "main.go"), ctx); reason != "" {
+		t.Errorf("ordinary write refused: %s", reason)
+	}
+	// A name that merely contains ".git" is not a protected component.
+	if _, reason := ResolveWritePath(filepath.Join(root, ".gitignore"), ctx); reason != "" {
+		t.Errorf(".gitignore write refused: %s", reason)
+	}
+}
