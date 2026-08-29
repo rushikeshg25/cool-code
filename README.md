@@ -250,7 +250,22 @@ Requires Go 1.25+. External tools used at runtime when present: `git`, `rg` (rip
 
 ## Changelog
 
-### Unreleased: security fixes, two-pane TUI, streaming and cost
+### 2.3.0: security fixes, two-pane TUI, streaming and cost (2026-08)
+
+**Upgrading.** Four behaviour changes worth knowing about:
+
+- `COOLCODE_API_KEY` is **no longer read from a project `.env`**. It applies with
+  no global setting, so honouring it from a repository file let a cloned project
+  choose which provider account requests were billed and logged against. Export
+  it in your shell, or name a different `*_API_KEY` variable and point
+  `llm.apiKeyEnv` at it. Other `*_API_KEY` values still load from `.env`.
+- `features.maxContextTokens` now defaults to `120000` rather than `20000`.
+  Requests carry more history, which costs more per turn; set it back if that
+  matters to you.
+- Tools can no longer write inside `.git` or `.coolcode`. A workflow that had the
+  agent edit `.git/config` or install a hook will now be refused.
+- `edit_file` reports a replacement count instead of returning the whole edited
+  file.
 
 **Security.** Two defects reachable without user cooperation:
 `shellEscapeSingleQuotes` emitted `'\"'\"'` where POSIX needs `'\''`, leaving
