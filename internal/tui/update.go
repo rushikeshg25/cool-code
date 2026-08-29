@@ -57,7 +57,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case toolMsg:
-		m.appendTool(msg.display)
+		m.appendToolResult(msg.display, msg.failed)
 		return m, nil
 
 	case tasksMsg:
@@ -112,7 +112,7 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if msg.err != nil {
-		m.appendSystem("Error: " + msg.err.Error())
+		m.appendError(msg.err.Error())
 		return m, nil
 	}
 	m.tasks = m.proc.TaskList()

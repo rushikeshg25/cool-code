@@ -18,7 +18,7 @@ var gitStatusTool = Tool{
 		if !res.success {
 			display = "Git status failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 
@@ -57,7 +57,7 @@ var gitDiffTool = Tool{
 		if !res.success {
 			display = "Git diff failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 
@@ -84,7 +84,7 @@ var gitCommitTool = Tool{
 		}
 		if a.All {
 			if res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", "add", "-A"); !res.success {
-				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined()}
+				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined(), Failed: true}
 			}
 		} else if len(a.Files) > 0 {
 			addArgs := []string{"add", "--"}
@@ -95,7 +95,7 @@ var gitCommitTool = Tool{
 				addArgs = append(addArgs, pathArg(toRelative(f, ctx.RootDir)))
 			}
 			if res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", addArgs...); !res.success {
-				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined()}
+				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined(), Failed: true}
 			}
 		}
 		res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", "commit", "-m", a.Message)
@@ -103,6 +103,6 @@ var gitCommitTool = Tool{
 		if !res.success {
 			display = "Commit failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }

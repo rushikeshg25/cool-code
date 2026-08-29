@@ -200,7 +200,7 @@ var findSymbolTool = Tool{
 		if !res.success {
 			display = "Symbol search failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 

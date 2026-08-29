@@ -315,3 +315,56 @@ func TestMarkdownUsesThePalette(t *testing.T) {
 		t.Error("heading text was lost")
 	}
 }
+
+// TestErrorsAreVisuallyDistinct covers the hierarchy problem. Errors were
+// routed to entrySystem, which renders faint and italic, so a failure was the
+// least prominent text on screen, and danger was used nowhere but diff lines.
+func TestErrorsAreVisuallyDistinct(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendSystem("Mode switched to PLAN")
+	m.appendError("provider returned 500")
+
+	var system, failure string
+	for _, e := range m.history {
+		switch e.kind {
+		case entrySystem:
+			system = e.rendered
+		case entryError:
+			failure = e.rendered
+		}
+	}
+	if failure == "" {
+		t.Fatal("error entry was not recorded")
+	}
+	// Colour is stripped when tests run without a TTY, so assert on the
+	// structural difference the marker gives, not on the SGR codes.
+	if ansi.Strip(failure) == ansi.Strip(system) {
+		t.Error("errors render the same as ordinary system notices")
+	}
+	if !strings.Contains(ansi.Strip(failure), "⚠") {
+		t.Errorf("error has no marker distinguishing it: %q", ansi.Strip(failure))
+	}
+	if !strings.Contains(ansi.Strip(failure), "provider returned 500") {
+		t.Errorf("error text lost: %q", ansi.Strip(failure))
+	}
+}
+
+// TestFailedToolLooksDifferentFromSuccess covers the other half: a failed tool
+// call used to render as the same muted branch line as a successful one.
+func TestFailedToolLooksDifferentFromSuccess(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendToolResult("Reading main.go", false)
+	m.appendToolResult("Read failed", true)
+
+	ok := m.history[len(m.history)-2]
+	bad := m.history[len(m.history)-1]
+	if ok.kind == bad.kind {
+		t.Fatal("failed and successful tool calls share an entry kind")
+	}
+	if ansi.Strip(bad.rendered) == ansi.Strip(ok.rendered) {
+		t.Error("failed tool call renders identically to a successful one")
+	}
+	if !strings.Contains(ansi.Strip(bad.rendered), "✗") {
+		t.Errorf("failed tool call has no failure marker: %q", ansi.Strip(bad.rendered))
+	}
+}

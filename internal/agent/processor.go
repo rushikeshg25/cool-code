@@ -21,12 +21,12 @@ import (
 // Reporter receives live updates during a turn. All methods may be called from
 // the processor goroutine or, for Subagents, from subagent worker goroutines.
 type Reporter interface {
-	Status(text string)         // spinner / progress text
-	AssistantDelta(text string) // a streamed fragment of the current reply
-	Assistant(markdown string)  // final or intermediate model text
-	Tool(name, display string)  // a tool finished with this display line
-	Tasks(list *types.TaskList) // the task list changed
-	Subagents(lines []string)   // live subagent status lines; nil clears them
+	Status(text string)                     // spinner / progress text
+	AssistantDelta(text string)             // a streamed fragment of the current reply
+	Assistant(markdown string)              // final or intermediate model text
+	Tool(name, display string, failed bool) // a tool finished with this display line
+	Tasks(list *types.TaskList)             // the task list changed
+	Subagents(lines []string)               // live subagent status lines; nil clears them
 }
 
 // Options configure a Processor.
@@ -318,7 +318,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			results[i].LLMResult = security.Redact(results[i].LLMResult)
 			p.ctxMgr.addToolResult(call, results[i].LLMResult)
 			if executed[i] && reporter != nil {
-				reporter.Tool(call.Name, results[i].Display)
+				reporter.Tool(call.Name, results[i].Display, results[i].Failed)
 			}
 		}
 

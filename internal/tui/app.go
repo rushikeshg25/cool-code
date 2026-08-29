@@ -26,7 +26,10 @@ import (
 type statusMsg string
 type assistantMsg string
 type deltaMsg string
-type toolMsg struct{ name, display string }
+type toolMsg struct {
+	name, display string
+	failed        bool
+}
 type tasksMsg struct{ list *types.TaskList }
 type subagentsMsg struct{ lines []string }
 type doneMsg struct {
@@ -42,10 +45,12 @@ type confirmReqMsg struct {
 // the running tea.Program.
 type bridge struct{ prog *tea.Program }
 
-func (b *bridge) Status(t string)            { b.prog.Send(statusMsg(t)) }
-func (b *bridge) AssistantDelta(t string)    { b.prog.Send(deltaMsg(t)) }
-func (b *bridge) Assistant(md string)        { b.prog.Send(assistantMsg(md)) }
-func (b *bridge) Tool(name, display string)  { b.prog.Send(toolMsg{name, display}) }
+func (b *bridge) Status(t string)         { b.prog.Send(statusMsg(t)) }
+func (b *bridge) AssistantDelta(t string) { b.prog.Send(deltaMsg(t)) }
+func (b *bridge) Assistant(md string)     { b.prog.Send(assistantMsg(md)) }
+func (b *bridge) Tool(name, display string, failed bool) {
+	b.prog.Send(toolMsg{name, display, failed})
+}
 func (b *bridge) Tasks(list *types.TaskList) { b.prog.Send(tasksMsg{list}) }
 func (b *bridge) Subagents(lines []string)   { b.prog.Send(subagentsMsg{lines}) }
 
@@ -181,7 +186,9 @@ const (
 	entryAssistant
 	entryPlan
 	entryTool
+	entryToolFailed
 	entrySystem
+	entryError
 	entryStream // assistant text still streaming: plain wrap, no markdown
 )
 
@@ -219,8 +226,12 @@ func (m *model) renderEntry(e entry) string {
 		return planTitle.Render("◆ PLAN READY") + "\n" + body
 	case entryTool:
 		return toolGlyph.Render("  ├─ ") + toolStyle.Render(raw)
+	case entryToolFailed:
+		return errorGlyph.Render("  ✗  ") + toolFailure.Render(raw)
 	case entrySystem:
 		return systemStyle.Render(raw)
+	case entryError:
+		return errorGlyph.Render("⚠ ") + errorStyle.Render(raw)
 	case entryStream:
 		return ansi.Wordwrap(raw, m.contentWidth(), " /")
 	default:
@@ -267,6 +278,17 @@ func (m *model) appendUser(text string)    { m.appendEntry(entryUser, text) }
 func (m *model) appendAssistant(md string) { m.appendEntry(entryAssistant, md) }
 func (m *model) appendTool(display string) { m.appendEntry(entryTool, display) }
 func (m *model) appendSystem(text string)  { m.appendEntry(entrySystem, text) }
+func (m *model) appendError(text string)   { m.appendEntry(entryError, text) }
+
+// appendToolResult draws a failed call differently from a successful one.
+// Both used to render as the same muted branch line.
+func (m *model) appendToolResult(display string, failed bool) {
+	if failed {
+		m.appendEntry(entryToolFailed, display)
+		return
+	}
+	m.appendEntry(entryTool, display)
+}
 
 // rerenderHistory refreshes every entry's rendering, e.g. after a resize.
 func (m *model) rerenderHistory() {
@@ -322,7 +344,7 @@ func (m *model) syncViewport() {
 	var b strings.Builder
 	for i, e := range m.history {
 		if i > 0 {
-			if e.kind == entryTool && m.history[i-1].kind == entryTool {
+			if isToolEntry(e.kind) && isToolEntry(m.history[i-1].kind) {
 				b.WriteString("\n")
 			} else {
 				b.WriteString("\n\n")
@@ -353,4 +375,10 @@ func (m *model) persist() {
 		ExtraDirs:    m.proc.ExtraDirs(),
 		MessageCount: count,
 	})
+}
+
+// isToolEntry reports whether a kind is one of the compact tool lines, which
+// are joined by a single newline rather than a blank line.
+func isToolEntry(k entryKind) bool {
+	return k == entryTool || k == entryToolFailed
 }

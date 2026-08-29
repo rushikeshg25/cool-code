@@ -48,7 +48,7 @@ type captureReporter struct {
 func (c *captureReporter) Status(string)         {}
 func (c *captureReporter) AssistantDelta(string) {}
 func (c *captureReporter) Assistant(md string)   { c.texts = append(c.texts, md) }
-func (c *captureReporter) Tool(name, _ string) {
+func (c *captureReporter) Tool(name, _ string, _ bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.tools = append(c.tools, name)

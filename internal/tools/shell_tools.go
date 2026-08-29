@@ -53,7 +53,7 @@ var shellCommandTool = Tool{
 				display += ": " + res.errMsg
 			}
 		}
-		return types.ToolResult{Display: display, LLMResult: llm}
+		return types.ToolResult{Display: display, LLMResult: llm, Failed: !res.success}
 	},
 }
 
@@ -81,7 +81,7 @@ var runTestsTool = Tool{
 		if !res.success {
 			display = "Tests failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 
@@ -109,7 +109,7 @@ var lintFixTool = Tool{
 		if !res.success {
 			display = "Lint/format failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 
@@ -138,7 +138,7 @@ var formatFileTool = Tool{
 		if !res.success {
 			display = "Formatting failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 

@@ -79,7 +79,7 @@ func arrProp(desc string) map[string]any {
 }
 
 func fail(display, msg string) types.ToolResult {
-	return types.ToolResult{Display: display, LLMResult: msg}
+	return types.ToolResult{Display: display, LLMResult: msg, Failed: true}
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
