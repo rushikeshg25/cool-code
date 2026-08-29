@@ -34,10 +34,10 @@ func (m *model) View() string {
 
 	body := m.vp.View()
 	if l.showSidebar {
-		body = m.joinSidebar(body, l)
+		return m.joinSidebar(body, l) + "\n" + footer
 	}
 
-	sections := make([]string, 0, 3)
+	sections := make([]string, 0, 2)
 	if l.showHeader {
 		sections = append(sections, m.renderHeader(l))
 	}
@@ -45,18 +45,45 @@ func (m *model) View() string {
 	return strings.Join(sections, "\n") + "\n" + footer
 }
 
-// joinSidebar places the task and agent panel beside the transcript.
+// joinSidebar places the task and agent panel beside the transcript, with the
+// rule running the full height including the header row. Drawing the header
+// across both columns instead put the model and mode directly above the
+// sidebar, where they read as its title.
 func (m *model) joinSidebar(body string, l layout) string {
-	panel := m.renderSidebar(l)
-	bodyLines := padLines(strings.Split(body, "\n"), l.transcriptHeight, l.transcriptWidth)
-	panelLines := padLines(strings.Split(panel, "\n"), l.transcriptHeight, l.sidebarWidth)
+	left := strings.Split(body, "\n")
+	right := strings.Split(m.renderSidebar(l), "\n")
+	height := l.transcriptHeight
+	if l.showHeader {
+		// The header joins the columns as their first row.
+		left = append([]string{m.renderHeader(l)}, left...)
+		right = append([]string{sidebarTitle.Render(m.sidebarHeading())}, right...)
+		height++
+	}
+
+	leftLines := padLines(left, height, l.transcriptWidth)
+	rightLines := padLines(right, height, l.sidebarWidth)
 
 	rule := sidebarRule.Render("│")
-	out := make([]string, l.transcriptHeight)
+	out := make([]string, height)
 	for i := range out {
-		out[i] = bodyLines[i] + " " + rule + " " + panelLines[i]
+		out[i] = leftLines[i] + " " + rule + " " + rightLines[i]
 	}
 	return strings.Join(out, "\n")
+}
+
+// sidebarHeading names the panel on the header row, so the two columns each
+// have their own title.
+func (m *model) sidebarHeading() string {
+	if m.tasks != nil && len(m.tasks.Items) > 0 {
+		done := 0
+		for _, item := range m.tasks.Items {
+			if item.Status == types.TaskDone {
+				done++
+			}
+		}
+		return fmt.Sprintf("Tasks  %d/%d", done, len(m.tasks.Items))
+	}
+	return "Agents"
 }
 
 // padLines trims or extends lines to exactly n entries, each padded to width so
@@ -78,21 +105,24 @@ func padLines(lines []string, n, width int) []string {
 
 // renderHeader is the one row that never scrolls away.
 func (m *model) renderHeader(l layout) string {
+	// Measured against the transcript column, which is the whole width when
+	// there is no sidebar, so the header never runs under the panel.
+	width := l.transcriptWidth
 	status := m.proc.GetStatus()
 	left := headerName.Render("◆ cool-code") + headerStyle.Render(" v"+m.version)
 
 	right := []string{modeStyle(m.mode).Render(string(m.mode))}
-	if l.width >= taskListMinWidth && status.Model != "" {
+	if width >= 60 && status.Model != "" {
 		right = append(right, headerStyle.Render(status.Model))
 	}
-	if l.width >= sidebarMinWidth && status.Effort != "" {
+	if width >= 88 && status.Effort != "" {
 		right = append(right, headerStyle.Render(status.Effort+" effort"))
 	}
 	rightText := strings.Join(right, headerStyle.Render("  ·  "))
 
-	gap := l.width - ansi.StringWidth(left) - ansi.StringWidth(rightText) - 2
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(rightText) - 2
 	if gap < 1 {
-		return ansi.Truncate(left+" "+rightText, maxInt(1, l.width), "…")
+		return ansi.Truncate(left+" "+rightText, maxInt(1, width), "…")
 	}
 	return left + " " + headerRule.Render(strings.Repeat("─", gap)) + " " + rightText
 }
@@ -104,15 +134,8 @@ func (m *model) renderSidebar(l layout) string {
 	var lines []string
 	w := l.sidebarWidth
 
-	if m.tasks != nil && len(m.tasks.Items) > 0 {
-		done := 0
-		for _, item := range m.tasks.Items {
-			if item.Status == types.TaskDone {
-				done++
-			}
-		}
-		lines = append(lines, sidebarTitle.Render("Tasks")+
-			sidebarTodo.Render(fmt.Sprintf("  %d/%d", done, len(m.tasks.Items))))
+	hasTasks := m.tasks != nil && len(m.tasks.Items) > 0
+	if hasTasks {
 		for _, item := range m.tasks.Items {
 			glyph, style := taskGlyph(item.Status)
 			lines = append(lines, ansi.Truncate(style.Render(glyph+" ")+sidebarTodo.Render(item.Title), maxInt(1, w), "…"))
@@ -120,10 +143,11 @@ func (m *model) renderSidebar(l layout) string {
 	}
 
 	if len(m.subagents) > 0 {
-		if len(lines) > 0 {
-			lines = append(lines, "")
+		// The header row already says "Agents" when there are no tasks, so
+		// only label the section when it follows a task list.
+		if hasTasks {
+			lines = append(lines, "", sidebarTitle.Render("Agents"))
 		}
-		lines = append(lines, sidebarTitle.Render("Agents"))
 		for _, sub := range m.subagents {
 			lines = append(lines, ansi.Truncate(sidebarNow.Render("◆ ")+sidebarTodo.Render(sub), maxInt(1, w), "…"))
 		}

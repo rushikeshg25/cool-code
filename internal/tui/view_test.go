@@ -172,6 +172,15 @@ func TestSidebarShowsIndividualTasks(t *testing.T) {
 			t.Errorf("sidebar missing %q:\n%s", want, view)
 		}
 	}
+	// The rule runs the full height, header row included, so the two columns
+	// read as panes rather than the header spanning both.
+	first := strings.Split(view, "\n")[0]
+	if !strings.Contains(first, "│") {
+		t.Errorf("header row is not split by the rule: %q", first)
+	}
+	if !strings.Contains(first, "Tasks") {
+		t.Errorf("sidebar has no title on the header row: %q", first)
+	}
 	// The stacked task summary must not also be drawn.
 	if strings.Contains(ansi.Strip(m.footer()), "Plan 1/3") {
 		t.Error("task summary duplicated in the footer while the sidebar is shown")
