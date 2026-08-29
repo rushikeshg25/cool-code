@@ -14,11 +14,13 @@ Cool-Code combines large language models with a comprehensive set of development
 - **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
-- **Polished TUI** - a Bubble Tea terminal UI with Glamour-rendered markdown, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, a live task panel, and Shift+Tab to switch modes.
+- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns, a sidebar showing the live task list and running subagents. Syntax-highlighted fenced code, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
 - **Three agent modes** - Plan (read-only investigation → detailed plan), Agent (autonomous execution), Ask (read-only Q&A). After Plan mode produces a plan, choose **Start implementation** to jump straight into Agent mode.
 - **Project memory (`COOLCODE.md`)** - persistent project instructions loaded into every prompt.
 - **Skills** - discoverable, model-invoked instruction modules under `.coolcode/skills/` (compatible with Claude Code skills).
 - **Web access** - `web_fetch` and `web_search` tools.
+- **Streaming output** - assistant text appears as it arrives, buffered to line boundaries so secret redaction still sees complete lines. Scratch prose emitted before a tool call is dropped in favour of the tool lines that follow.
+- **Cost tracking** - a running session spend in the status bar for models with a published rate, plus `/cost`. Unknown models and custom endpoints report nothing rather than a guess.
 - **Session persistence** - conversations saved to `~/.coolcode/sessions/` (including on quit and cancel); resume with `--continue` / `--resume` and the prior conversation reappears in the transcript.
 - **Reliability** - automatic retry with backoff on transient API errors, and real token usage from provider responses in the status bar.
 - **Task tracking, input queuing, safety guardrails** - real-time checklists, mid-turn message queuing, and path/read/danger protections.
@@ -86,7 +88,23 @@ cool-code --copy              # copy final responses to the clipboard
 cool-code --continue          # resume the most recent session for this dir
 cool-code --resume <id>       # resume a specific saved session
 cool-code --effort high       # set reasoning effort for this run
+cool-code --mode plan         # start in plan, agent, or ask mode
 ```
+
+### Non-interactive mode
+
+```bash
+cool-code --print "list the exported functions in internal/tools"
+echo "summarize the recent changes" | cool-code --print
+cool-code --print --json "what does the path jail do?"   # structured output
+cool-code --print --verbose "run the tests"              # tool activity on stderr
+```
+
+`--print` runs a single turn without the TUI and writes the result to stdout,
+so the agent can be scripted or run in CI. The prompt comes from an argument
+or from piped stdin. Progress goes to stderr, keeping stdout pipeable.
+Confirmations are **refused** rather than auto-approved, since there is nobody
+to ask; pass `--allow-dangerous` to opt in.
 
 ### Subcommands
 
@@ -118,6 +136,9 @@ Type `/` to open the command palette; press Tab to complete the highlighted comm
 - `/effort` - show or set reasoning effort (`minimal|low|medium|high|xhigh`)
 - `/pin` / `/unpin` - pin a file's contents into context (or list/unpin)
 - `/context` - preview context, pinned files, and token usage
+- `/compact` - summarize the conversation and free up context
+- `/model` - show or switch the model (e.g. `/model claude-sonnet-4-5`)
+- `/cost` - show token usage and estimated spend for this session
 - `/sessions` - list saved sessions for this directory
 - `/install-skill` - install a skill from a local path or git URL (add `--global`)
 - `/clear` - clear the screen
@@ -158,10 +179,17 @@ Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md`
   "features": {
     "scanCache": true,
     "fileTreeMaxDepth": 4,
-    "maxContextTokens": 20000
+    "maxContextTokens": 120000,
+    "compactAfter": 40
   }
 }
 ```
+
+`maxContextTokens` is the request window. `compactAfter` is the message count at
+which the conversation is summarized and older history is folded into that
+summary, keeping the 20 most recent messages verbatim; set it to `0` to disable
+compaction. Compaction is reported in the transcript when it happens, and
+`/compact` runs it on demand.
 
 Provider identity and security-sensitive settings (`llm.model`, `llm.provider`, `llm.baseUrl`, `llm.apiKeyEnv`, `llm.allowInsecureHttp`, `features.allowDangerous`, `features.confirmEdits`) are global-only. Set them with `cool-code config set`; repository-controlled values are ignored, and the CLI lists any it ignored at startup.
 
@@ -217,9 +245,44 @@ Requires Go 1.25+. External tools used at runtime when present: `git`, `rg` (rip
 - **Semantic codebase index** - a local embedding index kept in sync via a Merkle tree of file hashes, exposed as a `codebase_search` tool.
 - **Subscription sign-in for `/connect`** (Claude Pro/Max, ChatGPT/Codex OAuth).
 - **Full-toolset subagents** (explore-only subagents shipped; write-capable ones need permission routing).
-- **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **hooks**, **`@file` mentions**, **cost tracking**, and **multimodal input**.
+- **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **hooks**, and **multimodal input**.
+- **`@file` mentions** - the composer already completes paths; it does not yet attach the file's contents.
 
 ## Changelog
+
+### Unreleased: security fixes, two-pane TUI, streaming and cost
+
+**Security.** Two defects reachable without user cooperation:
+`shellEscapeSingleQuotes` emitted `'\"'\"'` where POSIX needs `'\''`, leaving
+the shell parser unquoted, which made `find_symbol` and `git_diff` (both
+read-only, so available in Plan and Ask mode and to subagents) into command
+execution; and the path jail cleaned `..` lexically before resolving symlinks,
+then performed I/O on the raw string, so `link/../secret` escaped the
+workspace. Commands are built as argv with no shell, and paths are resolved
+component by component with callers acting on the resolved path.
+
+Also: tool writes refused inside `.git` and `.coolcode`; read guardrails
+extended to `edit_file` and the git tools, and `edit_file` no longer returns
+the whole file; `format_file` and `add_script` now confirm before running
+project code; terminal escape sequences stripped from model, tool and
+confirmation text; the skills installer no longer follows symlinks or inherits
+the environment; repository and web content marked untrusted in the prompt;
+`.env` can no longer substitute the provider credential; CGNAT and other
+reserved ranges blocked in web fetches. `internal/tools` coverage raised from
+38.9%, and `gosec` added to CI alongside a read-only workflow token.
+
+**TUI.** A layout pass computes the frame once, fixing a double footer render
+and a render that mutated model state. Above 100 columns the transcript gains a
+sidebar with the live task list and running subagents; a persistent header
+replaces the banner that scrolled away. Fenced code is syntax highlighted,
+which it never was, and markdown colours come from the palette rather than
+ANSI-256 literals. Errors and failed tool calls are visually distinct.
+
+**Features.** Streaming turned on, line buffered so redaction still sees whole
+lines. Compaction bounded, less lossy, configurable and visible, with
+`/compact`; the context window default raised from 20k. Per-command timeouts
+instead of a fixed 30 seconds. `/model`, `/cost`, and a non-interactive
+`--print` mode with `--json`.
 
 ### 2.2.1: Security hardening (2026-08)
 
