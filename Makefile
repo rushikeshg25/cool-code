@@ -1,5 +1,7 @@
 BINARY := cool-code
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Strip the leading "v": the version template already prints one, so a raw
+# `git describe` output rendered as "cool-code vv2.2.1".
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo dev)
 LDFLAGS := -s -w -X github.com/rushikeshg25/cool-code/cmd.Version=$(VERSION)
 
 .PHONY: build install test vet sec fmt tidy clean run
