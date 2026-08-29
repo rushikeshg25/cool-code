@@ -410,3 +410,20 @@ func TestStreamingUpdatesDoNotDisturbEarlierEntries(t *testing.T) {
 		t.Errorf("streamed text incomplete: %q", ansi.Strip(streamed))
 	}
 }
+
+// TestOnlyOneHeaderIsRendered covers the duplicate banner. The persistent
+// header was added in v2.3.0 but the banner it replaced was still being pushed
+// in as transcript entry zero, so the name and version appeared twice, stacked.
+func TestOnlyOneHeaderIsRendered(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 40)
+	m.appendSystem("No API key configured - run /connect to link a provider.")
+
+	view := ansi.Strip(m.View())
+	if n := strings.Count(view, "cool-code v"); n != 1 {
+		t.Errorf("found %d version headers, want 1:\n%s", n, view)
+	}
+	// The notice itself must survive as an ordinary transcript entry.
+	if !strings.Contains(view, "No API key configured") {
+		t.Error("startup notice was lost")
+	}
+}
