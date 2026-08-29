@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
@@ -196,7 +197,9 @@ func (m *model) renderSuggestions() string {
 }
 
 func (m *model) renderConfirmation() string {
-	wrapped := ansi.Wordwrap(m.confirmMsg, maxInt(20, m.width-2), " /")
+	// The confirmation text quotes a model-supplied command. Strip escapes
+	// so it cannot redraw over what the user is being asked to approve.
+	wrapped := ansi.Wordwrap(security.SanitizeTerminal(m.confirmMsg), maxInt(20, m.width-2), " /")
 	lines := strings.Split(wrapped, "\n")
 	limit := maxInt(3, minInt(10, m.height/2))
 	maxOffset := maxInt(0, len(lines)-limit)

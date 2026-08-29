@@ -69,9 +69,11 @@ func DangerReason(name string, args json.RawMessage) string {
 			Command string `json:"command"`
 		}
 		_ = json.Unmarshal(args, &a)
-		command := strings.TrimSpace(security.Redact(a.Command))
+		// Collapse to one line: padding a command with blank lines used to
+		// push the real payload out of the overlay's visible window.
+		command := security.SanitizeLine(security.Redact(a.Command))
 		if len(command) > 160 {
-			command = command[:160] + "..."
+			command = truncateRunes(command, 160) + "..."
 		}
 		return "shell command: " + command
 	case "run_tests", "lint_fix":

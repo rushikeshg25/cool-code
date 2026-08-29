@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/project"
@@ -81,3 +82,14 @@ func fail(display, msg string) types.ToolResult {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// truncateRunes shortens s to at most n bytes without splitting a rune.
+func truncateRunes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}

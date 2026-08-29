@@ -16,6 +16,7 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/agent"
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
@@ -197,22 +198,29 @@ func (m *model) contentWidth() int {
 }
 
 func (m *model) renderEntry(e entry) string {
+	// entryRaw is the banner, which this program styles itself. Every other
+	// kind carries text from a model, a tool or a repository, so its escape
+	// sequences are stripped before it can reach the terminal.
+	raw := e.raw
+	if e.kind != entryRaw {
+		raw = security.SanitizeTerminal(raw)
+	}
 	switch e.kind {
 	case entryUser:
-		return userPrefix.Render("› ") + userText.Render(e.raw)
+		return userPrefix.Render("› ") + userText.Render(raw)
 	case entryAssistant:
-		return renderMarkdown(e.raw, m.contentWidth())
+		return renderMarkdown(raw, m.contentWidth())
 	case entryPlan:
-		body := planCard.Render(renderMarkdown(e.raw, maxInt(20, m.contentWidth()-3)))
+		body := planCard.Render(renderMarkdown(raw, maxInt(20, m.contentWidth()-3)))
 		return planTitle.Render("◆ PLAN READY") + "\n" + body
 	case entryTool:
-		return toolGlyph.Render("  ├─ ") + toolStyle.Render(e.raw)
+		return toolGlyph.Render("  ├─ ") + toolStyle.Render(raw)
 	case entrySystem:
-		return systemStyle.Render(e.raw)
+		return systemStyle.Render(raw)
 	case entryStream:
-		return ansi.Wordwrap(e.raw, m.contentWidth(), " /")
+		return ansi.Wordwrap(raw, m.contentWidth(), " /")
 	default:
-		return e.raw
+		return raw
 	}
 }
 
