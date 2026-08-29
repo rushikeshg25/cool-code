@@ -26,7 +26,7 @@ func (m *model) View() string {
 	// scroll offset is clamped before anything is drawn.
 	m.clampConfirmOffset()
 	footer := m.footer()
-	l := computeLayout(m.width, m.height, lipgloss.Height(footer), m.hasOverlay())
+	l := computeLayout(m.width, m.height, lipgloss.Height(footer), m.hasOverlay(), m.hasSidebarContent())
 	m.layout = l
 
 	m.vp.Height = l.transcriptHeight
@@ -129,16 +129,13 @@ func (m *model) renderSidebar(l layout) string {
 		}
 	}
 
-	if len(lines) == 0 {
-		lines = append(lines, sidebarTodo.Render("No active tasks"))
-	}
 	return strings.Join(lines, "\n")
 }
 
 // footer is the bottom stack: activity, an optional task summary when there is
 // no sidebar to hold it, session metadata, then the overlay or composer.
 func (m *model) footer() string {
-	l := computeLayout(m.width, m.height, 0, m.hasOverlay())
+	l := computeLayout(m.width, m.height, 0, m.hasOverlay(), m.hasSidebarContent())
 	sections := make([]string, 0, 4)
 	if !m.hasOverlay() && (m.processing || m.status != "") {
 		sections = append(sections, m.renderActivity())
@@ -255,7 +252,7 @@ func (m *model) renderActivity() string {
 
 	// The sidebar lists the running agents when it is showing, so repeating
 	// them here would draw each one twice.
-	if computeLayout(m.width, m.height, 0, m.hasOverlay()).showSidebar {
+	if computeLayout(m.width, m.height, 0, m.hasOverlay(), m.hasSidebarContent()).showSidebar {
 		return lines[0]
 	}
 	for i, sub := range m.subagents {
@@ -484,4 +481,11 @@ func formatCost(dollars float64) string {
 		return fmt.Sprintf("$%.4f", dollars)
 	}
 	return fmt.Sprintf("$%.2f", dollars)
+}
+
+// hasSidebarContent reports whether the sidebar has anything to show. Without
+// this the sidebar claimed a full-height column on an idle session in order to
+// print "No active tasks".
+func (m *model) hasSidebarContent() bool {
+	return (m.tasks != nil && len(m.tasks.Items) > 0) || len(m.subagents) > 0
 }

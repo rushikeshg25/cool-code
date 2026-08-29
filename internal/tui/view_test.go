@@ -427,3 +427,38 @@ func TestOnlyOneHeaderIsRendered(t *testing.T) {
 		t.Error("startup notice was lost")
 	}
 }
+
+// TestSidebarOnlyAppearsWithContent covers the idle layout. The sidebar used to
+// be gated on width alone, so an empty session gave up a full-height column to
+// print "No active tasks".
+func TestSidebarOnlyAppearsWithContent(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 40)
+	if m.layout.showSidebar {
+		t.Error("sidebar shown with no tasks and no agents")
+	}
+	if strings.Contains(ansi.Strip(m.View()), "No active tasks") {
+		t.Error("placeholder text still rendered")
+	}
+	if m.layout.transcriptWidth != 120 {
+		t.Errorf("transcript width = %d, want the full 120", m.layout.transcriptWidth)
+	}
+
+	m.tasks = &types.TaskList{Goal: "g", Items: []types.TaskItem{
+		{ID: "1", Title: "Audit layout", Status: types.TaskTodo},
+	}}
+	m = resizeModel(t, m, 120, 40)
+	if !m.layout.showSidebar {
+		t.Fatal("sidebar hidden despite a task list")
+	}
+	if !strings.Contains(ansi.Strip(m.View()), "Audit layout") {
+		t.Error("task item not shown in the sidebar")
+	}
+
+	// A running subagent is enough on its own.
+	m.tasks = nil
+	m.subagents = []string{"agent 1: explore"}
+	m = resizeModel(t, m, 120, 40)
+	if !m.layout.showSidebar {
+		t.Error("sidebar hidden despite a running subagent")
+	}
+}
