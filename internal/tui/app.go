@@ -26,6 +26,7 @@ import (
 type statusMsg string
 type assistantMsg string
 type deltaMsg string
+type discardStreamMsg struct{}
 type toolMsg struct {
 	name, display string
 	failed        bool
@@ -48,6 +49,7 @@ type bridge struct{ prog *tea.Program }
 func (b *bridge) Status(t string)         { b.prog.Send(statusMsg(t)) }
 func (b *bridge) AssistantDelta(t string) { b.prog.Send(deltaMsg(t)) }
 func (b *bridge) Assistant(md string)     { b.prog.Send(assistantMsg(md)) }
+func (b *bridge) AssistantDiscard()       { b.prog.Send(discardStreamMsg{}) }
 func (b *bridge) Tool(name, display string, failed bool) {
 	b.prog.Send(toolMsg{name, display, failed})
 }
@@ -264,6 +266,19 @@ func (m *model) appendDelta(delta string) {
 	e := &m.history[m.streamIdx]
 	e.raw += delta
 	e.rendered = m.renderEntry(*e)
+	m.syncViewport()
+}
+
+// discardStream removes the in-progress streaming entry. Text streamed before
+// a tool call is the model reasoning aloud; the tool lines that follow are the
+// record of what actually happened.
+func (m *model) discardStream() {
+	if m.streamIdx < 0 {
+		return
+	}
+	m.history = append(m.history[:m.streamIdx], m.history[m.streamIdx+1:]...)
+	m.streamIdx = -1
+	m.invalidatePrefix()
 	m.syncViewport()
 }
 

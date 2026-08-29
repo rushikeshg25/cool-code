@@ -25,6 +25,7 @@ type Reporter interface {
 	AssistantDelta(text string)             // a streamed fragment of the current reply
 	Assistant(markdown string)              // final or intermediate model text
 	Tool(name, display string, failed bool) // a tool finished with this display line
+	AssistantDiscard()                      // drop streamed text that turned out to be scratch
 	Tasks(list *types.TaskList)             // the task list changed
 	Subagents(lines []string)               // live subagent status lines; nil clears them
 }
@@ -164,11 +165,11 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		}
 		var resp llm.Message
 		var err error
+		streamed := false
 		if streamer, ok := p.provider.(llm.Streamer); ok && reporter != nil {
-			// Stage provider text until the response is known to be final. Models
-			// often emit scratch prose before tool calls; streaming it directly
-			// exposes internal work and leaves it below task/plan UI elements.
-			resp, err = streamer.Stream(ctx, req, func(string) {})
+			sink := newStreamSink(reporter)
+			resp, err = streamer.Stream(ctx, req, sink.write)
+			streamed = sink.flush()
 		} else {
 			resp, err = p.provider.Complete(ctx, req)
 		}
@@ -185,9 +186,19 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if len(resp.ToolCalls) == 0 {
 			finalText = security.Redact(resp.Text)
 			if finalText != "" && reporter != nil {
+				// Replaces the streamed text with its markdown rendering.
 				reporter.Assistant(finalText)
+			} else if streamed && reporter != nil {
+				reporter.AssistantDiscard()
 			}
 			break
+		}
+
+		// The turn continues, so whatever was streamed was the model talking
+		// to itself before deciding on a tool. Drop it: the tool lines that
+		// follow say what actually happened.
+		if streamed && reporter != nil {
+			reporter.AssistantDiscard()
 		}
 
 		toolCtx := p.toolCtx
@@ -600,4 +611,49 @@ func (p *Processor) Restore(messages []llm.Message, summary string, pinned []str
 	if mode.Valid() {
 		p.SetMode(mode)
 	}
+}
+
+// streamSink turns provider deltas into whole redacted lines.
+//
+// Redaction cannot run on a raw fragment, because a provider splits wherever
+// it likes and a credential can straddle two of them. Buffering to the last
+// newline keeps every emitted line complete, so security.Redact sees the same
+// text it would have seen in a non-streamed response. The cost is that output
+// appears a line at a time rather than a token at a time.
+type streamSink struct {
+	reporter Reporter
+	buf      strings.Builder
+	emitted  bool
+}
+
+func newStreamSink(reporter Reporter) *streamSink {
+	return &streamSink{reporter: reporter}
+}
+
+func (s *streamSink) write(chunk string) {
+	s.buf.WriteString(chunk)
+	text := s.buf.String()
+	cut := strings.LastIndexByte(text, '\n')
+	if cut < 0 {
+		return
+	}
+	complete, rest := text[:cut+1], text[cut+1:]
+	s.buf.Reset()
+	s.buf.WriteString(rest)
+	if out := security.Redact(complete); out != "" {
+		s.emitted = true
+		s.reporter.AssistantDelta(out)
+	}
+}
+
+// flush emits any trailing partial line and reports whether anything was shown.
+func (s *streamSink) flush() bool {
+	if rest := s.buf.String(); rest != "" {
+		s.buf.Reset()
+		if out := security.Redact(rest); out != "" {
+			s.emitted = true
+			s.reporter.AssistantDelta(out)
+		}
+	}
+	return s.emitted
 }

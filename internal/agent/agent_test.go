@@ -93,3 +93,60 @@ func TestForgedUntrustedMarkersAreDefanged(t *testing.T) {
 		t.Errorf("forged end marker survived:\n%s", body)
 	}
 }
+
+// TestStreamSinkRedactsAcrossChunkBoundaries is the reason streaming is line
+// buffered. A provider splits wherever it likes, so redacting each raw
+// fragment would miss a credential that straddles two of them.
+func TestStreamSinkRedactsAcrossChunkBoundaries(t *testing.T) {
+	rep := &captureReporter{}
+	sink := newStreamSink(rep)
+
+	// "sk-" and the rest of the key arrive in separate chunks.
+	for _, chunk := range []string{"here is the key sk", "-abcdefghijklmnopqrstuvwx", "yz1234\nand that is all"} {
+		sink.write(chunk)
+	}
+	sink.flush()
+
+	out := strings.Join(rep.deltas, "")
+	if strings.Contains(out, "sk-abcdefghijklmnopqrstuvwxyz1234") {
+		t.Errorf("credential survived streaming: %q", out)
+	}
+	if !strings.Contains(out, "and that is all") {
+		t.Errorf("ordinary text was lost: %q", out)
+	}
+}
+
+// TestStreamSinkEmitsWholeLines checks the buffering itself: nothing is shown
+// until a line is complete, and the trailing partial line is flushed at the end.
+func TestStreamSinkEmitsWholeLines(t *testing.T) {
+	rep := &captureReporter{}
+	sink := newStreamSink(rep)
+
+	sink.write("partial")
+	if len(rep.deltas) != 0 {
+		t.Fatalf("emitted an incomplete line: %q", rep.deltas)
+	}
+	sink.write(" line\nnext")
+	if got := strings.Join(rep.deltas, ""); got != "partial line\n" {
+		t.Fatalf("first emission = %q, want %q", got, "partial line\n")
+	}
+	if !sink.flush() {
+		t.Fatal("flush reported nothing emitted")
+	}
+	if got := strings.Join(rep.deltas, ""); got != "partial line\nnext" {
+		t.Fatalf("after flush = %q", got)
+	}
+}
+
+// TestStreamSinkReportsNothingWhenEmpty keeps a silent turn from triggering a
+// discard for text that was never shown.
+func TestStreamSinkReportsNothingWhenEmpty(t *testing.T) {
+	rep := &captureReporter{}
+	sink := newStreamSink(rep)
+	if sink.flush() {
+		t.Error("empty stream reported as emitted")
+	}
+	if len(rep.deltas) != 0 {
+		t.Errorf("empty stream emitted %q", rep.deltas)
+	}
+}

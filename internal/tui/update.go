@@ -43,6 +43,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 		return m, nil
 
+	case discardStreamMsg:
+		m.discardStream()
+		return m, nil
+
 	case statusMsg:
 		m.status = string(msg)
 		return m, nil
