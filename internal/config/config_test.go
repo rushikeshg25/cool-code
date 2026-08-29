@@ -253,3 +253,30 @@ func TestIgnoredProjectKeysReportsLooseningAttempts(t *testing.T) {
 		t.Fatalf("IgnoredProjectKeys = %v, want both feature keys", got)
 	}
 }
+
+// TestContextWindowIsProjectLocal covers the declared window. It only affects
+// how full the context is reported to be, so unlike the endpoint and credential
+// settings it is not restricted to global config.
+func TestContextWindowIsProjectLocal(t *testing.T) {
+	if globalOnly("llm.contextWindow") {
+		t.Error("llm.contextWindow should not be global-only")
+	}
+	base := Default()
+	if got := base.ContextWindow(); got != 0 {
+		t.Errorf("undeclared window = %d, want 0", got)
+	}
+
+	project := Config{}
+	project.LLM.ContextWindow = intPtr(200000)
+	merged := mergeProject(base, project)
+	if got := merged.ContextWindow(); got != 200000 {
+		t.Errorf("declared window = %d, want 200000", got)
+	}
+
+	// A nonsensical value is treated as undeclared rather than dividing by it.
+	zero := Config{}
+	zero.LLM.ContextWindow = intPtr(0)
+	if got := mergeProject(base, zero).ContextWindow(); got != 0 {
+		t.Errorf("zero window = %d, want 0", got)
+	}
+}
