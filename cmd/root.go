@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -114,6 +115,13 @@ func runInteractive(flags rootFlags) error {
 	switch {
 	case flags.resumeID != "":
 		restoreFrom = session.Load(flags.resumeID)
+		// A session carries the extra roots granted by /add-dir, and those are
+		// replayed below. Resuming one recorded in a different directory would
+		// re-grant them here, where the user never approved them.
+		if restoreFrom != nil && !sameDir(restoreFrom.Cwd, rootDir) {
+			banner += "\n  Session " + flags.resumeID + " belongs to " + restoreFrom.Cwd + "; not resuming here."
+			restoreFrom = nil
+		}
 	case flags.continueSess:
 		restoreFrom = session.Latest(rootDir)
 	}
@@ -191,4 +199,21 @@ func asMissingKey(err error, target **llm.MissingKeyError) bool {
 		return true
 	}
 	return false
+}
+
+// sameDir reports whether two directory paths refer to the same place, after
+// resolving symlinks so /tmp and /private/tmp compare equal.
+func sameDir(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return ra == rb
 }

@@ -55,3 +55,27 @@ func TestLoadEnvIgnoresCoolcodeAPIKey(t *testing.T) {
 		t.Error("PATH was imported from .env")
 	}
 }
+
+// TestSameDirResolvesSymlinks guards the --resume check, which refuses a
+// session recorded elsewhere because its /add-dir grants are replayed on
+// restore. It must not reject a legitimate resume just because the path is
+// spelled through a symlink.
+func TestSameDirResolvesSymlinks(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if !sameDir(real, link) {
+		t.Error("symlinked spelling of the same directory was rejected")
+	}
+	if !sameDir(real, real) {
+		t.Error("identical paths compared unequal")
+	}
+	if sameDir(real, t.TempDir()) {
+		t.Error("different directories compared equal")
+	}
+	if sameDir("", real) {
+		t.Error("empty path compared equal")
+	}
+}
