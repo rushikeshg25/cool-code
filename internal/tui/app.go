@@ -101,6 +101,7 @@ type model struct {
 	inputHist            []string
 	histIdx              int
 	processing           bool
+	turnStart            time.Time // when the current turn began, for the elapsed figure
 	status               string
 	mode                 types.AgentMode
 	tasks                *types.TaskList

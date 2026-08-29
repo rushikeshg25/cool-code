@@ -149,7 +149,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 	}
 	p.ctxMgr.addUser(security.Redact(query))
 	if reporter != nil {
-		reporter.Status(randomThinking())
+		reporter.Status(waitingLabel())
 	}
 	// Whatever way this turn ends, never leave a tool call without a result:
 	// providers reject histories with dangling tool_use blocks.
@@ -352,7 +352,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if msg := p.drainQueue(); msg != "" {
 			p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + msg)
 			if reporter != nil {
-				reporter.Status(randomThinking())
+				reporter.Status(waitingLabel())
 			}
 		}
 	}

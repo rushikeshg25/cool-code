@@ -1,21 +1,13 @@
 package agent
 
-import "math/rand"
-
-var thinkingMessages = []string{
-	"Thinking out loud…",
-	"Crunching the numbers…",
-	"Consulting the oracle…",
-	"Scanning the matrix…",
-	"Reading between the lines…",
-	"Distilling digital wisdom…",
-	"Searching the knowledge graph…",
-	"Synthesizing a solution…",
-}
-
-func randomThinking() string {
-	return thinkingMessages[rand.Intn(len(thinkingMessages))]
-}
+// waitingLabel is what the activity line says while a request is in flight.
+//
+// This used to pick at random from a list of flavour text: "Consulting the
+// oracle…", "Scanning the matrix…", "Distilling digital wisdom…". None of it
+// described anything, it changed every turn for no reason, and in a tool that
+// works on code, "oracle" reads as the database. A status line should say what
+// is happening; the caller adds elapsed time to it.
+func waitingLabel() string { return "Thinking…" }
 
 var toolLabels = map[string]string{
 	"read_file":               "Reading file",

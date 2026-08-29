@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
@@ -268,6 +269,12 @@ func (m *model) renderActivity() string {
 	if label == "" {
 		label = "Working…"
 	}
+	// The spinner already redraws ten times a second while a turn is running,
+	// so the elapsed figure costs nothing extra and is the one piece of
+	// information a caller actually wants while waiting.
+	if elapsed := m.elapsed(); elapsed != "" {
+		label += " " + elapsed
+	}
 	// spinner.Dot's frames already end in a space, so do not add another.
 	line := m.sp.View() + activityStyle.Render(label) + faintStyle.Render("  ·  Esc cancel")
 	lines := []string{m.truncateToWidth(line)}
@@ -524,4 +531,20 @@ func formatContext(used, max int) string {
 		return fmt.Sprintf("%.1fk ctx", float64(used)/1000)
 	}
 	return fmt.Sprintf("%d%% ctx", int(float64(used)/float64(max)*100+0.5))
+}
+
+// elapsed renders how long the current turn has been running, or "" before it
+// is worth showing.
+func (m *model) elapsed() string {
+	if m.turnStart.IsZero() {
+		return ""
+	}
+	d := time.Since(m.turnStart)
+	if d < time.Second {
+		return ""
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
 }
