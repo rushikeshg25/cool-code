@@ -278,8 +278,12 @@ func rejectSymlink(path string) error {
 }
 
 func mergeProject(base, over Config) Config {
-	// Only preferences that cannot expand host access or redirect secrets are
-	// accepted from a repository-controlled file.
+	// Adding read guardrails can only ever tighten access, so a repository is
+	// allowed to extend the list. Dropping them outright, as this used to,
+	// silently ignored a project that asked for "secrets/**" to be protected.
+	extra := over.Guardrails.BlockReadPatterns
+
+	// Everything else here could expand host access or redirect secrets.
 	over.LLM.BaseURL = ""
 	over.LLM.APIKeyEnv = ""
 	over.LLM.AllowInsecureHTTP = nil
@@ -288,7 +292,64 @@ func mergeProject(base, over Config) Config {
 	over.Features.AllowDangerous = nil
 	over.Features.ConfirmEdits = nil
 	over.Guardrails.BlockReadPatterns = nil
-	return merge(base, over)
+
+	merged := merge(base, over)
+	merged.Guardrails.BlockReadPatterns = unionPatterns(merged.Guardrails.BlockReadPatterns, extra)
+	return merged
+}
+
+func unionPatterns(base, extra []string) []string {
+	seen := make(map[string]bool, len(base)+len(extra))
+	out := make([]string, 0, len(base)+len(extra))
+	for _, list := range [][]string{base, extra} {
+		for _, p := range list {
+			p = strings.TrimSpace(p)
+			if p == "" || seen[p] {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// IgnoredProjectKeys names the settings present in rootDir's .coolcode.json
+// that are global-only and were therefore not applied. A repository cannot be
+// allowed to set these, but silently discarding them misleads whoever wrote
+// the file, so the CLI reports them at startup.
+func IgnoredProjectKeys(rootDir string) []string {
+	raw, err := readRegularFile(Path(rootDir))
+	if err != nil {
+		return nil
+	}
+	var project Config
+	if json.Unmarshal(raw, &project) != nil {
+		return nil
+	}
+	var keys []string
+	if project.LLM.BaseURL != "" {
+		keys = append(keys, "llm.baseUrl")
+	}
+	if project.LLM.APIKeyEnv != "" {
+		keys = append(keys, "llm.apiKeyEnv")
+	}
+	if project.LLM.AllowInsecureHTTP != nil {
+		keys = append(keys, "llm.allowInsecureHttp")
+	}
+	if project.LLM.Model != "" {
+		keys = append(keys, "llm.model")
+	}
+	if project.LLM.Provider != "" {
+		keys = append(keys, "llm.provider")
+	}
+	if project.Features.AllowDangerous != nil {
+		keys = append(keys, "features.allowDangerous")
+	}
+	if project.Features.ConfirmEdits != nil {
+		keys = append(keys, "features.confirmEdits")
+	}
+	return keys
 }
 
 // ValidReasoningEffort reports whether effort is supported by OpenAI-style

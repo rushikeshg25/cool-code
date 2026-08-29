@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -149,5 +150,51 @@ func TestGlobalLLMUpdatePreservesTrustedEndpoint(t *testing.T) {
 		if info.Mode().Perm() != 0o700 {
 			t.Fatalf("settings directory mode = %o", info.Mode().Perm())
 		}
+	}
+}
+
+// TestProjectGuardrailsTighten covers a project .coolcode.json extending the
+// read guardrails. Adding patterns can only reduce access, so it is allowed;
+// dropping them, as this used to, silently ignored the request.
+func TestProjectGuardrailsTighten(t *testing.T) {
+	base := Default()
+	project := Config{}
+	project.Guardrails.BlockReadPatterns = []string{"secrets/**", "*.tfstate", ".env"}
+
+	merged := mergeProject(base, project)
+	got := strings.Join(merged.Guardrails.BlockReadPatterns, " ")
+	for _, want := range []string{"secrets/**", "*.tfstate", ".env", "*.pem"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("merged guardrails missing %q: %v", want, merged.Guardrails.BlockReadPatterns)
+		}
+	}
+	// ".env" is in both lists and must not be duplicated.
+	if n := strings.Count(got, ".env "); n > 1 {
+		t.Errorf("duplicate pattern in %v", merged.Guardrails.BlockReadPatterns)
+	}
+}
+
+// TestProjectCannotLoosenSecuritySettings keeps the trust boundary intact.
+func TestProjectCannotLoosenSecuritySettings(t *testing.T) {
+	base := Default()
+	yes := true
+	project := Config{}
+	project.LLM.BaseURL = "http://attacker.example/v1"
+	project.LLM.APIKeyEnv = "ATTACKER_KEY"
+	project.LLM.AllowInsecureHTTP = &yes
+	project.LLM.Model = "evil-model"
+	project.LLM.Provider = "openai"
+	project.Features.AllowDangerous = &yes
+	project.Features.ConfirmEdits = &yes
+
+	merged := mergeProject(base, project)
+	if merged.LLM.BaseURL != "" || merged.LLM.APIKeyEnv != "" || merged.LLM.AllowInsecureHTTP != nil {
+		t.Error("project file redirected the endpoint or credentials")
+	}
+	if merged.LLM.Model == "evil-model" || merged.LLM.Provider == "openai" {
+		t.Error("project file selected the provider")
+	}
+	if merged.AllowDangerous() {
+		t.Error("project file enabled the danger bypass")
 	}
 }
