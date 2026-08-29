@@ -260,3 +260,58 @@ func TestTranscriptStripsModelEscapeSequences(t *testing.T) {
 		}
 	}
 }
+
+// countSGR returns how many distinct colour sequences appear in s.
+func countSGR(s string) int {
+	seen := map[string]bool{}
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] != 0x1b || i+1 >= len(runes) || runes[i+1] != '[' {
+			continue
+		}
+		j := i + 2
+		for ; j < len(runes) && !(runes[j] >= 0x40 && runes[j] <= 0x7E); j++ {
+		}
+		if j < len(runes) {
+			seen[string(runes[i:j+1])] = true
+		}
+		i = j
+	}
+	return len(seen)
+}
+
+// TestFencedCodeIsSyntaxHighlighted covers the biggest visual gap in the old
+// interface. The base Glamour style was PinkStyleConfig, which defines no
+// CodeBlock block at all, so Chroma was nil and fenced code rendered as flat
+// body text: no highlighting, no background, no frame.
+func TestFencedCodeIsSyntaxHighlighted(t *testing.T) {
+	md := "Fix:\n\n```go\n// a comment\nfunc canonicalPath(p string) error {\n\treturn nil\n}\n```\n"
+	highlighted := renderMarkdown(md, 70)
+
+	plain := renderMarkdown("Fix:\n\nfunc canonicalPath(p string) error\n", 70)
+	if countSGR(highlighted) <= countSGR(plain) {
+		t.Errorf("fenced code is not highlighted: %d colours vs %d for prose",
+			countSGR(highlighted), countSGR(plain))
+	}
+	// The code itself must survive intact.
+	for _, want := range []string{"canonicalPath", "// a comment", "return nil"} {
+		if !strings.Contains(ansi.Strip(highlighted), want) {
+			t.Errorf("code block lost %q", want)
+		}
+	}
+}
+
+// TestMarkdownUsesThePalette keeps Glamour from reintroducing colours that
+// belong to no part of this theme. PinkStyleConfig left HorizontalRule at
+// "212", a hot pink, and headings were set to the ANSI-256 literal "99".
+func TestMarkdownUsesThePalette(t *testing.T) {
+	out := renderMarkdown("# Title\n\n---\n\nInline `code` here.\n", 70)
+	for _, forbidden := range []string{"38;5;212", "38;5;99"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("markdown emitted off-palette colour %q", forbidden)
+		}
+	}
+	if !strings.Contains(ansi.Strip(out), "Title") {
+		t.Error("heading text was lost")
+	}
+}
