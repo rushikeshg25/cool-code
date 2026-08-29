@@ -126,8 +126,14 @@ func writePackageJSON(rootPath string, pkg map[string]any) error {
 	return os.WriteFile(filepath.Join(rootPath, "package.json"), append(data, '\n'), 0o644)
 }
 
-func shellEscapeSingleQuotes(value string) string {
-	return strings.ReplaceAll(value, "'", `'\"'\"'`)
+// pathArg prepares a relative path for use as a command argument. Paths are
+// passed to argv directly, so the only remaining hazard is a leading dash
+// being read as an option by tools that do not support a "--" separator.
+func pathArg(rel string) string {
+	if rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(rel, "./") {
+		return rel
+	}
+	return "./" + rel
 }
 
 func toRelative(filePath, rootPath string) string {

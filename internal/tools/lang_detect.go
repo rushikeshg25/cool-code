@@ -93,17 +93,18 @@ func defaultLintFixCommand(root string) string {
 	return ""
 }
 
-// formatFileCommand picks a formatter for a single file by extension.
-func formatFileCommand(rel string) string {
-	q := "'" + shellEscapeSingleQuotes(rel) + "'"
+// formatFileArgv picks a formatter for a single file by extension, returning
+// the program and its arguments so no shell is involved.
+func formatFileArgv(rel string) []string {
+	q := pathArg(rel)
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".go":
-		return "gofmt -w " + q
+		return []string{"gofmt", "-w", q}
 	case ".rs":
-		return "rustfmt " + q
+		return []string{"rustfmt", q}
 	case ".py":
-		return "ruff format " + q
+		return []string{"ruff", "format", q}
 	default:
-		return "npx prettier --write " + q
+		return []string{"npx", "prettier", "--write", q}
 	}
 }

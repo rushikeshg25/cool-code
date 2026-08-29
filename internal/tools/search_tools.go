@@ -179,17 +179,17 @@ var findSymbolTool = Tool{
 				return fail("Search blocked", reason)
 			}
 		}
-		includeFlag := ""
+		rgArgs := []string{"-n", "--hidden", "--glob", "!.git/*", "--glob", "!node_modules/*"}
 		if a.Include != "" {
-			includeFlag = " -g '" + shellEscapeSingleQuotes(a.Include) + "'"
+			rgArgs = append(rgArgs, "-g", a.Include)
 		}
-		excludeFlags := ""
 		for _, pattern := range ctx.Config.Guardrails.BlockReadPatterns {
-			excludeFlags += " -g '!" + shellEscapeSingleQuotes(pattern) + "'"
+			rgArgs = append(rgArgs, "-g", "!"+pattern)
 		}
-		command := "rg -n --hidden --glob '!.git/*' --glob '!node_modules/*'" + includeFlag + excludeFlags +
-			" '" + shellEscapeSingleQuotes(a.Pattern) + "' '" + shellEscapeSingleQuotes(searchPath) + "'"
-		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
+		// "--" keeps a pattern or path that begins with a dash from being
+		// parsed as an option.
+		rgArgs = append(rgArgs, "--", a.Pattern, searchPath)
+		res := execArgv(ctx.Context(), ctx.RootDir, 0, "rg", rgArgs...)
 		display := "Symbol search results"
 		if !res.success {
 			display = "Symbol search failed"

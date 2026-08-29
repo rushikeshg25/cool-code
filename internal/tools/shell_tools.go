@@ -129,8 +129,8 @@ var formatFileTool = Tool{
 			return fail("Invalid path", v)
 		}
 		rel := toRelative(a.AbsolutePath, ctx.RootDir)
-		command := formatFileCommand(rel)
-		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
+		argv := formatFileArgv(rel)
+		res := execArgv(ctx.Context(), ctx.RootDir, 0, argv[0], argv[1:]...)
 		display := "File formatted"
 		if !res.success {
 			display = "Formatting failed"

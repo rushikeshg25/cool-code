@@ -13,7 +13,7 @@ var gitStatusTool = Tool{
 	ReadOnly:    true,
 	Schema:      obj(map[string]any{}),
 	Execute: func(ctx Context, _ json.RawMessage) types.ToolResult {
-		res := execCommand(ctx.Context(), "git status --short -b", ctx.RootDir, 0)
+		res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", "status", "--short", "-b")
 		display := "Git status"
 		if !res.success {
 			display = "Git status failed"
@@ -36,19 +36,17 @@ var gitDiffTool = Tool{
 			Staged   bool   `json:"staged"`
 		}
 		_ = json.Unmarshal(args, &a)
-		fileArg := ""
+		gitArgs := []string{"diff"}
+		if a.Staged {
+			gitArgs = append(gitArgs, "--staged")
+		}
 		if a.FilePath != "" {
-			if v := EnsureAbsoluteWithinRoots(a.FilePath, ctx.Roots()); v != "" {
+			if v := ValidateReadPath(a.FilePath, ctx); v != "" {
 				return fail("Invalid path", v)
 			}
-			fileArg = " -- '" + shellEscapeSingleQuotes(toRelative(a.FilePath, ctx.RootDir)) + "'"
+			gitArgs = append(gitArgs, "--", pathArg(toRelative(a.FilePath, ctx.RootDir)))
 		}
-		command := "git diff"
-		if a.Staged {
-			command += " --staged"
-		}
-		command += fileArg
-		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
+		res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", gitArgs...)
 		display := "Git diff"
 		if !res.success {
 			display = "Git diff failed"
@@ -79,22 +77,22 @@ var gitCommitTool = Tool{
 			return fail("Invalid arguments", "Commit message is required.")
 		}
 		if a.All {
-			if res := execCommand(ctx.Context(), "git add -A", ctx.RootDir, 0); !res.success {
+			if res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", "add", "-A"); !res.success {
 				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined()}
 			}
 		} else if len(a.Files) > 0 {
-			var rels []string
+			addArgs := []string{"add", "--"}
 			for _, f := range a.Files {
 				if v := EnsureAbsoluteWithinRoots(f, ctx.Roots()); v != "" {
 					return fail("Invalid path", v)
 				}
-				rels = append(rels, "'"+shellEscapeSingleQuotes(toRelative(f, ctx.RootDir))+"'")
+				addArgs = append(addArgs, pathArg(toRelative(f, ctx.RootDir)))
 			}
-			if res := execCommand(ctx.Context(), "git add -- "+strings.Join(rels, " "), ctx.RootDir, 0); !res.success {
+			if res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", addArgs...); !res.success {
 				return types.ToolResult{Display: "Git add failed", LLMResult: res.combined()}
 			}
 		}
-		res := execCommand(ctx.Context(), "git commit -m '"+shellEscapeSingleQuotes(a.Message)+"'", ctx.RootDir, 0)
+		res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", "commit", "-m", a.Message)
 		display := "Commit created"
 		if !res.success {
 			display = "Commit failed"
