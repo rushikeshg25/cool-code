@@ -57,11 +57,12 @@ type Processor struct {
 	allowDangerous bool
 	confirmEdits   bool
 
-	mu        sync.Mutex
-	mode      types.AgentMode
-	taskList  *types.TaskList
-	queue     []string
-	lastUsage llm.Usage
+	mu         sync.Mutex
+	mode       types.AgentMode
+	taskList   *types.TaskList
+	queue      []string
+	lastUsage  llm.Usage
+	totalUsage llm.Usage // cumulative across the session, for cost
 
 	confirm     func(string) bool
 	confirmEdit func(string, string) bool
@@ -181,6 +182,8 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if resp.Usage.Input > 0 || resp.Usage.Output > 0 {
 			p.mu.Lock()
 			p.lastUsage = resp.Usage
+			p.totalUsage.Input += resp.Usage.Input
+			p.totalUsage.Output += resp.Usage.Output
 			p.mu.Unlock()
 		}
 		p.ctxMgr.addAssistant(redactMessage(resp))
@@ -470,6 +473,12 @@ type Status struct {
 	TotalTokens int
 	// Estimated is true when TotalTokens is the fallback estimate.
 	Estimated bool
+	// SessionCost is the running spend in US dollars, summed across every
+	// request this session. Zero when the model's rate is not known.
+	SessionCost float64
+	// CostKnown is false for a model with no published rate, including any
+	// custom endpoint, so the UI can stay silent rather than show $0.00.
+	CostKnown bool
 }
 
 // GetStatus returns a footer snapshot.
@@ -477,6 +486,7 @@ func (p *Processor) GetStatus() Status {
 	count, tokens := p.ctxMgr.stats()
 	p.mu.Lock()
 	usage := p.lastUsage
+	total := p.totalUsage
 	p.mu.Unlock()
 	model := p.cfg.LLM.Model + " (not connected)"
 	if p.provider != nil {
@@ -493,6 +503,12 @@ func (p *Processor) GetStatus() Status {
 	if usage.Input > 0 {
 		s.TotalTokens = usage.Input
 		s.Estimated = false
+	}
+	if total.Input > 0 || total.Output > 0 {
+		if cost, ok := llm.Cost(model, total.Input, total.Output); ok {
+			s.SessionCost = cost
+			s.CostKnown = true
+		}
 	}
 	return s
 }
@@ -524,6 +540,12 @@ func (p *Processor) ConfigureLLM(llmCfg config.LLM) error {
 	p.cfg.LLM = llmCfg
 	p.provider = provider
 	return nil
+}
+
+// LLMConfig returns the current provider settings, so callers can adjust one
+// field and hand the whole thing back to ConfigureLLM.
+func (p *Processor) LLMConfig() config.LLM {
+	return p.cfg.LLM
 }
 
 // SetConfirmHandlers wires interactive confirmation callbacks.

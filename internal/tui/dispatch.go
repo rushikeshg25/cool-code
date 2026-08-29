@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
+	"github.com/rushikeshg25/cool-code/internal/llm"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/skills"
 	"github.com/rushikeshg25/cool-code/internal/types"
@@ -128,6 +129,31 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		}
 		m.appendSystem(fmt.Sprintf("Context: %d messages, %s%.1fk tokens, %d pinned",
 			status.MessageCount, approx, float64(status.TotalTokens)/1000, len(m.proc.PinnedFiles())))
+	case "/model":
+		if arg == "" {
+			status := m.proc.GetStatus()
+			rate := "no published rate; cost is not tracked"
+			if price, ok := llm.PriceFor(status.Model); ok {
+				rate = fmt.Sprintf("$%g in / $%g out per million tokens", price.Input, price.Output)
+			}
+			m.appendSystem("Model: " + status.Model + "\n" + rate +
+				"\nSwitch with /model <id>, for example /model claude-sonnet-4-5")
+			break
+		}
+		if err := m.switchModel(arg); err != nil {
+			m.appendError("Could not switch model: " + err.Error())
+			break
+		}
+		m.appendSystem("Model set to " + arg + ".")
+	case "/cost":
+		status := m.proc.GetStatus()
+		if !status.CostKnown {
+			m.appendSystem("No published rate for " + status.Model +
+				", so spend is not tracked. Token usage is still shown in the status bar.")
+			break
+		}
+		m.appendSystem(fmt.Sprintf("Session spend: %s across %d messages (model %s).",
+			formatCost(status.SessionCost), status.MessageCount, status.Model))
 	case "/compact":
 		// Compaction talks to the provider, so it runs off the UI goroutine.
 		m.appendSystem("Compacting the conversation…")
@@ -191,4 +217,18 @@ func (m *model) helpText() string {
 	b.WriteString("\n  Esc or Ctrl+C cancels a running turn · Ctrl+C when idle quits")
 	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript")
 	return b.String()
+}
+
+// switchModel rebuilds the provider for a new model id and persists it as the
+// global default, the same place /connect writes to. Model choice is a trusted
+// setting, so it never lands in the repository's .coolcode.json.
+func (m *model) switchModel(id string) error {
+	llmCfg := m.proc.LLMConfig()
+	llmCfg.Model = id
+	// The provider is inferred from the id, so clear any stale pin.
+	llmCfg.Provider = ""
+	if err := m.proc.ConfigureLLM(llmCfg); err != nil {
+		return err
+	}
+	return config.SetGlobalLLM(config.LLM{Model: id})
 }

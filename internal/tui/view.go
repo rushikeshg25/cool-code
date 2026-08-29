@@ -212,6 +212,9 @@ func (m *model) renderStatusBar() string {
 		prefix = "~"
 	}
 	parts = append(parts, statusBar.Render(fmt.Sprintf("%s%.1fk ctx", prefix, float64(status.TotalTokens)/1000)))
+	if status.CostKnown {
+		parts = append(parts, statusValue.Render(formatCost(status.SessionCost)))
+	}
 	return ansi.Truncate(strings.Join(parts, sep), maxInt(1, m.width), "…")
 }
 
@@ -472,4 +475,13 @@ func (m *model) truncateToWidth(s string) string { return truncate(s, m.width) }
 
 func truncate(s string, width int) string {
 	return ansi.Truncate(s, maxInt(1, width), "…")
+}
+
+// formatCost renders a running spend. Sub-cent figures keep more precision so
+// the number is not stuck at $0.00 for the first several turns.
+func formatCost(dollars float64) string {
+	if dollars > 0 && dollars < 0.01 {
+		return fmt.Sprintf("$%.4f", dollars)
+	}
+	return fmt.Sprintf("$%.2f", dollars)
 }

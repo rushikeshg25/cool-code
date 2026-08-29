@@ -34,6 +34,8 @@ var commands = []slashCommand{
 	{"/unpin", "Unpin a file (or list pinned files)"},
 	{"/context", "Preview context, pinned files, and token usage"},
 	{"/compact", "Summarize the conversation and free up context"},
+	{"/model", "Show or switch the model (e.g. /model claude-sonnet-4-5)"},
+	{"/cost", "Show token usage and estimated spend for this session"},
 	{"/sessions", "List saved sessions for this directory"},
 	{"/install-skill", "Install a skill from a local path or git URL"},
 	{"/clear", "Clear the screen"},
