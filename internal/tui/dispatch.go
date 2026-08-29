@@ -30,6 +30,7 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		return m.quit()
 	case "/clear":
 		m.history = nil
+		m.invalidatePrefix()
 		m.syncViewport()
 	case "/help":
 		m.appendSystem(m.helpText())

@@ -3,14 +3,14 @@ package agent
 import "math/rand"
 
 var thinkingMessages = []string{
-	"Thinking out loud...",
-	"Crunching the numbers...",
-	"Consulting the oracle...",
-	"Scanning the matrix...",
-	"Reading between the lines...",
-	"Distilling digital wisdom...",
-	"Searching the knowledge graph...",
-	"Synthesizing a solution...",
+	"Thinking out loud…",
+	"Crunching the numbers…",
+	"Consulting the oracle…",
+	"Scanning the matrix…",
+	"Reading between the lines…",
+	"Distilling digital wisdom…",
+	"Searching the knowledge graph…",
+	"Synthesizing a solution…",
 }
 
 func randomThinking() string {
@@ -46,7 +46,7 @@ var toolLabels = map[string]string{
 
 func toolStatus(name string) string {
 	if label, ok := toolLabels[name]; ok {
-		return label + "..."
+		return label + "…"
 	}
-	return "Working..."
+	return "Working…"
 }

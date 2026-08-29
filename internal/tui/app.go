@@ -84,16 +84,18 @@ type model struct {
 	sp            spinner.Model
 	ready         bool
 
-	history    []entry
-	streamIdx  int // index of the in-progress streaming entry, -1 when none
-	inputHist  []string
-	histIdx    int
-	processing bool
-	status     string
-	mode       types.AgentMode
-	tasks      *types.TaskList
-	subagents  []string
-	cancelTurn context.CancelFunc
+	history     []entry
+	prefix      string // cached rendering of every entry but the last
+	prefixCount int
+	streamIdx   int // index of the in-progress streaming entry, -1 when none
+	inputHist   []string
+	histIdx     int
+	processing  bool
+	status      string
+	mode        types.AgentMode
+	tasks       *types.TaskList
+	subagents   []string
+	cancelTurn  context.CancelFunc
 
 	suggestions []slashCommand
 	suggestIdx  int
@@ -218,7 +220,18 @@ func (m *model) renderEntry(e entry) string {
 	}
 	switch e.kind {
 	case entryUser:
-		return userPrefix.Render("› ") + userText.Render(raw)
+		// Wrap, and indent the continuation under the sigil. A long single
+		// line of user input used to run past the terminal width unwrapped.
+		wrapped := ansi.Wordwrap(raw, maxInt(10, m.contentWidth()-2), " /")
+		lines := strings.Split(wrapped, "\n")
+		for i, line := range lines {
+			if i == 0 {
+				lines[i] = userPrefix.Render("› ") + userText.Render(line)
+				continue
+			}
+			lines[i] = "  " + userText.Render(line)
+		}
+		return strings.Join(lines, "\n")
 	case entryAssistant:
 		return renderMarkdown(raw, m.contentWidth())
 	case entryPlan:
@@ -270,6 +283,7 @@ func (m *model) appendEntry(kind entryKind, raw string) {
 	e := entry{kind: kind, raw: raw}
 	e.rendered = m.renderEntry(e)
 	m.history = append(m.history, e)
+	m.extendPrefix()
 	m.syncViewport()
 }
 
@@ -297,6 +311,7 @@ func (m *model) rerenderHistory() {
 			m.history[i].rendered = m.renderEntry(m.history[i])
 		}
 	}
+	m.invalidatePrefix()
 }
 
 // repopulateTranscript rebuilds the visible transcript from the processor's
@@ -331,31 +346,66 @@ func (m *model) promoteLastPlan(final string) {
 		}
 		entry.kind = entryPlan
 		entry.rendered = m.renderEntry(*entry)
+		m.invalidatePrefix()
 		m.syncViewport()
 		return
 	}
 }
 
+// syncViewport rebuilds the transcript. The joined prefix of every entry
+// before the last is cached, because appendDelta calls this once per streamed
+// token and rebuilding the whole history each time is O(history) per token.
 func (m *model) syncViewport() {
 	if !m.ready {
 		return
 	}
 	atBottom := m.vp.AtBottom()
+
+	if m.prefixCount > len(m.history)-1 {
+		// History shrank or was rewritten; drop the cache.
+		m.prefixCount = 0
+		m.prefix = ""
+	}
 	var b strings.Builder
-	for i, e := range m.history {
+	b.WriteString(m.prefix)
+	for i := m.prefixCount; i < len(m.history); i++ {
 		if i > 0 {
-			if isToolEntry(e.kind) && isToolEntry(m.history[i-1].kind) {
-				b.WriteString("\n")
-			} else {
-				b.WriteString("\n\n")
-			}
+			b.WriteString(entrySeparator(m.history[i].kind, m.history[i-1].kind))
 		}
-		b.WriteString(e.rendered)
+		b.WriteString(m.history[i].rendered)
 	}
 	m.vp.SetContent(b.String())
 	if atBottom {
 		m.vp.GotoBottom()
 	}
+}
+
+// extendPrefix folds every entry but the last into the cached prefix. Only
+// the last entry can still change, since that is the one being streamed into.
+func (m *model) extendPrefix() {
+	var b strings.Builder
+	b.WriteString(m.prefix)
+	for i := m.prefixCount; i < len(m.history)-1; i++ {
+		if i > 0 {
+			b.WriteString(entrySeparator(m.history[i].kind, m.history[i-1].kind))
+		}
+		b.WriteString(m.history[i].rendered)
+	}
+	m.prefix = b.String()
+	m.prefixCount = maxInt(0, len(m.history)-1)
+}
+
+// invalidatePrefix forces a full rebuild, for anything that rewrites history.
+func (m *model) invalidatePrefix() {
+	m.prefix = ""
+	m.prefixCount = 0
+}
+
+func entrySeparator(kind, prev entryKind) string {
+	if isToolEntry(kind) && isToolEntry(prev) {
+		return "\n"
+	}
+	return "\n\n"
 }
 
 func (m *model) persist() {

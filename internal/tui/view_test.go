@@ -368,3 +368,45 @@ func TestFailedToolLooksDifferentFromSuccess(t *testing.T) {
 		t.Errorf("failed tool call has no failure marker: %q", ansi.Strip(bad.rendered))
 	}
 }
+
+// TestTranscriptPrefixCacheMatchesFullRebuild guards the streaming fast path.
+// appendDelta calls syncViewport once per token, and rebuilding the whole
+// history each time is O(history) per token, so all but the last entry are
+// cached. The cached result must equal what a full rebuild would produce.
+func TestTranscriptPrefixCacheMatchesFullRebuild(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendUser("do the thing")
+	m.appendTool("Reading a.go")
+	m.appendToolResult("Read failed", true)
+	m.appendAssistant("Here is **the** answer.")
+	m.appendSystem("Mode switched to PLAN")
+
+	cached := m.vp.View()
+	m.invalidatePrefix()
+	m.syncViewport()
+	if full := m.vp.View(); full != cached {
+		t.Errorf("prefix cache diverged from a full rebuild:\ncached:\n%s\nfull:\n%s", cached, full)
+	}
+}
+
+// TestStreamingUpdatesDoNotDisturbEarlierEntries covers the same path while a
+// response is arriving one fragment at a time.
+func TestStreamingUpdatesDoNotDisturbEarlierEntries(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendUser("stream please")
+	m.appendTool("Reading a.go")
+
+	for _, frag := range []string{"Hel", "lo ", "wor", "ld"} {
+		m.appendDelta(frag)
+	}
+	streamed := m.vp.View()
+
+	m.invalidatePrefix()
+	m.syncViewport()
+	if full := m.vp.View(); full != streamed {
+		t.Errorf("streamed transcript diverged from a full rebuild:\n%s\n---\n%s", streamed, full)
+	}
+	if !strings.Contains(ansi.Strip(streamed), "Hello world") {
+		t.Errorf("streamed text incomplete: %q", ansi.Strip(streamed))
+	}
+}
