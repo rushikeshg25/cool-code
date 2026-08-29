@@ -35,9 +35,11 @@ var shellCommandTool = Tool{
 			if !filepath.IsAbs(dir) {
 				dir = filepath.Join(ctx.RootDir, dir)
 			}
-			if v := EnsureAbsoluteWithinRoots(dir, ctx.Roots()); v != "" {
+			resolved, v := ResolveWithinRoots(dir, ctx.Roots())
+			if v != "" {
 				return fail("Invalid directory", v)
 			}
+			dir = resolved
 		}
 		res := execCommand(ctx.Context(), a.Command, dir, 0)
 		llm := res.stdout
@@ -125,10 +127,11 @@ var formatFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if v := EnsureAbsoluteWithinRoots(a.AbsolutePath, ctx.Roots()); v != "" {
+		resolved, v := ResolveWithinRoots(a.AbsolutePath, ctx.Roots())
+		if v != "" {
 			return fail("Invalid path", v)
 		}
-		rel := toRelative(a.AbsolutePath, ctx.RootDir)
+		rel := toRelative(resolved, ctx.RootDir)
 		argv := formatFileArgv(rel)
 		res := execArgv(ctx.Context(), ctx.RootDir, 0, argv[0], argv[1:]...)
 		display := "File formatted"

@@ -50,8 +50,7 @@ func EnsureAbsoluteWithinRoot(absPath, rootPath string) string {
 	if err != nil {
 		return "Could not resolve file path"
 	}
-	rel, err := filepath.Rel(resolvedRoot, resolvedPath)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+	if !withinRoot(resolvedPath, resolvedRoot) {
 		return "Path must be within project root: " + resolvedRoot
 	}
 	return ""
@@ -60,50 +59,136 @@ func EnsureAbsoluteWithinRoot(absPath, rootPath string) string {
 // ValidateReadPath applies the same root jail and guardrails to every tool
 // capable of returning local file contents to the model.
 func ValidateReadPath(filePath string, ctx Context) string {
-	if reason := EnsureAbsoluteWithinRoots(filePath, ctx.Roots()); reason != "" {
-		return reason
-	}
-	return BlockedPath(filePath, ctx.Config)
+	_, reason := ResolveReadPath(filePath, ctx)
+	return reason
 }
 
-// canonicalPath resolves symlinks in the existing portion of path and then
-// appends any not-yet-created suffix. This protects both reads and writes.
-func canonicalPath(path string) (string, error) {
-	abs, err := filepath.Abs(filepath.Clean(path))
+// ResolveReadPath validates filePath and returns the canonical path to read.
+// Tools that go on to open the file must use the returned path: validating one
+// string and opening another is what lets "dir/link/../secret" past the jail.
+func ResolveReadPath(filePath string, ctx Context) (string, string) {
+	resolved, reason := ResolveWithinRoots(filePath, ctx.Roots())
+	if reason != "" {
+		return "", reason
+	}
+	// Check guardrails against both spellings so a link cannot launder a
+	// blocked name into an allowed one, or the reverse.
+	if blocked := BlockedPath(filePath, ctx.Config); blocked != "" {
+		return "", blocked
+	}
+	if blocked := BlockedPath(resolved, ctx.Config); blocked != "" {
+		return "", blocked
+	}
+	return resolved, ""
+}
+
+// ResolveWithinRoots validates absPath against roots and returns the canonical
+// path callers must use for I/O.
+func ResolveWithinRoots(absPath string, roots []string) (string, string) {
+	if !filepath.IsAbs(absPath) {
+		return "", "File path must be absolute"
+	}
+	resolved, err := canonicalPath(absPath)
 	if err != nil {
+		return "", "Could not resolve file path"
+	}
+	for _, root := range roots {
+		resolvedRoot, err := canonicalPath(root)
+		if err != nil {
+			continue
+		}
+		if withinRoot(resolved, resolvedRoot) {
+			return resolved, ""
+		}
+	}
+	return "", "Path must be within project root or an added directory: " + strings.Join(roots, ", ")
+}
+
+func withinRoot(resolvedPath, resolvedRoot string) bool {
+	rel, err := filepath.Rel(resolvedRoot, resolvedPath)
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// maxSymlinkHops bounds link traversal so a symlink cycle cannot spin forever.
+const maxSymlinkHops = 40
+
+// canonicalPath resolves path the way the operating system does: every
+// component is resolved in turn, and ".." is applied to whatever the preceding
+// components resolved to. Components that do not exist yet are kept as-is, so
+// writes to new files are checked against their real parent directory.
+//
+// Resolving component by component matters. filepath.Clean (and therefore
+// filepath.Abs and filepath.EvalSymlinks) collapses ".." lexically before any
+// link is followed, so "dir/link/../x" cleans to "dir/x" while the kernel
+// reads it as "<link target>/../x". Callers must perform I/O on the path
+// returned here, never on the string they were given.
+func canonicalPath(path string) (string, error) {
+	if path == "" {
+		return "", os.ErrInvalid
+	}
+	sep := string(filepath.Separator)
+	if !filepath.IsAbs(path) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		// Concatenate rather than filepath.Join, which would clean the path.
+		path = wd + sep + path
+	}
+
+	vol := filepath.VolumeName(path)
+	resolved := vol + sep
+	hops := 0
+
+	var walk func(string) error
+	walk = func(p string) error {
+		for _, part := range strings.Split(p, sep) {
+			switch part {
+			case "", ".":
+				continue
+			case "..":
+				resolved = filepath.Dir(resolved)
+				continue
+			}
+			next := filepath.Join(resolved, part)
+			target, err := os.Readlink(next)
+			if err != nil {
+				// Not a symlink, or does not exist yet. Either way it
+				// contributes itself and nothing needs following.
+				resolved = next
+				continue
+			}
+			hops++
+			if hops > maxSymlinkHops {
+				return os.ErrInvalid
+			}
+			if filepath.IsAbs(target) {
+				resolved = filepath.VolumeName(target) + sep
+			}
+			// A relative target resolves against the link's directory, which
+			// is exactly what resolved still holds.
+			if err := walk(target); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := walk(path[len(vol):]); err != nil {
 		return "", err
 	}
-	cur := abs
-	var suffix []string
-	for {
-		resolved, evalErr := filepath.EvalSymlinks(cur)
-		if evalErr == nil {
-			for i := len(suffix) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, suffix[i])
-			}
-			return filepath.Clean(resolved), nil
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return abs, nil
-		}
-		suffix = append(suffix, filepath.Base(cur))
-		cur = parent
-	}
+	return filepath.Clean(resolved), nil
 }
 
 // EnsureAbsoluteWithinRoots verifies absPath is absolute and contained within
-// any of roots, returning a non-empty error message otherwise.
+// any of roots, returning a non-empty error message otherwise. Prefer
+// ResolveWithinRoots when the caller goes on to open the path.
 func EnsureAbsoluteWithinRoots(absPath string, roots []string) string {
-	if !filepath.IsAbs(absPath) {
-		return "File path must be absolute"
-	}
-	for _, root := range roots {
-		if EnsureAbsoluteWithinRoot(absPath, root) == "" {
-			return ""
-		}
-	}
-	return "Path must be within project root or an added directory: " + strings.Join(roots, ", ")
+	_, reason := ResolveWithinRoots(absPath, roots)
+	return reason
 }
 
 func readPackageJSON(rootPath string) (map[string]any, bool) {

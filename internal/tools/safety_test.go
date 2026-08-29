@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -104,5 +105,62 @@ func TestToPascalCase(t *testing.T) {
 		if got := toPascalCase(in); got != want {
 			t.Errorf("toPascalCase(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestCanonicalPathAppliesDotDotAfterSymlink covers the jail escape that
+// filepath.Clean used to allow. Clean collapses "link/.." lexically before any
+// link is followed, so the validator saw <root>/credentials while the kernel
+// opened <target dir>/credentials.
+func TestCanonicalPathAppliesDotDotAfterSymlink(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "proj")
+	secrets := filepath.Join(base, "secrets")
+	if err := os.MkdirAll(filepath.Join(secrets, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(secrets, "credentials")
+	if err := os.WriteFile(secret, []byte("AWS_SECRET_ACCESS_KEY=hunter2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(secrets, "sub"), filepath.Join(root, "vendor")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The raw, uncleaned path a model would supply.
+	escape := root + "/vendor/../credentials"
+
+	resolvedSecret, err := canonicalPath(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := canonicalPath(escape)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != resolvedSecret {
+		t.Fatalf("canonicalPath(%q) = %q, want %q", escape, got, resolvedSecret)
+	}
+	if reason := EnsureAbsoluteWithinRoots(escape, []string{root}); reason == "" {
+		t.Fatal("path escaping the root via a symlink was allowed")
+	}
+}
+
+// TestCanonicalPathStopsAtSymlinkCycles keeps a link loop from spinning.
+func TestCanonicalPathStopsAtSymlinkCycles(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a")
+	b := filepath.Join(dir, "b")
+	if err := os.Symlink(b, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(a, b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := canonicalPath(filepath.Join(a, "x")); err == nil {
+		t.Fatal("expected an error for a symlink cycle")
 	}
 }
