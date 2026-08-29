@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
@@ -92,4 +93,19 @@ func truncateRunes(s string, n int) string {
 		n--
 	}
 	return s[:n]
+}
+
+const (
+	beginUntrusted = "--- BEGIN UNTRUSTED CONTENT"
+	endUntrusted   = "--- END UNTRUSTED CONTENT"
+)
+
+// Untrusted wraps text fetched from the network in the markers the system
+// prompt describes, so the model treats it as data rather than as direction.
+// Forged markers inside the body are defanged so the wrapper cannot be closed
+// early.
+func Untrusted(label, body string) string {
+	body = strings.ReplaceAll(body, endUntrusted, "[END UNTRUSTED CONTENT]")
+	body = strings.ReplaceAll(body, beginUntrusted, "[BEGIN UNTRUSTED CONTENT]")
+	return beginUntrusted + " (" + label + ") ---\n" + body + "\n" + endUntrusted + " ---"
 }

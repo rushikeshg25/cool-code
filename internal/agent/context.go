@@ -128,11 +128,14 @@ func (c *contextManager) buildSystem() string {
 
 func (c *contextManager) buildSystemLocked() string {
 	parts := []string{basePrompt, modePrompts[c.mode]}
+	// COOLCODE.md and the skills catalog are files in the repository, so
+	// opening a cloned project is enough to put someone else's words into the
+	// system prompt. Mark them as data rather than instructions.
 	if c.projectInstructions != "" {
-		parts = append(parts, "--- Project Instructions (COOLCODE.md) ---\n"+security.Redact(c.projectInstructions))
+		parts = append(parts, untrusted("Project Instructions (COOLCODE.md)", security.Redact(c.projectInstructions)))
 	}
 	if c.skillsCatalog != "" {
-		parts = append(parts, security.Redact(c.skillsCatalog))
+		parts = append(parts, untrusted("Available Skills", security.Redact(c.skillsCatalog)))
 	}
 
 	var state strings.Builder
@@ -339,3 +342,17 @@ func (c *contextManager) restore(messages []llm.Message, summary string, pinned 
 		c.pinned = pinned
 	}
 }
+
+// untrusted wraps repository- or web-sourced text in the markers described by
+// basePrompt, so the model treats it as data rather than as direction. The
+// closing marker is emitted even if the content tries to forge one.
+func untrusted(label, body string) string {
+	body = strings.ReplaceAll(body, endUntrusted, "[END UNTRUSTED CONTENT]")
+	body = strings.ReplaceAll(body, beginUntrusted, "[BEGIN UNTRUSTED CONTENT]")
+	return beginUntrusted + " (" + label + ") ---\n" + body + "\n" + endUntrusted + " ---"
+}
+
+const (
+	beginUntrusted = "--- BEGIN UNTRUSTED CONTENT"
+	endUntrusted   = "--- END UNTRUSTED CONTENT"
+)
