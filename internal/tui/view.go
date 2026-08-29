@@ -103,28 +103,21 @@ func padLines(lines []string, n, width int) []string {
 	return out
 }
 
-// renderHeader is the one row that never scrolls away.
+// renderHeader is the one row that never scrolls away. It carries identity
+// only: the session's mode, model and effort live in the status bar, beside the
+// composer where they are read.
+//
+// Measured against the transcript column, which is the whole width when there
+// is no sidebar, so the header never runs under the panel.
 func (m *model) renderHeader(l layout) string {
-	// Measured against the transcript column, which is the whole width when
-	// there is no sidebar, so the header never runs under the panel.
 	width := l.transcriptWidth
-	status := m.proc.GetStatus()
 	left := headerName.Render("◆ cool-code") + headerStyle.Render(" v"+m.version)
 
-	right := []string{modeStyle(m.mode).Render(string(m.mode))}
-	if width >= 60 && status.Model != "" {
-		right = append(right, headerStyle.Render(status.Model))
-	}
-	if width >= 88 && status.Effort != "" {
-		right = append(right, headerStyle.Render(status.Effort+" effort"))
-	}
-	rightText := strings.Join(right, headerStyle.Render("  ·  "))
-
-	gap := width - ansi.StringWidth(left) - ansi.StringWidth(rightText) - 2
+	gap := width - ansi.StringWidth(left) - 1
 	if gap < 1 {
-		return ansi.Truncate(left+" "+rightText, maxInt(1, width), "…")
+		return ansi.Truncate(left, maxInt(1, width), "…")
 	}
-	return left + " " + headerRule.Render(strings.Repeat("─", gap)) + " " + rightText
+	return left + " " + headerRule.Render(strings.Repeat("─", gap))
 }
 
 // renderSidebar lists the task items and any running subagents. The old task
@@ -207,9 +200,9 @@ func (m *model) renderTasks() string {
 	return ansi.Truncate(line, maxInt(1, m.width), "…")
 }
 
-// renderStatusBar shows what the header does not. Mode, model and effort live
-// in the header, so repeating them here printed each of them twice; they come
-// back only on a terminal too short for a header.
+// renderStatusBar carries the session's state, next to the composer that acts
+// on it: mode, model, effort, size and spend. The header holds identity only,
+// so nothing here is a repeat of it.
 func (m *model) renderStatusBar(l layout) string {
 	status := m.proc.GetStatus()
 	project := filepath.Base(m.rootDir)
@@ -221,17 +214,16 @@ func (m *model) renderStatusBar(l layout) string {
 	}
 
 	sep := sepStyle.Render("  ·  ")
-	parts := []string{statusValue.Render(project)}
-	if !l.showHeader {
-		parts = append(parts, modeStyle(m.mode).Render(string(m.mode)))
-		if m.width >= 72 {
-			parts = append(parts, statusValue.Render(status.Model))
-			if status.Effort != "" {
-				parts = append(parts, statusBar.Render(status.Effort+" effort"))
-			}
-		}
+	// Ordered by what a narrow terminal should keep. Mode governs what the
+	// agent may do, so it never sheds; the message count is the first to go.
+	parts := []string{statusValue.Render(project), modeStyle(m.mode).Render(string(m.mode))}
+	if m.width >= 60 {
+		parts = append(parts, statusValue.Render(status.Model))
 	}
-	if m.width >= 72 {
+	if m.width >= 100 && status.Effort != "" {
+		parts = append(parts, statusBar.Render(status.Effort+" effort"))
+	}
+	if m.width >= 110 {
 		parts = append(parts, statusBar.Render(fmt.Sprintf("%d msgs", status.MessageCount)))
 	}
 	prefix := ""

@@ -473,37 +473,48 @@ func TestSidebarOnlyAppearsWithContent(t *testing.T) {
 	}
 }
 
-// TestStatusBarDoesNotRepeatTheHeader covers the duplication in v2.3.0, where
-// mode, model and effort were printed in both places at once.
-func TestStatusBarDoesNotRepeatTheHeader(t *testing.T) {
+// TestSessionStateLivesInTheStatusBar covers the placement: mode, model and
+// effort sit next to the composer that acts on them, and the header carries
+// identity only, so neither is a repeat of the other.
+func TestSessionStateLivesInTheStatusBar(t *testing.T) {
 	m := resizeModel(t, newTestModel(t), 120, 40)
 
 	header := ansi.Strip(m.renderHeader(m.layout))
 	status := ansi.Strip(m.renderStatusBar(m.layout))
 
 	for _, field := range []string{"agent", "gemini-2.5-flash"} {
-		if !strings.Contains(header, field) {
-			t.Errorf("header lost %q: %q", field, header)
+		if !strings.Contains(status, field) {
+			t.Errorf("status bar lost %q: %q", field, status)
 		}
-		if strings.Contains(status, field) {
-			t.Errorf("status bar still repeats %q: %q", field, status)
+		if strings.Contains(header, field) {
+			t.Errorf("header still carries %q: %q", field, header)
 		}
 	}
-	if !strings.Contains(status, "ctx") || !strings.Contains(status, "msgs") {
-		t.Errorf("status bar lost its own fields: %q", status)
+	if !strings.Contains(header, "cool-code") {
+		t.Errorf("header lost its identity: %q", header)
+	}
+	if !strings.Contains(status, "ctx") {
+		t.Errorf("status bar lost the context figure: %q", status)
 	}
 }
 
-// TestStatusBarKeepsModeWithoutAHeader covers the short-terminal fallback,
-// where there is no header to carry them.
-func TestStatusBarKeepsModeWithoutAHeader(t *testing.T) {
-	m := resizeModel(t, newTestModel(t), 120, 10)
-	if m.layout.showHeader {
-		t.Skip("header still fits at this height")
+// TestStatusBarShedsInOrderOnNarrowTerminals keeps the fields that matter most
+// when there is no room for all of them. Mode governs what the agent may do, so
+// it is the last to go.
+func TestStatusBarShedsInOrderOnNarrowTerminals(t *testing.T) {
+	narrow := ansi.Strip(resizeModel(t, newTestModel(t), 50, 20).renderStatusBar(layout{}))
+	if !strings.Contains(narrow, "agent") {
+		t.Errorf("mode dropped on a narrow terminal: %q", narrow)
 	}
-	status := ansi.Strip(m.renderStatusBar(m.layout))
-	if !strings.Contains(status, "agent") {
-		t.Errorf("mode missing with no header to show it: %q", status)
+	if strings.Contains(narrow, "msgs") {
+		t.Errorf("message count kept on a narrow terminal: %q", narrow)
+	}
+
+	wide := ansi.Strip(resizeModel(t, newTestModel(t), 120, 40).renderStatusBar(layout{}))
+	for _, want := range []string{"agent", "gemini-2.5-flash", "msgs"} {
+		if !strings.Contains(wide, want) {
+			t.Errorf("wide status bar missing %q: %q", want, wide)
+		}
 	}
 }
 
