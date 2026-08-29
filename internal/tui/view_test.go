@@ -506,3 +506,27 @@ func TestStatusBarKeepsModeWithoutAHeader(t *testing.T) {
 		t.Errorf("mode missing with no header to show it: %q", status)
 	}
 }
+
+// TestContextIsShownAsAPercentage covers the status bar figure. An absolute
+// token count says little without the window it sits in.
+func TestContextIsShownAsAPercentage(t *testing.T) {
+	cases := []struct {
+		used, max int
+		want      string
+	}{
+		{0, 120000, "0% ctx"},
+		{12000, 120000, "10% ctx"},
+		{60000, 120000, "50% ctx"},
+		{119000, 120000, "99% ctx"},
+		// Not clamped: the system prompt and pinned files sit outside the
+		// window, so a real request can exceed it, and that is worth seeing.
+		{150000, 120000, "125% ctx"},
+		// No window configured falls back to the absolute count.
+		{2500, 0, "2.5k ctx"},
+	}
+	for _, c := range cases {
+		if got := formatContext(c.used, c.max); got != c.want {
+			t.Errorf("formatContext(%d, %d) = %q, want %q", c.used, c.max, got, c.want)
+		}
+	}
+}

@@ -238,7 +238,7 @@ func (m *model) renderStatusBar(l layout) string {
 	if status.Estimated {
 		prefix = "~"
 	}
-	parts = append(parts, statusBar.Render(fmt.Sprintf("%s%.1fk ctx", prefix, float64(status.TotalTokens)/1000)))
+	parts = append(parts, statusBar.Render(prefix+formatContext(status.TotalTokens, status.MaxTokens)))
 	if status.CostKnown {
 		parts = append(parts, statusValue.Render(formatCost(status.SessionCost)))
 	}
@@ -518,4 +518,18 @@ func formatCost(dollars float64) string {
 // print "No active tasks".
 func (m *model) hasSidebarContent() bool {
 	return (m.tasks != nil && len(m.tasks.Items) > 0) || len(m.subagents) > 0
+}
+
+// formatContext reports how full the context window is. A raw token count says
+// little without knowing the window it sits in.
+//
+// The value is deliberately not clamped at 100%: the window governs which
+// messages are selected, but the system prompt and pinned files sit outside it,
+// so a real request can exceed it. Hiding that would mask exactly the condition
+// that triggers compaction.
+func formatContext(used, max int) string {
+	if max <= 0 {
+		return fmt.Sprintf("%.1fk ctx", float64(used)/1000)
+	}
+	return fmt.Sprintf("%d%% ctx", int(float64(used)/float64(max)*100+0.5))
 }
