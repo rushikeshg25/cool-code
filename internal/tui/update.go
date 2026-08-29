@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -111,6 +112,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 	m.processing = false
 	m.status = ""
+	m.turnStart = time.Time{}
 	m.ti.Placeholder = "Ask, plan, or build something…"
 	m.cancelTurn = nil
 	m.subagents = nil
@@ -515,6 +517,7 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 
 func (m *model) runQuery(text string) (tea.Model, tea.Cmd) {
 	m.processing = true
+	m.turnStart = time.Now()
 	m.ti.Placeholder = "Queue a follow-up…"
 	m.appendUser(text)
 	m.status = "Thinking…"

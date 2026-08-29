@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -606,5 +607,39 @@ func TestStreamCacheMatchesUncachedRender(t *testing.T) {
 
 	if a, b := streamed.history[0].rendered, fresh.history[0].rendered; a != b {
 		t.Errorf("cached stream render differs from a single-shot render:\n%q\n---\n%q", a, b)
+	}
+}
+
+// TestActivityShowsElapsedTime covers what replaced the random flavour text.
+// The status line used to pick from a list of phrases that described nothing
+// and changed every turn; it now says what is happening and for how long.
+func TestActivityShowsElapsedTime(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.processing = true
+	m.status = "Thinking…"
+
+	// Under a second there is nothing worth showing.
+	m.turnStart = time.Now()
+	if got := ansi.Strip(m.renderActivity()); strings.Contains(got, "0s") {
+		t.Errorf("sub-second elapsed should be hidden: %q", got)
+	}
+
+	m.turnStart = time.Now().Add(-12 * time.Second)
+	if got := ansi.Strip(m.renderActivity()); !strings.Contains(got, "Thinking… 12s") {
+		t.Errorf("activity = %q, want it to carry the elapsed seconds", got)
+	}
+
+	m.turnStart = time.Now().Add(-95 * time.Second)
+	if got := ansi.Strip(m.renderActivity()); !strings.Contains(got, "1m35s") {
+		t.Errorf("activity = %q, want minutes and seconds past a minute", got)
+	}
+}
+
+// TestElapsedIsIdleBeforeATurn keeps a stale figure from appearing when no turn
+// is running.
+func TestElapsedIsIdleBeforeATurn(t *testing.T) {
+	m := newTestModel(t)
+	if got := m.elapsed(); got != "" {
+		t.Errorf("elapsed before any turn = %q, want empty", got)
 	}
 }
