@@ -91,15 +91,21 @@ type model struct {
 	history     []entry
 	prefix      string // cached rendering of every entry but the last
 	prefixCount int
-	streamIdx   int // index of the in-progress streaming entry, -1 when none
-	inputHist   []string
-	histIdx     int
-	processing  bool
-	status      string
-	mode        types.AgentMode
-	tasks       *types.TaskList
-	subagents   []string
-	cancelTurn  context.CancelFunc
+	// Cached rendering of the completed blocks of the entry currently
+	// streaming, so each new block costs one render rather than a re-render
+	// of everything received so far.
+	streamStable         string
+	streamStableRendered string
+	streamStableWidth    int
+	streamIdx            int // index of the in-progress streaming entry, -1 when none
+	inputHist            []string
+	histIdx              int
+	processing           bool
+	status               string
+	mode                 types.AgentMode
+	tasks                *types.TaskList
+	subagents            []string
+	cancelTurn           context.CancelFunc
 
 	suggestions []slashCommand
 	suggestIdx  int
@@ -194,7 +200,7 @@ const (
 	entryToolFailed
 	entrySystem
 	entryError
-	entryStream // assistant text still streaming: plain wrap, no markdown
+	entryStream // assistant text still streaming: completed blocks rendered
 )
 
 type entry struct {
@@ -245,15 +251,14 @@ func (m *model) renderEntry(e entry) string {
 	case entryError:
 		return errorGlyph.Render("⚠ ") + errorStyle.Render(raw)
 	case entryStream:
-		return ansi.Wordwrap(raw, m.contentWidth(), " /")
+		return m.renderStreaming(raw)
 	default:
 		return raw
 	}
 }
 
-// appendDelta grows the in-progress streaming entry (creating it on the first
-// fragment). Cheap per fragment: plain wrapping, markdown renders once at the
-// end via finishStream.
+// appendDelta grows the in-progress streaming entry, creating it on the first
+// fragment.
 func (m *model) appendDelta(delta string) {
 	if m.streamIdx < 0 {
 		m.appendEntry(entryStream, delta)
@@ -273,6 +278,7 @@ func (m *model) discardStream() {
 	if m.streamIdx < 0 {
 		return
 	}
+	m.resetStreamCache()
 	m.history = append(m.history[:m.streamIdx], m.history[m.streamIdx+1:]...)
 	m.streamIdx = -1
 	m.invalidatePrefix()
@@ -285,6 +291,7 @@ func (m *model) finishStream(md string) {
 		m.appendAssistant(md)
 		return
 	}
+	m.resetStreamCache()
 	m.history[m.streamIdx] = entry{kind: entryAssistant, raw: md}
 	m.history[m.streamIdx].rendered = m.renderEntry(m.history[m.streamIdx])
 	m.streamIdx = -1
@@ -317,6 +324,7 @@ func (m *model) appendToolResult(display string, failed bool) {
 
 // rerenderHistory refreshes every entry's rendering, e.g. after a resize.
 func (m *model) rerenderHistory() {
+	m.resetStreamCache()
 	for i := range m.history {
 		m.history[i].rendered = m.renderEntry(m.history[i])
 	}
@@ -440,4 +448,56 @@ func (m *model) persist() {
 // are joined by a single newline rather than a blank line.
 func isToolEntry(k entryKind) bool {
 	return k == entryTool || k == entryToolFailed
+}
+
+// renderStreaming formats text that is still arriving.
+//
+// Everything up to the last blank line is a completed block and is rendered as
+// markdown; the block still being written stays plain until it finishes. That
+// keeps a half-arrived "**bold" or an unclosed code fence from rendering wrong
+// and then snapping, which is what a naive render-everything approach does.
+//
+// Until streaming was switched on this entry kind was plain-wrapped throughout,
+// so a long answer showed its markup literally for its whole duration and only
+// formatted at the end.
+func (m *model) renderStreaming(raw string) string {
+	width := m.contentWidth()
+	stable, tail := splitCompletedBlocks(raw)
+
+	// Re-rendering the stable part on every flush would be quadratic, so it is
+	// rendered once per completed block and reused until another one lands.
+	if stable != "" {
+		if m.streamStable != stable || m.streamStableWidth != width {
+			m.streamStable = stable
+			m.streamStableWidth = width
+			m.streamStableRendered = renderMarkdown(stable, width)
+		}
+	} else {
+		m.resetStreamCache()
+	}
+
+	var parts []string
+	if m.streamStableRendered != "" {
+		parts = append(parts, m.streamStableRendered)
+	}
+	if strings.TrimSpace(tail) != "" {
+		parts = append(parts, ansi.Wordwrap(tail, width, " /"))
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// splitCompletedBlocks divides text at the last blank line, so the caller gets
+// the blocks that are certainly complete and the one still being written.
+func splitCompletedBlocks(raw string) (stable, tail string) {
+	idx := strings.LastIndex(raw, "\n\n")
+	if idx < 0 {
+		return "", raw
+	}
+	return raw[:idx], strings.TrimLeft(raw[idx:], "\n")
+}
+
+func (m *model) resetStreamCache() {
+	m.streamStable = ""
+	m.streamStableRendered = ""
+	m.streamStableWidth = 0
 }

@@ -530,3 +530,70 @@ func TestContextIsShownAsAPercentage(t *testing.T) {
 		}
 	}
 }
+
+// TestStreamingRendersCompletedBlocks covers the raw markdown problem. While
+// streaming, the entry was plain-wrapped, so a long answer showed "## Steps"
+// and "**bold**" literally for its whole duration and only formatted once the
+// last fragment arrived.
+func TestStreamingRendersCompletedBlocks(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 76, 24)
+	plan := "## Steps\n\n1. **Rewrite the header**\n   - Keep the name.\n\n2. **Still arriv"
+	for _, chunk := range strings.SplitAfter(plan, "\n") {
+		m.appendDelta(chunk)
+	}
+	got := ansi.Strip(m.history[m.streamIdx].rendered)
+
+	// Completed blocks are formatted: the markup itself is gone.
+	if strings.Contains(got, "## Steps") {
+		t.Errorf("completed heading still shows its markup:\n%s", got)
+	}
+	if strings.Contains(got, "**Rewrite the header**") {
+		t.Errorf("completed bold still shows its markup:\n%s", got)
+	}
+	if !strings.Contains(got, "Rewrite the header") {
+		t.Errorf("completed block lost its text:\n%s", got)
+	}
+	// The block still arriving stays plain, so a half-written bold does not
+	// render wrong and then snap.
+	if !strings.Contains(got, "**Still arriv") {
+		t.Errorf("in-progress block should stay plain:\n%s", got)
+	}
+}
+
+// TestSplitCompletedBlocks pins the boundary the renderer splits on.
+func TestSplitCompletedBlocks(t *testing.T) {
+	cases := []struct {
+		raw, stable, tail string
+	}{
+		{"no blank line yet", "", "no blank line yet"},
+		{"first\n\nsecond", "first", "second"},
+		{"first\n\nsecond\n\nthird", "first\n\nsecond", "third"},
+		{"trailing\n\n", "trailing", ""},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		stable, tail := splitCompletedBlocks(c.raw)
+		if stable != c.stable || tail != c.tail {
+			t.Errorf("splitCompletedBlocks(%q) = (%q, %q), want (%q, %q)",
+				c.raw, stable, tail, c.stable, c.tail)
+		}
+	}
+}
+
+// TestStreamCacheMatchesUncachedRender guards the per-block cache: rendering
+// the stable part once per completed block must equal rendering it fresh.
+func TestStreamCacheMatchesUncachedRender(t *testing.T) {
+	text := "# Title\n\nOne.\n\nTwo **bold**.\n\n- a\n- b\n\ntail in progress"
+
+	streamed := resizeModel(t, newTestModel(t), 76, 24)
+	for _, chunk := range strings.SplitAfter(text, "\n") {
+		streamed.appendDelta(chunk)
+	}
+
+	fresh := resizeModel(t, newTestModel(t), 76, 24)
+	fresh.appendDelta(text)
+
+	if a, b := streamed.history[0].rendered, fresh.history[0].rendered; a != b {
+		t.Errorf("cached stream render differs from a single-shot render:\n%q\n---\n%q", a, b)
+	}
+}
