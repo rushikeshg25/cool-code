@@ -116,3 +116,41 @@ func TestProjectCodeExecutionRequiresConfirmation(t *testing.T) {
 		}
 	}
 }
+
+// TestBlockedNetworkIPCoversReservedRanges covers allocations that Go's
+// net.IP.IsPrivate does not. IsPrivate is RFC1918 and RFC4193 only, so the
+// carrier-grade NAT range Tailscale uses stayed reachable.
+func TestBlockedNetworkIPCoversReservedRanges(t *testing.T) {
+	blocked := []string{
+		"100.64.0.1",       // RFC 6598 CGNAT
+		"100.100.100.100",  // Tailscale resolver
+		"198.18.0.1",       // benchmarking
+		"192.0.0.1",        // IETF protocol assignments
+		"240.0.0.1",        // reserved
+		"255.255.255.255",  // limited broadcast
+		"64:ff9b::7f00:1",  // NAT64 wrapping 127.0.0.1
+		"64:ff9b::a00:1",   // NAT64 wrapping 10.0.0.1",
+		"127.0.0.1",        // still blocked
+		"169.254.169.254",  // still blocked
+		"10.0.0.1",         // still blocked
+		"::1",              // still blocked
+		"::ffff:127.0.0.1", // IPv4-mapped loopback
+		"::ffff:169.254.169.254",
+	}
+	for _, raw := range blocked {
+		ip := net.ParseIP(raw)
+		if ip == nil {
+			t.Fatalf("could not parse %s", raw)
+		}
+		if !blockedNetworkIP(ip) {
+			t.Errorf("%s was not blocked", raw)
+		}
+	}
+
+	for _, raw := range []string{"93.184.216.34", "1.1.1.1", "2606:4700::1111"} {
+		ip := net.ParseIP(raw)
+		if blockedNetworkIP(ip) {
+			t.Errorf("public address %s was blocked", raw)
+		}
+	}
+}
