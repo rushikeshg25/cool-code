@@ -199,11 +199,16 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			break
 		}
 
-		// The turn continues, so whatever was streamed was the model talking
-		// to itself before deciding on a tool. Drop it: the tool lines that
-		// follow say what actually happened.
-		if streamed && reporter != nil {
-			reporter.AssistantDiscard()
+		// The turn continues. Whatever the model said before reaching for a
+		// tool is still part of the conversation, and with streaming on the
+		// user has already watched it arrive, so keep it rather than having it
+		// vanish. Assistant replaces the streamed text with its rendering.
+		if reporter != nil {
+			if text := security.Redact(resp.Text); text != "" {
+				reporter.Assistant(text)
+			} else if streamed {
+				reporter.AssistantDiscard()
+			}
 		}
 
 		toolCtx := p.toolCtx
