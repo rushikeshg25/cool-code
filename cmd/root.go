@@ -119,7 +119,7 @@ func runInteractive(flags rootFlags) error {
 	}
 	// A repository cannot be allowed to set these, but discarding them in
 	// silence misleads whoever wrote the file into thinking they took effect.
-	if ignored := config.IgnoredProjectKeys(rootDir); len(ignored) > 0 {
+	if ignored := config.IgnoredProjectKeys(rootDir, cfg); len(ignored) > 0 {
 		notices = append(notices, "Ignored global-only keys in .coolcode.json: "+strings.Join(ignored, ", ")+
 			"\nSet them with `cool-code config set <key> <value>` to apply them.")
 	}
