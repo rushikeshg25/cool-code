@@ -319,11 +319,15 @@ func unionPatterns(base, extra []string) []string {
 	return out
 }
 
-// IgnoredProjectKeys names the settings present in rootDir's .coolcode.json
-// that are global-only and were therefore not applied. A repository cannot be
-// allowed to set these, but silently discarding them misleads whoever wrote
-// the file, so the CLI reports them at startup.
-func IgnoredProjectKeys(rootDir string) []string {
+// IgnoredProjectKeys names the global-only settings in rootDir's .coolcode.json
+// whose value differs from the one actually in effect. A repository cannot be
+// allowed to set these, and silently discarding a value that would have changed
+// something misleads whoever wrote the file.
+//
+// A key whose project value already matches the effective one is not reported.
+// Duplicating a global setting in a project file is harmless and common, and
+// warning about it made a correct setup look broken.
+func IgnoredProjectKeys(rootDir string, effective Config) []string {
 	raw, err := readRegularFile(Path(rootDir))
 	if err != nil {
 		return nil
@@ -333,27 +337,23 @@ func IgnoredProjectKeys(rootDir string) []string {
 		return nil
 	}
 	var keys []string
-	if project.LLM.BaseURL != "" {
-		keys = append(keys, "llm.baseUrl")
+	addString := func(name, want, got string) {
+		if want != "" && want != got {
+			keys = append(keys, name)
+		}
 	}
-	if project.LLM.APIKeyEnv != "" {
-		keys = append(keys, "llm.apiKeyEnv")
+	addBool := func(name string, want *bool, got bool) {
+		if want != nil && *want != got {
+			keys = append(keys, name)
+		}
 	}
-	if project.LLM.AllowInsecureHTTP != nil {
-		keys = append(keys, "llm.allowInsecureHttp")
-	}
-	if project.LLM.Model != "" {
-		keys = append(keys, "llm.model")
-	}
-	if project.LLM.Provider != "" {
-		keys = append(keys, "llm.provider")
-	}
-	if project.Features.AllowDangerous != nil {
-		keys = append(keys, "features.allowDangerous")
-	}
-	if project.Features.ConfirmEdits != nil {
-		keys = append(keys, "features.confirmEdits")
-	}
+	addString("llm.baseUrl", project.LLM.BaseURL, effective.LLM.BaseURL)
+	addString("llm.apiKeyEnv", project.LLM.APIKeyEnv, effective.LLM.APIKeyEnv)
+	addBool("llm.allowInsecureHttp", project.LLM.AllowInsecureHTTP, effective.AllowInsecureHTTP())
+	addString("llm.model", project.LLM.Model, effective.LLM.Model)
+	addString("llm.provider", project.LLM.Provider, effective.LLM.Provider)
+	addBool("features.allowDangerous", project.Features.AllowDangerous, effective.AllowDangerous())
+	addBool("features.confirmEdits", project.Features.ConfirmEdits, effective.ConfirmEdits())
 	return keys
 }
 
@@ -371,6 +371,12 @@ func ValidReasoningEffort(effort string) bool {
 // AllowDangerous reports the effective danger toggle.
 func (c Config) AllowDangerous() bool {
 	return c.Features.AllowDangerous != nil && *c.Features.AllowDangerous
+}
+
+// AllowInsecureHTTP reports whether a plain-HTTP endpoint is permitted beyond
+// loopback.
+func (c Config) AllowInsecureHTTP() bool {
+	return c.LLM.AllowInsecureHTTP != nil && *c.LLM.AllowInsecureHTTP
 }
 
 // ConfirmEdits reports whether edits require confirmation.

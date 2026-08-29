@@ -201,3 +201,55 @@ func TestProjectCannotLoosenSecuritySettings(t *testing.T) {
 		t.Error("project file enabled the danger bypass")
 	}
 }
+
+// TestIgnoredProjectKeysOnlyReportsRealDifferences covers the noisy startup
+// warning. Duplicating a global setting in a project file is harmless and
+// common, but every such key was being reported, which made a correct setup
+// look broken.
+func TestIgnoredProjectKeysOnlyReportsRealDifferences(t *testing.T) {
+	dir := t.TempDir()
+	project := `{
+	  "llm": {
+	    "model": "gpt-5.6-sol",
+	    "provider": "openai",
+	    "baseUrl": "http://192.168.1.13:8317/v1",
+	    "apiKeyEnv": "CLIPROXY_API_KEY"
+	  },
+	  "features": {"allowDangerous": false, "confirmEdits": false}
+	}`
+	if err := os.WriteFile(filepath.Join(dir, ".coolcode.json"), []byte(project), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The effective config already carries these values, from global settings.
+	effective := Default()
+	effective.LLM.Model = "gpt-5.6-sol"
+	effective.LLM.Provider = "openai"
+	effective.LLM.BaseURL = "http://192.168.1.13:8317/v1"
+	effective.LLM.APIKeyEnv = "CLIPROXY_API_KEY"
+
+	if got := IgnoredProjectKeys(dir, effective); len(got) != 0 {
+		t.Errorf("warned about settings already in effect: %v", got)
+	}
+
+	// A value that genuinely differs is still reported.
+	effective.LLM.BaseURL = "https://api.openai.com/v1"
+	got := IgnoredProjectKeys(dir, effective)
+	if len(got) != 1 || got[0] != "llm.baseUrl" {
+		t.Errorf("IgnoredProjectKeys = %v, want [llm.baseUrl]", got)
+	}
+}
+
+// TestIgnoredProjectKeysReportsLooseningAttempts keeps the warning for the case
+// it was written for.
+func TestIgnoredProjectKeysReportsLooseningAttempts(t *testing.T) {
+	dir := t.TempDir()
+	project := `{"features": {"allowDangerous": true, "confirmEdits": true}}`
+	if err := os.WriteFile(filepath.Join(dir, ".coolcode.json"), []byte(project), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := IgnoredProjectKeys(dir, Default())
+	if len(got) != 2 {
+		t.Fatalf("IgnoredProjectKeys = %v, want both feature keys", got)
+	}
+}

@@ -43,7 +43,9 @@ type layout struct {
 
 // computeLayout decides the frame's geometry. footerHeight is the measured
 // height of the footer stack, passed in so the footer is rendered exactly once.
-func computeLayout(width, height, footerHeight int, hasOverlay bool) layout {
+// hasSidebarContent gates the sidebar on there being something to put in it, so
+// an idle session does not give up a column to say "No active tasks".
+func computeLayout(width, height, footerHeight int, hasOverlay, hasSidebarContent bool) layout {
 	l := layout{width: width, height: height}
 
 	// A header costs a row, and on a very short terminal the transcript needs
@@ -51,7 +53,7 @@ func computeLayout(width, height, footerHeight int, hasOverlay bool) layout {
 	l.showHeader = height >= 12
 
 	switch {
-	case width >= sidebarMinWidth && !hasOverlay:
+	case width >= sidebarMinWidth && !hasOverlay && hasSidebarContent:
 		l.showSidebar = true
 		l.sidebarWidth = sidebarWidth
 		l.transcriptWidth = width - sidebarWidth - sidebarGutter

@@ -187,8 +187,7 @@ func (m *model) Init() tea.Cmd {
 type entryKind int
 
 const (
-	entryRaw entryKind = iota // pre-styled, never re-rendered (banner)
-	entryUser
+	entryUser entryKind = iota
 	entryAssistant
 	entryPlan
 	entryTool
@@ -215,13 +214,9 @@ func (m *model) contentWidth() int {
 }
 
 func (m *model) renderEntry(e entry) string {
-	// entryRaw is the banner, which this program styles itself. Every other
-	// kind carries text from a model, a tool or a repository, so its escape
-	// sequences are stripped before it can reach the terminal.
-	raw := e.raw
-	if e.kind != entryRaw {
-		raw = security.SanitizeTerminal(raw)
-	}
+	// Every entry carries text from a model, a tool or a repository, so its
+	// escape sequences are stripped before it can reach the terminal.
+	raw := security.SanitizeTerminal(e.raw)
 	switch e.kind {
 	case entryUser:
 		// Wrap, and indent the continuation under the sigil. A long single
@@ -304,7 +299,6 @@ func (m *model) appendEntry(kind entryKind, raw string) {
 	m.syncViewport()
 }
 
-func (m *model) appendRaw(s string)        { m.appendEntry(entryRaw, s) }
 func (m *model) appendUser(text string)    { m.appendEntry(entryUser, text) }
 func (m *model) appendAssistant(md string) { m.appendEntry(entryAssistant, md) }
 func (m *model) appendTool(display string) { m.appendEntry(entryTool, display) }
@@ -324,9 +318,7 @@ func (m *model) appendToolResult(display string, failed bool) {
 // rerenderHistory refreshes every entry's rendering, e.g. after a resize.
 func (m *model) rerenderHistory() {
 	for i := range m.history {
-		if m.history[i].kind != entryRaw {
-			m.history[i].rendered = m.renderEntry(m.history[i])
-		}
+		m.history[i].rendered = m.renderEntry(m.history[i])
 	}
 	m.invalidatePrefix()
 }

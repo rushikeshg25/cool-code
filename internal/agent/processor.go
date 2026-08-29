@@ -473,6 +473,10 @@ type Status struct {
 	TotalTokens int
 	// Estimated is true when TotalTokens is the fallback estimate.
 	Estimated bool
+	// MaxTokens is the configured context window, so callers can report how
+	// full it is rather than an absolute token count that means little on its
+	// own.
+	MaxTokens int
 	// SessionCost is the running spend in US dollars, summed across every
 	// request this session. Zero when the model's rate is not known.
 	SessionCost float64
@@ -498,6 +502,7 @@ func (p *Processor) GetStatus() Status {
 		Mode:         p.getMode(),
 		MessageCount: count,
 		TotalTokens:  tokens,
+		MaxTokens:    p.cfg.MaxContextTokens(),
 		Estimated:    true,
 	}
 	if usage.Input > 0 {

@@ -26,7 +26,7 @@ func (m *model) View() string {
 	// scroll offset is clamped before anything is drawn.
 	m.clampConfirmOffset()
 	footer := m.footer()
-	l := computeLayout(m.width, m.height, lipgloss.Height(footer), m.hasOverlay())
+	l := computeLayout(m.width, m.height, lipgloss.Height(footer), m.hasOverlay(), m.hasSidebarContent())
 	m.layout = l
 
 	m.vp.Height = l.transcriptHeight
@@ -34,10 +34,10 @@ func (m *model) View() string {
 
 	body := m.vp.View()
 	if l.showSidebar {
-		body = m.joinSidebar(body, l)
+		return m.joinSidebar(body, l) + "\n" + footer
 	}
 
-	sections := make([]string, 0, 3)
+	sections := make([]string, 0, 2)
 	if l.showHeader {
 		sections = append(sections, m.renderHeader(l))
 	}
@@ -45,18 +45,45 @@ func (m *model) View() string {
 	return strings.Join(sections, "\n") + "\n" + footer
 }
 
-// joinSidebar places the task and agent panel beside the transcript.
+// joinSidebar places the task and agent panel beside the transcript, with the
+// rule running the full height including the header row. Drawing the header
+// across both columns instead put the model and mode directly above the
+// sidebar, where they read as its title.
 func (m *model) joinSidebar(body string, l layout) string {
-	panel := m.renderSidebar(l)
-	bodyLines := padLines(strings.Split(body, "\n"), l.transcriptHeight, l.transcriptWidth)
-	panelLines := padLines(strings.Split(panel, "\n"), l.transcriptHeight, l.sidebarWidth)
+	left := strings.Split(body, "\n")
+	right := strings.Split(m.renderSidebar(l), "\n")
+	height := l.transcriptHeight
+	if l.showHeader {
+		// The header joins the columns as their first row.
+		left = append([]string{m.renderHeader(l)}, left...)
+		right = append([]string{sidebarTitle.Render(m.sidebarHeading())}, right...)
+		height++
+	}
+
+	leftLines := padLines(left, height, l.transcriptWidth)
+	rightLines := padLines(right, height, l.sidebarWidth)
 
 	rule := sidebarRule.Render("│")
-	out := make([]string, l.transcriptHeight)
+	out := make([]string, height)
 	for i := range out {
-		out[i] = bodyLines[i] + " " + rule + " " + panelLines[i]
+		out[i] = leftLines[i] + " " + rule + " " + rightLines[i]
 	}
 	return strings.Join(out, "\n")
+}
+
+// sidebarHeading names the panel on the header row, so the two columns each
+// have their own title.
+func (m *model) sidebarHeading() string {
+	if m.tasks != nil && len(m.tasks.Items) > 0 {
+		done := 0
+		for _, item := range m.tasks.Items {
+			if item.Status == types.TaskDone {
+				done++
+			}
+		}
+		return fmt.Sprintf("Tasks  %d/%d", done, len(m.tasks.Items))
+	}
+	return "Agents"
 }
 
 // padLines trims or extends lines to exactly n entries, each padded to width so
@@ -78,21 +105,24 @@ func padLines(lines []string, n, width int) []string {
 
 // renderHeader is the one row that never scrolls away.
 func (m *model) renderHeader(l layout) string {
+	// Measured against the transcript column, which is the whole width when
+	// there is no sidebar, so the header never runs under the panel.
+	width := l.transcriptWidth
 	status := m.proc.GetStatus()
 	left := headerName.Render("◆ cool-code") + headerStyle.Render(" v"+m.version)
 
 	right := []string{modeStyle(m.mode).Render(string(m.mode))}
-	if l.width >= taskListMinWidth && status.Model != "" {
+	if width >= 60 && status.Model != "" {
 		right = append(right, headerStyle.Render(status.Model))
 	}
-	if l.width >= sidebarMinWidth && status.Effort != "" {
+	if width >= 88 && status.Effort != "" {
 		right = append(right, headerStyle.Render(status.Effort+" effort"))
 	}
 	rightText := strings.Join(right, headerStyle.Render("  ·  "))
 
-	gap := l.width - ansi.StringWidth(left) - ansi.StringWidth(rightText) - 2
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(rightText) - 2
 	if gap < 1 {
-		return ansi.Truncate(left+" "+rightText, maxInt(1, l.width), "…")
+		return ansi.Truncate(left+" "+rightText, maxInt(1, width), "…")
 	}
 	return left + " " + headerRule.Render(strings.Repeat("─", gap)) + " " + rightText
 }
@@ -104,15 +134,8 @@ func (m *model) renderSidebar(l layout) string {
 	var lines []string
 	w := l.sidebarWidth
 
-	if m.tasks != nil && len(m.tasks.Items) > 0 {
-		done := 0
-		for _, item := range m.tasks.Items {
-			if item.Status == types.TaskDone {
-				done++
-			}
-		}
-		lines = append(lines, sidebarTitle.Render("Tasks")+
-			sidebarTodo.Render(fmt.Sprintf("  %d/%d", done, len(m.tasks.Items))))
+	hasTasks := m.tasks != nil && len(m.tasks.Items) > 0
+	if hasTasks {
 		for _, item := range m.tasks.Items {
 			glyph, style := taskGlyph(item.Status)
 			lines = append(lines, ansi.Truncate(style.Render(glyph+" ")+sidebarTodo.Render(item.Title), maxInt(1, w), "…"))
@@ -120,25 +143,23 @@ func (m *model) renderSidebar(l layout) string {
 	}
 
 	if len(m.subagents) > 0 {
-		if len(lines) > 0 {
-			lines = append(lines, "")
+		// The header row already says "Agents" when there are no tasks, so
+		// only label the section when it follows a task list.
+		if hasTasks {
+			lines = append(lines, "", sidebarTitle.Render("Agents"))
 		}
-		lines = append(lines, sidebarTitle.Render("Agents"))
 		for _, sub := range m.subagents {
 			lines = append(lines, ansi.Truncate(sidebarNow.Render("◆ ")+sidebarTodo.Render(sub), maxInt(1, w), "…"))
 		}
 	}
 
-	if len(lines) == 0 {
-		lines = append(lines, sidebarTodo.Render("No active tasks"))
-	}
 	return strings.Join(lines, "\n")
 }
 
 // footer is the bottom stack: activity, an optional task summary when there is
 // no sidebar to hold it, session metadata, then the overlay or composer.
 func (m *model) footer() string {
-	l := computeLayout(m.width, m.height, 0, m.hasOverlay())
+	l := computeLayout(m.width, m.height, 0, m.hasOverlay(), m.hasSidebarContent())
 	sections := make([]string, 0, 4)
 	if !m.hasOverlay() && (m.processing || m.status != "") {
 		sections = append(sections, m.renderActivity())
@@ -146,7 +167,7 @@ func (m *model) footer() string {
 	if !l.showSidebar && m.tasks != nil && len(m.tasks.Items) > 0 {
 		sections = append(sections, m.renderTasks())
 	}
-	sections = append(sections, m.renderStatusBar(), m.renderInputRegion())
+	sections = append(sections, m.renderStatusBar(l), m.renderInputRegion())
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
@@ -186,7 +207,10 @@ func (m *model) renderTasks() string {
 	return ansi.Truncate(line, maxInt(1, m.width), "…")
 }
 
-func (m *model) renderStatusBar() string {
+// renderStatusBar shows what the header does not. Mode, model and effort live
+// in the header, so repeating them here printed each of them twice; they come
+// back only on a terminal too short for a header.
+func (m *model) renderStatusBar(l layout) string {
 	status := m.proc.GetStatus()
 	project := filepath.Base(m.rootDir)
 	if project == "." || project == string(filepath.Separator) || project == "" {
@@ -197,21 +221,24 @@ func (m *model) renderStatusBar() string {
 	}
 
 	sep := sepStyle.Render("  ·  ")
-	parts := []string{statusValue.Render(project), modeStyle(m.mode).Render(string(m.mode))}
-	if m.width >= 72 {
-		parts = append(parts, statusValue.Render(status.Model))
-		if status.Effort != "" {
-			parts = append(parts, statusBar.Render(status.Effort+" effort"))
+	parts := []string{statusValue.Render(project)}
+	if !l.showHeader {
+		parts = append(parts, modeStyle(m.mode).Render(string(m.mode)))
+		if m.width >= 72 {
+			parts = append(parts, statusValue.Render(status.Model))
+			if status.Effort != "" {
+				parts = append(parts, statusBar.Render(status.Effort+" effort"))
+			}
 		}
 	}
-	if m.width >= 100 {
+	if m.width >= 72 {
 		parts = append(parts, statusBar.Render(fmt.Sprintf("%d msgs", status.MessageCount)))
 	}
 	prefix := ""
 	if status.Estimated {
 		prefix = "~"
 	}
-	parts = append(parts, statusBar.Render(fmt.Sprintf("%s%.1fk ctx", prefix, float64(status.TotalTokens)/1000)))
+	parts = append(parts, statusBar.Render(prefix+formatContext(status.TotalTokens, status.MaxTokens)))
 	if status.CostKnown {
 		parts = append(parts, statusValue.Render(formatCost(status.SessionCost)))
 	}
@@ -255,7 +282,7 @@ func (m *model) renderActivity() string {
 
 	// The sidebar lists the running agents when it is showing, so repeating
 	// them here would draw each one twice.
-	if computeLayout(m.width, m.height, 0, m.hasOverlay()).showSidebar {
+	if computeLayout(m.width, m.height, 0, m.hasOverlay(), m.hasSidebarContent()).showSidebar {
 		return lines[0]
 	}
 	for i, sub := range m.subagents {
@@ -484,4 +511,25 @@ func formatCost(dollars float64) string {
 		return fmt.Sprintf("$%.4f", dollars)
 	}
 	return fmt.Sprintf("$%.2f", dollars)
+}
+
+// hasSidebarContent reports whether the sidebar has anything to show. Without
+// this the sidebar claimed a full-height column on an idle session in order to
+// print "No active tasks".
+func (m *model) hasSidebarContent() bool {
+	return (m.tasks != nil && len(m.tasks.Items) > 0) || len(m.subagents) > 0
+}
+
+// formatContext reports how full the context window is. A raw token count says
+// little without knowing the window it sits in.
+//
+// The value is deliberately not clamped at 100%: the window governs which
+// messages are selected, but the system prompt and pinned files sit outside it,
+// so a real request can exceed it. Hiding that would mask exactly the condition
+// that triggers compaction.
+func formatContext(used, max int) string {
+	if max <= 0 {
+		return fmt.Sprintf("%.1fk ctx", float64(used)/1000)
+	}
+	return fmt.Sprintf("%d%% ctx", int(float64(used)/float64(max)*100+0.5))
 }

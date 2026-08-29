@@ -148,7 +148,8 @@ func TestActivityRendersAboveTaskAndStatus(t *testing.T) {
 	footer := ansi.Strip(m.footer())
 	activity := strings.Index(footer, "Thinking")
 	plan := strings.Index(footer, "Plan")
-	status := strings.Index(footer, "agent")
+	// "ctx" belongs to the status bar alone; the mode moved to the header.
+	status := strings.Index(footer, "ctx")
 	if activity < 0 || plan < 0 || status < 0 || !(activity < plan && plan < status) {
 		t.Fatalf("footer order should be activity, plan, status:\n%s", footer)
 	}
@@ -171,6 +172,15 @@ func TestSidebarShowsIndividualTasks(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Errorf("sidebar missing %q:\n%s", want, view)
 		}
+	}
+	// The rule runs the full height, header row included, so the two columns
+	// read as panes rather than the header spanning both.
+	first := strings.Split(view, "\n")[0]
+	if !strings.Contains(first, "│") {
+		t.Errorf("header row is not split by the rule: %q", first)
+	}
+	if !strings.Contains(first, "Tasks") {
+		t.Errorf("sidebar has no title on the header row: %q", first)
 	}
 	// The stacked task summary must not also be drawn.
 	if strings.Contains(ansi.Strip(m.footer()), "Plan 1/3") {
@@ -408,5 +418,115 @@ func TestStreamingUpdatesDoNotDisturbEarlierEntries(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(streamed), "Hello world") {
 		t.Errorf("streamed text incomplete: %q", ansi.Strip(streamed))
+	}
+}
+
+// TestOnlyOneHeaderIsRendered covers the duplicate banner. The persistent
+// header was added in v2.3.0 but the banner it replaced was still being pushed
+// in as transcript entry zero, so the name and version appeared twice, stacked.
+func TestOnlyOneHeaderIsRendered(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 40)
+	m.appendSystem("No API key configured - run /connect to link a provider.")
+
+	view := ansi.Strip(m.View())
+	if n := strings.Count(view, "cool-code v"); n != 1 {
+		t.Errorf("found %d version headers, want 1:\n%s", n, view)
+	}
+	// The notice itself must survive as an ordinary transcript entry.
+	if !strings.Contains(view, "No API key configured") {
+		t.Error("startup notice was lost")
+	}
+}
+
+// TestSidebarOnlyAppearsWithContent covers the idle layout. The sidebar used to
+// be gated on width alone, so an empty session gave up a full-height column to
+// print "No active tasks".
+func TestSidebarOnlyAppearsWithContent(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 40)
+	if m.layout.showSidebar {
+		t.Error("sidebar shown with no tasks and no agents")
+	}
+	if strings.Contains(ansi.Strip(m.View()), "No active tasks") {
+		t.Error("placeholder text still rendered")
+	}
+	if m.layout.transcriptWidth != 120 {
+		t.Errorf("transcript width = %d, want the full 120", m.layout.transcriptWidth)
+	}
+
+	m.tasks = &types.TaskList{Goal: "g", Items: []types.TaskItem{
+		{ID: "1", Title: "Audit layout", Status: types.TaskTodo},
+	}}
+	m = resizeModel(t, m, 120, 40)
+	if !m.layout.showSidebar {
+		t.Fatal("sidebar hidden despite a task list")
+	}
+	if !strings.Contains(ansi.Strip(m.View()), "Audit layout") {
+		t.Error("task item not shown in the sidebar")
+	}
+
+	// A running subagent is enough on its own.
+	m.tasks = nil
+	m.subagents = []string{"agent 1: explore"}
+	m = resizeModel(t, m, 120, 40)
+	if !m.layout.showSidebar {
+		t.Error("sidebar hidden despite a running subagent")
+	}
+}
+
+// TestStatusBarDoesNotRepeatTheHeader covers the duplication in v2.3.0, where
+// mode, model and effort were printed in both places at once.
+func TestStatusBarDoesNotRepeatTheHeader(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 40)
+
+	header := ansi.Strip(m.renderHeader(m.layout))
+	status := ansi.Strip(m.renderStatusBar(m.layout))
+
+	for _, field := range []string{"agent", "gemini-2.5-flash"} {
+		if !strings.Contains(header, field) {
+			t.Errorf("header lost %q: %q", field, header)
+		}
+		if strings.Contains(status, field) {
+			t.Errorf("status bar still repeats %q: %q", field, status)
+		}
+	}
+	if !strings.Contains(status, "ctx") || !strings.Contains(status, "msgs") {
+		t.Errorf("status bar lost its own fields: %q", status)
+	}
+}
+
+// TestStatusBarKeepsModeWithoutAHeader covers the short-terminal fallback,
+// where there is no header to carry them.
+func TestStatusBarKeepsModeWithoutAHeader(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 10)
+	if m.layout.showHeader {
+		t.Skip("header still fits at this height")
+	}
+	status := ansi.Strip(m.renderStatusBar(m.layout))
+	if !strings.Contains(status, "agent") {
+		t.Errorf("mode missing with no header to show it: %q", status)
+	}
+}
+
+// TestContextIsShownAsAPercentage covers the status bar figure. An absolute
+// token count says little without the window it sits in.
+func TestContextIsShownAsAPercentage(t *testing.T) {
+	cases := []struct {
+		used, max int
+		want      string
+	}{
+		{0, 120000, "0% ctx"},
+		{12000, 120000, "10% ctx"},
+		{60000, 120000, "50% ctx"},
+		{119000, 120000, "99% ctx"},
+		// Not clamped: the system prompt and pinned files sit outside the
+		// window, so a real request can exceed it, and that is worth seeing.
+		{150000, 120000, "125% ctx"},
+		// No window configured falls back to the absolute count.
+		{2500, 0, "2.5k ctx"},
+	}
+	for _, c := range cases {
+		if got := formatContext(c.used, c.max); got != c.want {
+			t.Errorf("formatContext(%d, %d) = %q, want %q", c.used, c.max, got, c.want)
+		}
 	}
 }

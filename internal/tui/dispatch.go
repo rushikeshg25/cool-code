@@ -127,8 +127,10 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		if status.Estimated {
 			approx = "~"
 		}
-		m.appendSystem(fmt.Sprintf("Context: %d messages, %s%.1fk tokens, %d pinned",
-			status.MessageCount, approx, float64(status.TotalTokens)/1000, len(m.proc.PinnedFiles())))
+		m.appendSystem(fmt.Sprintf("Context: %d messages, %s%.1fk of %.0fk tokens (%s), %d pinned",
+			status.MessageCount, approx, float64(status.TotalTokens)/1000,
+			float64(status.MaxTokens)/1000, formatContext(status.TotalTokens, status.MaxTokens),
+			len(m.proc.PinnedFiles())))
 	case "/model":
 		if arg == "" {
 			status := m.proc.GetStatus()

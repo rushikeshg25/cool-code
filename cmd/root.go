@@ -111,15 +111,17 @@ func runInteractive(flags rootFlags) error {
 		return handleProviderError(err)
 	}
 
-	banner := tui.Banner(Version)
+	// Startup notices. The persistent header carries the name and version now,
+	// so there is no banner to hang these off.
+	var notices []string
 	if !proc.Connected() {
-		banner += "\n  No API key configured - run /connect to link a provider."
+		notices = append(notices, "No API key configured - run /connect to link a provider.")
 	}
 	// A repository cannot be allowed to set these, but discarding them in
 	// silence misleads whoever wrote the file into thinking they took effect.
-	if ignored := config.IgnoredProjectKeys(rootDir); len(ignored) > 0 {
-		banner += "\n  Ignored global-only keys in .coolcode.json: " + strings.Join(ignored, ", ") +
-			"\n  Set them with `cool-code config set <key> <value>` to apply them."
+	if ignored := config.IgnoredProjectKeys(rootDir, cfg); len(ignored) > 0 {
+		notices = append(notices, "Ignored global-only keys in .coolcode.json: "+strings.Join(ignored, ", ")+
+			"\nSet them with `cool-code config set <key> <value>` to apply them.")
 	}
 
 	sessionID := session.NewID()
@@ -131,7 +133,7 @@ func runInteractive(flags rootFlags) error {
 		// replayed below. Resuming one recorded in a different directory would
 		// re-grant them here, where the user never approved them.
 		if restoreFrom != nil && !sameDir(restoreFrom.Cwd, rootDir) {
-			banner += "\n  Session " + flags.resumeID + " belongs to " + restoreFrom.Cwd + "; not resuming here."
+			notices = append(notices, "Session "+flags.resumeID+" belongs to "+restoreFrom.Cwd+"; not resuming here.")
 			restoreFrom = nil
 		}
 	case flags.continueSess:
@@ -149,7 +151,7 @@ func runInteractive(flags rootFlags) error {
 		if len(short) > 8 {
 			short = short[:8]
 		}
-		banner += fmt.Sprintf("\n  Resumed session %s (%d messages).", short, restoreFrom.MessageCount)
+		notices = append(notices, fmt.Sprintf("Resumed session %s (%d messages).", short, restoreFrom.MessageCount))
 	}
 
 	return tui.Run(tui.RunOptions{
@@ -158,7 +160,7 @@ func runInteractive(flags rootFlags) error {
 		Version:   Version,
 		Copy:      flags.copy,
 		SessionID: sessionID,
-		Banner:    banner,
+		Notices:   notices,
 	})
 }
 
