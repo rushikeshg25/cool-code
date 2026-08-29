@@ -14,7 +14,7 @@ Cool-Code combines large language models with a comprehensive set of development
 - **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
-- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the window. Syntax-highlighted fenced code, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
+- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the model's window, or as a token count when that window is unknown. Syntax-highlighted fenced code, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
 - **Three agent modes** - Plan (read-only investigation → detailed plan), Agent (autonomous execution), Ask (read-only Q&A). After Plan mode produces a plan, choose **Start implementation** to jump straight into Agent mode.
 - **Project memory (`COOLCODE.md`)** - persistent project instructions loaded into every prompt.
 - **Skills** - discoverable, model-invoked instruction modules under `.coolcode/skills/` (compatible with Claude Code skills).
@@ -174,7 +174,8 @@ Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md`
 {
   "llm": {
     "temperature": 0.2,
-    "maxTokens": 2048
+    "maxTokens": 2048,
+    "contextWindow": 200000
   },
   "features": {
     "scanCache": true,
@@ -185,13 +186,21 @@ Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md`
 }
 ```
 
-`maxContextTokens` is the request window. `compactAfter` is the message count at
+`maxContextTokens` bounds how much conversation is selected for each request.
+It is not the model's context window, and a request can exceed it, since the
+system prompt and pinned files sit outside it. `compactAfter` is the message count at
 which the conversation is summarized and older history is folded into that
 summary, keeping the 20 most recent messages verbatim; set it to `0` to disable
 compaction. Compaction is reported in the transcript when it happens, and
 `/compact` runs it on demand.
 
 Provider identity and security-sensitive settings (`llm.model`, `llm.provider`, `llm.baseUrl`, `llm.apiKeyEnv`, `llm.allowInsecureHttp`, `features.allowDangerous`, `features.confirmEdits`) are global-only. Set them with `cool-code config set`; repository-controlled values are ignored, and the CLI lists any it ignored at startup.
+
+`llm.contextWindow` declares the model's context window, used only to report how
+full the context is. It is needed when the model id is not one cool-code
+recognises, which includes most proxies and gateways; without it the status bar
+shows an absolute token count instead of a percentage rather than measuring
+against a guess.
 
 `guardrails.blockReadPatterns` is the one exception: a project file may **add** patterns, since that can only narrow what the agent may read. It can never remove one.
 
@@ -251,6 +260,25 @@ Requires Go 1.25+. External tools used at runtime when present: `git`, `rg` (rip
 ## Changelog
 
 ### Unreleased
+
+Markdown now formats as it streams. The streaming entry was plain-wrapped, so a
+long answer showed `## Steps` and `**bold**` literally for its whole duration
+and only formatted once the last fragment arrived; completed blocks are now
+rendered as they land, while the block still being written stays plain so a
+half-arrived bold or an unclosed fence cannot render wrong and then reflow.
+
+Prose the model writes before calling a tool is kept rather than discarded. With
+streaming on, discarding it meant watching a long answer arrive and then vanish.
+
+The context figure is measured against the model's context window instead of
+`features.maxContextTokens`, which is a message-selection budget that a request
+can legitimately exceed; measuring against it reported 250% on a short
+conversation. Unrecognised models, including most proxies, show a token count
+until `llm.contextWindow` is set.
+
+Mode, model and effort moved from the header to the status bar, beside the
+composer that acts on them.
+
 
 TUI fixes on top of 2.3.0. The persistent header was added without removing
 the banner it replaced, so the name and version rendered twice, and the status

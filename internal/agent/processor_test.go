@@ -142,7 +142,10 @@ func TestProcessQueryToolLoop(t *testing.T) {
 	}
 }
 
-func TestIntermediateAssistantTextIsNotRendered(t *testing.T) {
+// TestIntermediateAssistantTextIsKept covers prose the model writes before
+// reaching for a tool. It used to be discarded, which meant that with streaming
+// on the user watched a long answer arrive and then vanish.
+func TestIntermediateAssistantTextIsKept(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "hello.txt")
 	_ = os.WriteFile(file, []byte("hello"), 0o644)
@@ -155,7 +158,36 @@ func TestIntermediateAssistantTextIsNotRendered(t *testing.T) {
 	if _, err := p.ProcessQuery(context.Background(), "read it", reporter); err != nil {
 		t.Fatal(err)
 	}
-	if len(reporter.texts) != 1 || reporter.texts[0] != "Final answer." {
+	want := []string{"internal scratch narration", "Final answer."}
+	if len(reporter.texts) != len(want) {
+		t.Fatalf("rendered assistant messages = %v, want %v", reporter.texts, want)
+	}
+	for i, w := range want {
+		if reporter.texts[i] != w {
+			t.Fatalf("rendered assistant messages = %v, want %v", reporter.texts, want)
+		}
+	}
+	if reporter.discards != 0 {
+		t.Errorf("text was discarded %d times despite being present", reporter.discards)
+	}
+}
+
+// TestSilentToolTurnDiscardsStreamedText keeps the discard path for the case it
+// still applies to: something streamed, but the response carried no text.
+func TestSilentToolTurnDiscardsStreamedText(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "hello.txt")
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
+	provider := &fakeProvider{responses: []llm.Message{
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{toolCall("1", "read_file", map[string]any{"absolutePath": file})}},
+		{Role: llm.RoleAssistant, Text: "Done."},
+	}}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+	reporter := &captureReporter{}
+	if _, err := p.ProcessQuery(context.Background(), "read it", reporter); err != nil {
+		t.Fatal(err)
+	}
+	if len(reporter.texts) != 1 || reporter.texts[0] != "Done." {
 		t.Fatalf("rendered assistant messages = %v", reporter.texts)
 	}
 }

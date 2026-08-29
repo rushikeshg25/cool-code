@@ -199,11 +199,16 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			break
 		}
 
-		// The turn continues, so whatever was streamed was the model talking
-		// to itself before deciding on a tool. Drop it: the tool lines that
-		// follow say what actually happened.
-		if streamed && reporter != nil {
-			reporter.AssistantDiscard()
+		// The turn continues. Whatever the model said before reaching for a
+		// tool is still part of the conversation, and with streaming on the
+		// user has already watched it arrive, so keep it rather than having it
+		// vanish. Assistant replaces the streamed text with its rendering.
+		if reporter != nil {
+			if text := security.Redact(resp.Text); text != "" {
+				reporter.Assistant(text)
+			} else if streamed {
+				reporter.AssistantDiscard()
+			}
 		}
 
 		toolCtx := p.toolCtx
@@ -473,9 +478,10 @@ type Status struct {
 	TotalTokens int
 	// Estimated is true when TotalTokens is the fallback estimate.
 	Estimated bool
-	// MaxTokens is the configured context window, so callers can report how
-	// full it is rather than an absolute token count that means little on its
-	// own.
+	// MaxTokens is the model's context window, so callers can report how full
+	// it is rather than an absolute token count that means little on its own.
+	// Zero when the model is unrecognised and none was declared, in which case
+	// callers show the raw count instead of an invented percentage.
 	MaxTokens int
 	// SessionCost is the running spend in US dollars, summed across every
 	// request this session. Zero when the model's rate is not known.
@@ -502,7 +508,7 @@ func (p *Processor) GetStatus() Status {
 		Mode:         p.getMode(),
 		MessageCount: count,
 		TotalTokens:  tokens,
-		MaxTokens:    p.cfg.MaxContextTokens(),
+		MaxTokens:    p.contextWindow(),
 		Estimated:    true,
 	}
 	if usage.Input > 0 {
@@ -516,6 +522,27 @@ func (p *Processor) GetStatus() Status {
 		}
 	}
 	return s
+}
+
+// contextWindow is the model's context window: the explicitly declared one if
+// there is one, otherwise whatever is known for the model id.
+//
+// features.maxContextTokens is deliberately not used here. That is the budget
+// for selecting which messages to send, not the model's window, and a request
+// can legitimately exceed it, because the system prompt sits outside it and the
+// message budget is floored. Measuring against it produced figures like 250%.
+func (p *Processor) contextWindow() int {
+	if declared := p.cfg.ContextWindow(); declared > 0 {
+		return declared
+	}
+	model := p.cfg.LLM.Model
+	if p.provider != nil {
+		model = p.provider.Model()
+	}
+	if window, ok := llm.ContextWindow(model); ok {
+		return window
+	}
+	return 0
 }
 
 func (p *Processor) getMode() types.AgentMode {

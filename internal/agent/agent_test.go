@@ -206,3 +206,44 @@ func TestWindowCountsToolCallArguments(t *testing.T) {
 		t.Errorf("tool call arguments not counted: %d tokens", got)
 	}
 }
+
+// TestProcessorContextWindowResolution covers where the denominator for the
+// context figure comes from. It used to be features.maxContextTokens, a
+// message-selection budget that a request can legitimately exceed, which is how
+// a short conversation reported 250%.
+func TestProcessorContextWindowResolution(t *testing.T) {
+	cfg := config.Default()
+
+	// A recognised model uses its published window.
+	known := &Processor{cfg: cfg}
+	known.cfg.LLM.Model = "claude-sonnet-4-5"
+	if got := known.contextWindow(); got != 200_000 {
+		t.Errorf("known model window = %d, want 200000", got)
+	}
+
+	// A custom endpoint's model is unknown, so no window is reported and the
+	// caller shows a raw token count rather than inventing a percentage.
+	custom := &Processor{cfg: cfg}
+	custom.cfg.LLM.Model = "gpt-5.6-sol"
+	if got := custom.contextWindow(); got != 0 {
+		t.Errorf("unknown model window = %d, want 0", got)
+	}
+
+	// Declaring one makes the percentage available again.
+	declared := &Processor{cfg: cfg}
+	declared.cfg.LLM.Model = "gpt-5.6-sol"
+	window := 200_000
+	declared.cfg.LLM.ContextWindow = &window
+	if got := declared.contextWindow(); got != 200_000 {
+		t.Errorf("declared window = %d, want 200000", got)
+	}
+
+	// The message budget must not be used as the window, whatever it is set to.
+	budget := 20_000
+	unrelated := &Processor{cfg: cfg}
+	unrelated.cfg.LLM.Model = "gpt-5.6-sol"
+	unrelated.cfg.Features.MaxContextTokens = &budget
+	if got := unrelated.contextWindow(); got != 0 {
+		t.Errorf("message budget leaked into the window: %d", got)
+	}
+}

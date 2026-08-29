@@ -20,6 +20,10 @@ type LLM struct {
 	ReasoningEffort   string   `json:"reasoningEffort,omitempty"`
 	Temperature       *float64 `json:"temperature,omitempty"`
 	MaxTokens         *int     `json:"maxTokens,omitempty"`
+	// ContextWindow declares the model's context window in tokens, for
+	// endpoints whose model id this program does not recognise. It only
+	// affects how full the context is reported to be.
+	ContextWindow *int `json:"contextWindow,omitempty"`
 }
 
 // Features holds behavioural toggles.
@@ -229,6 +233,9 @@ func merge(base, over Config) Config {
 	if over.LLM.MaxTokens != nil {
 		m.LLM.MaxTokens = over.LLM.MaxTokens
 	}
+	if over.LLM.ContextWindow != nil {
+		m.LLM.ContextWindow = over.LLM.ContextWindow
+	}
 	if over.Features.FileTreeMaxDepth != nil {
 		m.Features.FileTreeMaxDepth = over.Features.FileTreeMaxDepth
 	}
@@ -371,6 +378,15 @@ func ValidReasoningEffort(effort string) bool {
 // AllowDangerous reports the effective danger toggle.
 func (c Config) AllowDangerous() bool {
 	return c.Features.AllowDangerous != nil && *c.Features.AllowDangerous
+}
+
+// ContextWindow returns the declared context window, or 0 when none is set and
+// the model's own window should be looked up instead.
+func (c Config) ContextWindow() int {
+	if c.LLM.ContextWindow != nil && *c.LLM.ContextWindow > 0 {
+		return *c.LLM.ContextWindow
+	}
+	return 0
 }
 
 // AllowInsecureHTTP reports whether a plain-HTTP endpoint is permitted beyond

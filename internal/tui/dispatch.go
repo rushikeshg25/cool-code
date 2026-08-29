@@ -127,10 +127,21 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		if status.Estimated {
 			approx = "~"
 		}
-		m.appendSystem(fmt.Sprintf("Context: %d messages, %s%.1fk of %.0fk tokens (%s), %d pinned",
-			status.MessageCount, approx, float64(status.TotalTokens)/1000,
-			float64(status.MaxTokens)/1000, formatContext(status.TotalTokens, status.MaxTokens),
-			len(m.proc.PinnedFiles())))
+		usage := fmt.Sprintf("%s%.1fk tokens", approx, float64(status.TotalTokens)/1000)
+		if status.MaxTokens > 0 {
+			usage = fmt.Sprintf("%s%.1fk of %.0fk tokens (%s)", approx,
+				float64(status.TotalTokens)/1000, float64(status.MaxTokens)/1000,
+				formatContext(status.TotalTokens, status.MaxTokens))
+		}
+		line := fmt.Sprintf("Context: %d messages, %s, %d pinned",
+			status.MessageCount, usage, len(m.proc.PinnedFiles()))
+		if status.MaxTokens == 0 {
+			// Without a window there is nothing to take a percentage of, and
+			// guessing one would be worse than saying so.
+			line += "\nNo context window known for " + status.Model +
+				". Declare it with `cool-code config set llm.contextWindow <tokens>`."
+		}
+		m.appendSystem(line)
 	case "/model":
 		if arg == "" {
 			status := m.proc.GetStatus()
