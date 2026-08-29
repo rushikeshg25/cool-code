@@ -73,6 +73,7 @@ type model struct {
 	sessionID string
 
 	width, height int
+	layout        layout
 	vp            viewport.Model
 	ti            textarea.Model
 	sp            spinner.Model
@@ -191,6 +192,9 @@ type entry struct {
 }
 
 func (m *model) contentWidth() int {
+	if m.layout.transcriptWidth > 0 {
+		return m.layout.contentWidth()
+	}
 	if m.width < 10 {
 		return 80
 	}

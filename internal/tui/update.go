@@ -25,13 +25,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ti.SetWidth(maxInt(10, msg.Width-6))
-		m.keyInput.Width = maxInt(10, msg.Width-4)
+		m.keyInput.Width = maxInt(10, msg.Width-6)
+		// The real geometry is settled in View, which measures the footer once.
+		// This only needs a viewport that exists and is roughly the right size.
+		l := computeLayout(msg.Width, msg.Height, 0, m.hasOverlay())
+		m.layout = l
 		if !m.ready {
-			m.vp = newViewport(msg.Width, m.viewportHeight())
+			m.vp = newViewport(l.transcriptWidth, l.transcriptHeight)
 			m.ready = true
 		} else {
-			m.vp.Width = msg.Width
-			m.vp.Height = m.viewportHeight()
+			m.vp.Width = l.transcriptWidth
+			m.vp.Height = l.transcriptHeight
 		}
 		if widthChanged {
 			m.rerenderHistory()

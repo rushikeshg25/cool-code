@@ -17,33 +17,133 @@ func newViewport(width, height int) viewport.Model {
 	return viewport.New(width, height)
 }
 
-// viewportHeight reserves the exact number of rows used by the footer plus
-// the separator newline emitted by View. Footer content is deliberately
-// bounded so even small terminals retain transcript space.
-func (m *model) viewportHeight() int {
-	h := m.height - lipgloss.Height(m.footer()) - 1
-	if h < 1 {
-		h = 1
-	}
-	return h
-}
-
 func (m *model) View() string {
 	if !m.ready {
 		return "\n  Starting cool-code…\n"
 	}
-	m.vp.Height = m.viewportHeight()
-	return m.vp.View() + "\n" + m.footer()
+	// The footer is built once and measured, then the layout is derived from
+	// it. Rendering must not mutate the model, so the confirmation overlay's
+	// scroll offset is clamped before anything is drawn.
+	m.clampConfirmOffset()
+	footer := m.footer()
+	l := computeLayout(m.width, m.height, lipgloss.Height(footer), m.hasOverlay())
+	m.layout = l
+
+	m.vp.Height = l.transcriptHeight
+	m.vp.Width = l.transcriptWidth
+
+	body := m.vp.View()
+	if l.showSidebar {
+		body = m.joinSidebar(body, l)
+	}
+
+	sections := make([]string, 0, 3)
+	if l.showHeader {
+		sections = append(sections, m.renderHeader(l))
+	}
+	sections = append(sections, body)
+	return strings.Join(sections, "\n") + "\n" + footer
 }
 
-// footer is a compact workbench: optional task progress, session metadata,
-// then either a bounded overlay or the activity/palette/composer stack.
+// joinSidebar places the task and agent panel beside the transcript.
+func (m *model) joinSidebar(body string, l layout) string {
+	panel := m.renderSidebar(l)
+	bodyLines := padLines(strings.Split(body, "\n"), l.transcriptHeight, l.transcriptWidth)
+	panelLines := padLines(strings.Split(panel, "\n"), l.transcriptHeight, l.sidebarWidth)
+
+	rule := sidebarRule.Render("│")
+	out := make([]string, l.transcriptHeight)
+	for i := range out {
+		out[i] = bodyLines[i] + " " + rule + " " + panelLines[i]
+	}
+	return strings.Join(out, "\n")
+}
+
+// padLines trims or extends lines to exactly n entries, each padded to width so
+// the two columns stay aligned.
+func padLines(lines []string, n, width int) []string {
+	out := make([]string, n)
+	for i := range out {
+		line := ""
+		if i < len(lines) {
+			line = ansi.Truncate(lines[i], maxInt(1, width), "…")
+		}
+		if pad := width - ansi.StringWidth(line); pad > 0 {
+			line += strings.Repeat(" ", pad)
+		}
+		out[i] = line
+	}
+	return out
+}
+
+// renderHeader is the one row that never scrolls away.
+func (m *model) renderHeader(l layout) string {
+	status := m.proc.GetStatus()
+	left := headerName.Render("◆ cool-code") + headerStyle.Render(" v"+m.version)
+
+	right := []string{modeStyle(m.mode).Render(string(m.mode))}
+	if l.width >= taskListMinWidth && status.Model != "" {
+		right = append(right, headerStyle.Render(status.Model))
+	}
+	if l.width >= sidebarMinWidth && status.Effort != "" {
+		right = append(right, headerStyle.Render(status.Effort+" effort"))
+	}
+	rightText := strings.Join(right, headerStyle.Render("  ·  "))
+
+	gap := l.width - ansi.StringWidth(left) - ansi.StringWidth(rightText) - 2
+	if gap < 1 {
+		return ansi.Truncate(left+" "+rightText, maxInt(1, l.width), "…")
+	}
+	return left + " " + headerRule.Render(strings.Repeat("─", gap)) + " " + rightText
+}
+
+// renderSidebar lists the task items and any running subagents. The old task
+// panel was a single aggregated line; the individual items existed in the model
+// but were never shown.
+func (m *model) renderSidebar(l layout) string {
+	var lines []string
+	w := l.sidebarWidth
+
+	if m.tasks != nil && len(m.tasks.Items) > 0 {
+		done := 0
+		for _, item := range m.tasks.Items {
+			if item.Status == types.TaskDone {
+				done++
+			}
+		}
+		lines = append(lines, sidebarTitle.Render("Tasks")+
+			sidebarTodo.Render(fmt.Sprintf("  %d/%d", done, len(m.tasks.Items))))
+		for _, item := range m.tasks.Items {
+			glyph, style := taskGlyph(item.Status)
+			lines = append(lines, ansi.Truncate(style.Render(glyph+" ")+sidebarTodo.Render(item.Title), maxInt(1, w), "…"))
+		}
+	}
+
+	if len(m.subagents) > 0 {
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, sidebarTitle.Render("Agents"))
+		for _, sub := range m.subagents {
+			lines = append(lines, ansi.Truncate(sidebarNow.Render("◆ ")+sidebarTodo.Render(sub), maxInt(1, w), "…"))
+		}
+	}
+
+	if len(lines) == 0 {
+		lines = append(lines, sidebarTodo.Render("No active tasks"))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// footer is the bottom stack: activity, an optional task summary when there is
+// no sidebar to hold it, session metadata, then the overlay or composer.
 func (m *model) footer() string {
+	l := computeLayout(m.width, m.height, 0, m.hasOverlay())
 	sections := make([]string, 0, 4)
 	if !m.hasOverlay() && (m.processing || m.status != "") {
 		sections = append(sections, m.renderActivity())
 	}
-	if m.tasks != nil && len(m.tasks.Items) > 0 {
+	if !l.showSidebar && m.tasks != nil && len(m.tasks.Items) > 0 {
 		sections = append(sections, m.renderTasks())
 	}
 	sections = append(sections, m.renderStatusBar(), m.renderInputRegion())
@@ -121,9 +221,9 @@ func (m *model) renderInputRegion() string {
 		return m.renderConfirmation()
 	case m.connectFor >= 0:
 		return lipgloss.JoinVertical(lipgloss.Left,
-			menuTitle.Render("Connect "+connectOptions[m.connectFor].provider),
-			m.keyInput.View(),
-			faintStyle.Render("Enter save  ·  Esc cancel"),
+			menuTitle.Render(truncate("Connect "+connectOptions[m.connectFor].provider, m.width)),
+			keyFieldStyle.Width(maxInt(12, m.width-2)).Render(m.keyInput.View()),
+			faintStyle.Render(truncate("Enter save  ·  Esc cancel", m.width)),
 		)
 	case m.connectMenu:
 		return m.renderConnectMenu()
@@ -146,13 +246,25 @@ func (m *model) renderActivity() string {
 	if label == "" {
 		label = "Working…"
 	}
-	line := m.sp.View() + " " + activityStyle.Render(label) + faintStyle.Render("  ·  Esc cancel")
-	lines := []string{ansi.Truncate(line, maxInt(1, m.width), "…")}
-	for _, sub := range m.subagents {
+	// spinner.Dot's frames already end in a space, so do not add another.
+	line := m.sp.View() + activityStyle.Render(label) + faintStyle.Render("  ·  Esc cancel")
+	lines := []string{m.truncateToWidth(line)}
+
+	// The sidebar lists the running agents when it is showing, so repeating
+	// them here would draw each one twice.
+	if computeLayout(m.width, m.height, 0, m.hasOverlay()).showSidebar {
+		return lines[0]
+	}
+	for i, sub := range m.subagents {
 		if sub == "" || len(lines) > 3 {
 			continue
 		}
-		lines = append(lines, ansi.Truncate(faintStyle.Render("  └─ "+sub), maxInt(1, m.width), "…"))
+		// Only the final entry is a last child.
+		branch := "├─ "
+		if i == len(m.subagents)-1 {
+			branch = "└─ "
+		}
+		lines = append(lines, m.truncateToWidth(faintStyle.Render("  "+branch+sub)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -192,35 +304,60 @@ func (m *model) renderSuggestions() string {
 	if n > end-start {
 		action = fmt.Sprintf("%d/%d  ·  %s", selected+1, n, action)
 	}
-	lines = append(lines, faintStyle.Render("  ↑/↓ navigate  ·  "+action))
+	lines = append(lines, m.truncateToWidth(faintStyle.Render("  ↑/↓ navigate  ·  "+action)))
 	return strings.Join(lines, "\n")
 }
 
-func (m *model) renderConfirmation() string {
-	// The confirmation text quotes a model-supplied command. Strip escapes
-	// so it cannot redraw over what the user is being asked to approve.
-	wrapped := ansi.Wordwrap(security.SanitizeTerminal(m.confirmMsg), maxInt(20, m.width-2), " /")
-	lines := strings.Split(wrapped, "\n")
-	limit := maxInt(3, minInt(10, m.height/2))
-	maxOffset := maxInt(0, len(lines)-limit)
+// confirmLines is the wrapped, sanitized body of the confirmation overlay.
+// The text quotes a model-supplied command, so escapes are stripped before it
+// can redraw over what the user is being asked to approve.
+func (m *model) confirmLines() []string {
+	wrapped := ansi.Wordwrap(security.SanitizeTerminal(m.confirmMsg), maxInt(20, m.width-4), " /")
+	return strings.Split(wrapped, "\n")
+}
+
+// confirmLimit is how many body lines the overlay may show. It has to account
+// for its own chrome (title, two border rows, hint) plus the header, status bar
+// and the separator row, or a short terminal overflows.
+func (m *model) confirmLimit() int {
+	const chrome = 8
+	return maxInt(1, minInt(10, minInt(m.height/2, m.height-chrome)))
+}
+
+// clampConfirmOffset keeps the scroll offset in range. This used to happen
+// inside renderConfirmation, which meant drawing a frame mutated the model.
+func (m *model) clampConfirmOffset() {
+	if m.confirmMsg == "" {
+		return
+	}
+	maxOffset := maxInt(0, len(m.confirmLines())-m.confirmLimit())
 	if m.confirmOff > maxOffset {
 		m.confirmOff = maxOffset
 	}
-	end := minInt(len(lines), m.confirmOff+limit)
-	preview := colorizeDiff(strings.Join(lines[m.confirmOff:end], "\n"))
+	if m.confirmOff < 0 {
+		m.confirmOff = 0
+	}
+}
+
+func (m *model) renderConfirmation() string {
+	lines := m.confirmLines()
+	limit := m.confirmLimit()
+	offset := minInt(m.confirmOff, maxInt(0, len(lines)-limit))
+	end := minInt(len(lines), offset+limit)
+	preview := colorizeDiff(strings.Join(lines[offset:end], "\n"))
 	hint := "y approve  ·  n/Enter reject"
 	if len(lines) > limit {
-		hint = fmt.Sprintf("↑/↓ scroll %d-%d/%d  ·  %s", m.confirmOff+1, end, len(lines), hint)
+		hint = fmt.Sprintf("↑/↓ scroll %d-%d/%d  ·  %s", offset+1, end, len(lines), hint)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left,
 		confirmTitle.Render("⚠ Confirmation required"),
-		confirmBox.Render(preview),
-		faintStyle.Render(hint),
+		confirmBox.Width(maxInt(12, m.width-2)).Render(preview),
+		faintStyle.Render(truncate(hint, m.width)),
 	)
 }
 
 func (m *model) renderConnectMenu() string {
-	lines := []string{menuTitle.Render("Connect a provider")}
+	lines := []string{m.truncateToWidth(menuTitle.Render("Connect a provider"))}
 	for i, option := range connectOptions {
 		line := fmt.Sprintf("  %d. %s", i+1, option.label)
 		if i == m.connectIdx {
@@ -230,14 +367,14 @@ func (m *model) renderConnectMenu() string {
 		}
 		lines = append(lines, ansi.Truncate(line, maxInt(1, m.width), "…"))
 	}
-	lines = append(lines, faintStyle.Render("↑/↓ navigate  ·  Enter select  ·  Esc cancel"))
+	lines = append(lines, m.truncateToWidth(faintStyle.Render("↑/↓ navigate  ·  Enter select  ·  Esc cancel")))
 	return strings.Join(lines, "\n")
 }
 
 func (m *model) renderSessionMenu() string {
 	n := len(m.sessionList)
 	start, end := visibleWindow(n, m.sessionIdx, m.menuLimit())
-	lines := []string{menuTitle.Render("Resume a session")}
+	lines := []string{m.truncateToWidth(menuTitle.Render("Resume a session"))}
 	for i := start; i < end; i++ {
 		sess := m.sessionList[i]
 		short := sess.ID
@@ -252,12 +389,12 @@ func (m *model) renderSessionMenu() string {
 		}
 		lines = append(lines, ansi.Truncate(label, maxInt(1, m.width), "…"))
 	}
-	lines = append(lines, faintStyle.Render("↑/↓ navigate  ·  Enter resume  ·  Esc cancel"))
+	lines = append(lines, m.truncateToWidth(faintStyle.Render("↑/↓ navigate  ·  Enter resume  ·  Esc cancel")))
 	return strings.Join(lines, "\n")
 }
 
 func (m *model) renderPlanMenu() string {
-	lines := []string{menuTitle.Render("Plan ready. What next?")}
+	lines := []string{m.truncateToWidth(menuTitle.Render("Plan ready. What next?"))}
 	for i, label := range planOptions {
 		line := fmt.Sprintf("  %d. %s", i+1, label)
 		if i == m.planIdx {
@@ -267,7 +404,7 @@ func (m *model) renderPlanMenu() string {
 		}
 		lines = append(lines, ansi.Truncate(line, maxInt(1, m.width), "…"))
 	}
-	lines = append(lines, faintStyle.Render("↑/↓ navigate  ·  Enter select  ·  Esc keep planning"))
+	lines = append(lines, m.truncateToWidth(faintStyle.Render("↑/↓ navigate  ·  Enter select  ·  Esc keep planning")))
 	return strings.Join(lines, "\n")
 }
 
@@ -327,4 +464,12 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// truncate fits a line to the terminal width. Several hint and title lines
+// skipped this and wrapped on narrow terminals, which broke the height budget.
+func (m *model) truncateToWidth(s string) string { return truncate(s, m.width) }
+
+func truncate(s string, width int) string {
+	return ansi.Truncate(s, maxInt(1, width), "…")
 }

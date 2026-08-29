@@ -62,7 +62,9 @@ func TestResponsiveViewFitsCommonTerminalSizes(t *testing.T) {
 		}},
 	}
 
-	sizes := [][2]int{{60, 18}, {80, 24}, {120, 40}}
+	// 100x30 is the sidebar breakpoint and 99 is one column below it, so both
+	// sides of the split are exercised. 160x50 gives the sidebar room to spare.
+	sizes := [][2]int{{60, 18}, {72, 20}, {80, 24}, {99, 30}, {100, 30}, {120, 40}, {160, 50}, {40, 12}}
 	for _, state := range states {
 		for _, size := range sizes {
 			t.Run(fmt.Sprintf("%s/%dx%d", state.name, size[0], size[1]), func(t *testing.T) {
@@ -131,6 +133,9 @@ func TestTerminalColorResponseDoesNotEnterComposer(t *testing.T) {
 	}
 }
 
+// TestActivityRendersAboveTaskAndStatus covers the stacked layout, which is
+// what a terminal narrower than the sidebar breakpoint gets. Above that width
+// the task summary moves into the sidebar, covered separately below.
 func TestActivityRendersAboveTaskAndStatus(t *testing.T) {
 	m := newTestModel(t)
 	m.processing = true
@@ -138,12 +143,56 @@ func TestActivityRendersAboveTaskAndStatus(t *testing.T) {
 	m.tasks = &types.TaskList{Goal: "Build a todo app", Items: []types.TaskItem{
 		{ID: "1", Title: "Inspect the project", Status: types.TaskInProgress},
 	}}
+	m = resizeModel(t, m, 80, 24)
+
 	footer := ansi.Strip(m.footer())
 	activity := strings.Index(footer, "Thinking")
 	plan := strings.Index(footer, "Plan")
 	status := strings.Index(footer, "agent")
 	if activity < 0 || plan < 0 || status < 0 || !(activity < plan && plan < status) {
 		t.Fatalf("footer order should be activity, plan, status:\n%s", footer)
+	}
+}
+
+// TestSidebarShowsIndividualTasks covers the wide layout. The old task panel
+// was one aggregated line; the items existed in the model but were never drawn.
+func TestSidebarShowsIndividualTasks(t *testing.T) {
+	m := newTestModel(t)
+	m.tasks = &types.TaskList{Goal: "Build a todo app", Items: []types.TaskItem{
+		{ID: "1", Title: "Inspect", Status: types.TaskDone},
+		{ID: "2", Title: "Refactor", Status: types.TaskInProgress},
+		{ID: "3", Title: "Verify", Status: types.TaskTodo},
+	}}
+	m.subagents = []string{"agent 1: explore - exploring"}
+	m = resizeModel(t, m, 120, 40)
+
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"Tasks", "1/3", "Inspect", "Refactor", "Verify", "Agents"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("sidebar missing %q:\n%s", want, view)
+		}
+	}
+	// The stacked task summary must not also be drawn.
+	if strings.Contains(ansi.Strip(m.footer()), "Plan 1/3") {
+		t.Error("task summary duplicated in the footer while the sidebar is shown")
+	}
+}
+
+// TestHeaderIsPersistent covers the row that replaced the scrolling banner.
+func TestHeaderIsPersistent(t *testing.T) {
+	m := newTestModel(t)
+	m = resizeModel(t, m, 120, 40)
+	first := ansi.Strip(strings.Split(m.View(), "\n")[0])
+	if !strings.Contains(first, "cool-code") {
+		t.Errorf("header missing from the first row: %q", first)
+	}
+	// It survives a transcript long enough to have scrolled the banner away.
+	for i := 0; i < 200; i++ {
+		m.appendAssistant("line")
+	}
+	first = ansi.Strip(strings.Split(m.View(), "\n")[0])
+	if !strings.Contains(first, "cool-code") {
+		t.Errorf("header scrolled away: %q", first)
 	}
 }
 
