@@ -259,37 +259,50 @@ Requires Go 1.25+. External tools used at runtime when present: `git`, `rg` (rip
 
 ## Changelog
 
-### Unreleased
+### 2.3.1: TUI fixes on top of 2.3.0 (2026-08)
 
-Markdown now formats as it streams. The streaming entry was plain-wrapped, so a
+Everything here corrects something 2.3.0 introduced.
+
+**Upgrading.** The context figure now measures against the model's context
+window rather than `features.maxContextTokens`. If your model id is not one
+cool-code recognises, which includes most proxies and gateways, the status bar
+shows a token count instead of a percentage until you declare the window:
+
+```bash
+cool-code config set llm.contextWindow 200000
+```
+
+**Markdown formats as it streams.** The streaming entry was plain-wrapped, so a
 long answer showed `## Steps` and `**bold**` literally for its whole duration
-and only formatted once the last fragment arrived; completed blocks are now
-rendered as they land, while the block still being written stays plain so a
+and only formatted once the last fragment arrived. Completed blocks are now
+rendered as they land, while the block still being written stays plain, so a
 half-arrived bold or an unclosed fence cannot render wrong and then reflow.
 
-Prose the model writes before calling a tool is kept rather than discarded. With
-streaming on, discarding it meant watching a long answer arrive and then vanish.
+**Prose the model writes before calling a tool is kept** rather than discarded.
+That was invisible while nothing streamed; with streaming on it meant watching a
+long answer arrive and then vanish.
 
-The context figure is measured against the model's context window instead of
-`features.maxContextTokens`, which is a message-selection budget that a request
-can legitimately exceed; measuring against it reported 250% on a short
-conversation. Unrecognised models, including most proxies, show a token count
-until `llm.contextWindow` is set.
+**The context figure was wrong, not just badly scaled.** It measured against
+`features.maxContextTokens`, which bounds how much conversation is selected for
+a request, not the model's window, and a request can legitimately exceed it
+because the system prompt sits outside it. That reported 250% on a short
+conversation. An unrecognised model now reports a token count rather than a
+percentage taken from a guessed denominator.
 
-Mode, model and effort moved from the header to the status bar, beside the
-composer that acts on them.
+**One header, not two.** The persistent header was added without removing the
+banner it replaced, so the name and version rendered twice; the status bar also
+kept printing the mode, model and effort the header already showed. Mode, model
+and effort now live in the status bar alone, beside the composer that acts on
+them, and the header carries identity.
 
+**Layout.** The sidebar no longer claims a full-height column on an idle session
+to say "No active tasks", and the rule runs through the header row so the two
+columns each have their own title, instead of the header spanning both and
+reading as the sidebar's heading.
 
-TUI fixes on top of 2.3.0. The persistent header was added without removing
-the banner it replaced, so the name and version rendered twice, and the status
-bar kept printing the mode, model and effort the header already showed. The
-sidebar claimed a full-height column on an idle session to say "No active
-tasks", and the header spanned both columns, which put the model directly above
-the sidebar where it read as its title; the rule now runs through the header row
-and each column has its own title. Context is shown as a percentage of the
-window rather than an absolute token count. The startup warning about
-global-only keys in `.coolcode.json` now fires only for values that actually
-differ from the ones in effect, instead of for every duplicate.
+**The startup warning about global-only keys** in `.coolcode.json` now fires
+only for values that differ from the ones actually in effect, instead of for
+every duplicate, which made a correct setup look broken.
 
 ### 2.3.0: security fixes, two-pane TUI, streaming and cost (2026-08)
 
