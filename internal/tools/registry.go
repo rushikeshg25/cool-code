@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
 	"github.com/rushikeshg25/cool-code/internal/security"
@@ -75,6 +76,24 @@ func DangerReason(name string, args json.RawMessage) string {
 		return "shell command: " + command
 	case "run_tests", "lint_fix":
 		return "project code execution"
+	case "format_file":
+		// The fallback formatter is `npx prettier`, which resolves
+		// ./node_modules/.bin/prettier before anything else, so a repository
+		// chooses what runs here.
+		var a struct {
+			AbsolutePath string `json:"absolutePath"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return "run a formatter on " + filepath.Base(a.AbsolutePath)
+	case "add_script":
+		// Whatever lands in package.json scripts is what run_tests and
+		// lint_fix will later execute through `npm run`.
+		var a struct {
+			Name    string `json:"name"`
+			Command string `json:"command"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return "add package.json script \"" + a.Name + "\": " + security.Redact(a.Command)
 	case "git_commit":
 		return "create a git commit"
 	case "replace_in_files":
