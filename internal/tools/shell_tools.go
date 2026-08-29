@@ -16,12 +16,14 @@ var shellCommandTool = Tool{
 		"command":     strProp("Exact bash command to execute."),
 		"description": strProp("Brief description of the command for the user."),
 		"directory":   strProp("Optional directory to run in, relative to the project root."),
+		"timeout":     numProp("Optional timeout in seconds (default 30, maximum 1800). Raise it for builds, installs, and long test runs."),
 	}, "command"),
 	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
 			Command     string `json:"command"`
 			Description string `json:"description"`
 			Directory   string `json:"directory"`
+			Timeout     int    `json:"timeout"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
@@ -35,11 +37,13 @@ var shellCommandTool = Tool{
 			if !filepath.IsAbs(dir) {
 				dir = filepath.Join(ctx.RootDir, dir)
 			}
-			if v := EnsureAbsoluteWithinRoots(dir, ctx.Roots()); v != "" {
+			resolved, v := ResolveWithinRoots(dir, ctx.Roots())
+			if v != "" {
 				return fail("Invalid directory", v)
 			}
+			dir = resolved
 		}
-		res := execCommand(ctx.Context(), a.Command, dir, 0)
+		res := execCommand(ctx.Context(), a.Command, dir, commandTimeout(a.Timeout))
 		llm := res.stdout
 		if res.stderr != "" {
 			llm += "\nSTDERR:\n" + res.stderr
@@ -51,7 +55,7 @@ var shellCommandTool = Tool{
 				display += ": " + res.errMsg
 			}
 		}
-		return types.ToolResult{Display: display, LLMResult: llm}
+		return types.ToolResult{Display: display, LLMResult: llm, Failed: !res.success}
 	},
 }
 
@@ -61,10 +65,12 @@ var runTestsTool = Tool{
 	Mutating:    true,
 	Schema: obj(map[string]any{
 		"command": strProp("Optional command to run tests."),
+		"timeout": numProp("Optional timeout in seconds (default 30, maximum 1800)."),
 	}),
 	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
 			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
 		}
 		_ = json.Unmarshal(args, &a)
 		command := a.Command
@@ -74,12 +80,12 @@ var runTestsTool = Tool{
 		if command == "" {
 			return fail("No test command found", "No test command found. Provide a command explicitly.")
 		}
-		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), command, ctx.RootDir, commandTimeout(a.Timeout))
 		display := "Tests completed successfully"
 		if !res.success {
 			display = "Tests failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 
@@ -89,10 +95,12 @@ var lintFixTool = Tool{
 	Mutating:    true,
 	Schema: obj(map[string]any{
 		"command": strProp("Optional command to run lint/format."),
+		"timeout": numProp("Optional timeout in seconds (default 30, maximum 1800)."),
 	}),
 	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
 			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
 		}
 		_ = json.Unmarshal(args, &a)
 		command := a.Command
@@ -102,12 +110,12 @@ var lintFixTool = Tool{
 		if command == "" {
 			return fail("No lint/format command found", "No lint/format command found. Provide a command explicitly.")
 		}
-		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
+		res := execCommand(ctx.Context(), command, ctx.RootDir, commandTimeout(a.Timeout))
 		display := "Lint/format completed successfully"
 		if !res.success {
 			display = "Lint/format failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 
@@ -125,17 +133,18 @@ var formatFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if v := EnsureAbsoluteWithinRoots(a.AbsolutePath, ctx.Roots()); v != "" {
+		resolved, v := ResolveWritePath(a.AbsolutePath, ctx)
+		if v != "" {
 			return fail("Invalid path", v)
 		}
-		rel := toRelative(a.AbsolutePath, ctx.RootDir)
-		command := formatFileCommand(rel)
-		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
+		rel := toRelative(resolved, ctx.RootDir)
+		argv := formatFileArgv(rel)
+		res := execArgv(ctx.Context(), ctx.RootDir, 0, argv[0], argv[1:]...)
 		display := "File formatted"
 		if !res.success {
 			display = "Formatting failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 

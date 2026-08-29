@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -29,6 +30,10 @@ type rootFlags struct {
 	continueSess   bool
 	resumeID       string
 	effort         string
+	print          bool
+	printJSON      bool
+	verbose        bool
+	mode           string
 }
 
 // Execute runs the root command.
@@ -42,7 +47,11 @@ func Execute() {
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if flags.print || flags.printJSON {
+				return runPrint(flags, args)
+			}
 			return runInteractive(flags)
 		},
 	}
@@ -54,6 +63,10 @@ func Execute() {
 	root.Flags().BoolVar(&flags.continueSess, "continue", false, "Resume the most recent session for this directory")
 	root.Flags().StringVar(&flags.resumeID, "resume", "", "Resume a specific session by id")
 	root.Flags().StringVar(&flags.effort, "effort", "", "Reasoning effort: minimal, low, medium, high, or xhigh")
+	root.Flags().BoolVarP(&flags.print, "print", "p", false, "Run one turn without the TUI and print the result")
+	root.Flags().BoolVar(&flags.printJSON, "json", false, "Like --print, but emit a JSON object")
+	root.Flags().BoolVarP(&flags.verbose, "verbose", "v", false, "With --print, report tool activity on stderr")
+	root.Flags().StringVar(&flags.mode, "mode", "", "Starting mode: plan, agent, or ask")
 
 	root.SetVersionTemplate("cool-code v{{.Version}}\n")
 	root.AddCommand(configCmd(), scanCmd(), skillCmd(), taskCmd())
@@ -102,12 +115,25 @@ func runInteractive(flags rootFlags) error {
 	if !proc.Connected() {
 		banner += "\n  No API key configured - run /connect to link a provider."
 	}
+	// A repository cannot be allowed to set these, but discarding them in
+	// silence misleads whoever wrote the file into thinking they took effect.
+	if ignored := config.IgnoredProjectKeys(rootDir); len(ignored) > 0 {
+		banner += "\n  Ignored global-only keys in .coolcode.json: " + strings.Join(ignored, ", ") +
+			"\n  Set them with `cool-code config set <key> <value>` to apply them."
+	}
 
 	sessionID := session.NewID()
 	var restoreFrom *session.Data
 	switch {
 	case flags.resumeID != "":
 		restoreFrom = session.Load(flags.resumeID)
+		// A session carries the extra roots granted by /add-dir, and those are
+		// replayed below. Resuming one recorded in a different directory would
+		// re-grant them here, where the user never approved them.
+		if restoreFrom != nil && !sameDir(restoreFrom.Cwd, rootDir) {
+			banner += "\n  Session " + flags.resumeID + " belongs to " + restoreFrom.Cwd + "; not resuming here."
+			restoreFrom = nil
+		}
 	case flags.continueSess:
 		restoreFrom = session.Latest(rootDir)
 	}
@@ -150,7 +176,15 @@ func loadEnv() {
 	}
 	for name, value := range values {
 		upper := strings.ToUpper(name)
-		if upper != "COOLCODE_API_KEY" && !strings.HasSuffix(upper, "_API_KEY") {
+		if !strings.HasSuffix(upper, "_API_KEY") {
+			continue
+		}
+		// COOLCODE_API_KEY is consulted ahead of the stored /connect
+		// credential and needs no global setting to take effect, so honouring
+		// it from a repository file would let a cloned project substitute the
+		// key every request is billed and logged against. A named *_API_KEY is
+		// inert unless the user's own global llm.apiKeyEnv points at it.
+		if upper == "COOLCODE_API_KEY" {
 			continue
 		}
 		if _, exists := os.LookupEnv(name); !exists {
@@ -177,4 +211,21 @@ func asMissingKey(err error, target **llm.MissingKeyError) bool {
 		return true
 	}
 	return false
+}
+
+// sameDir reports whether two directory paths refer to the same place, after
+// resolving symlinks so /tmp and /private/tmp compare equal.
+func sameDir(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return ra == rb
 }

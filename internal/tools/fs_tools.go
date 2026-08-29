@@ -32,15 +32,16 @@ var readFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if reason := ValidateReadPath(a.AbsolutePath, ctx); reason != "" {
+		resolved, reason := ResolveReadPath(a.AbsolutePath, ctx)
+		if reason != "" {
 			return fail("Blocked by guardrails", reason)
 		}
-		if v := validateFileForReading(a.AbsolutePath); v != "" {
+		if v := validateFileForReading(resolved); v != "" {
 			return fail("Read failed", v)
 		}
-		rel := toRelative(a.AbsolutePath, ctx.RootDir)
+		rel := toRelative(resolved, ctx.RootDir)
 		if a.StartLine == nil && a.EndLine == nil {
-			content, err := os.ReadFile(a.AbsolutePath)
+			content, err := os.ReadFile(resolved)
 			if err != nil {
 				return fail("Read failed", err.Error())
 			}
@@ -55,7 +56,7 @@ var readFileTool = Tool{
 		if *a.EndLine < *a.StartLine {
 			return fail("Invalid arguments", "endLine must be greater than or equal to startLine.")
 		}
-		f, err := os.Open(a.AbsolutePath)
+		f, err := os.Open(resolved)
 		if err != nil {
 			return fail("Read failed", err.Error())
 		}
@@ -120,10 +121,11 @@ var editFileTool = Tool{
 		if a.ExpectedReplacements != nil && *a.ExpectedReplacements > 0 {
 			expected = *a.ExpectedReplacements
 		}
-		if v := EnsureAbsoluteWithinRoots(a.FilePath, ctx.Roots()); v != "" {
+		resolved, v := ResolveWritePath(a.FilePath, ctx)
+		if v != "" {
 			return fail("Edit blocked", v)
 		}
-		info, err := os.Stat(a.FilePath)
+		info, err := os.Stat(resolved)
 		if err != nil {
 			return fail("Edit failed", "File does not exist: "+a.FilePath)
 		}
@@ -133,7 +135,7 @@ var editFileTool = Tool{
 		if a.OldString == "" {
 			return fail("Invalid arguments", "oldString cannot be empty.")
 		}
-		raw, err := os.ReadFile(a.FilePath)
+		raw, err := os.ReadFile(resolved)
 		if err != nil {
 			return fail("Edit failed", err.Error())
 		}
@@ -156,12 +158,16 @@ var editFileTool = Tool{
 		}
 		b.WriteString(content[idx:])
 		newContent := b.String()
-		if err := os.WriteFile(a.FilePath, []byte(newContent), info.Mode().Perm()); err != nil {
+		if err := os.WriteFile(resolved, []byte(newContent), info.Mode().Perm()); err != nil {
 			return fail("Edit failed", err.Error())
 		}
+		// Report what changed rather than echoing the file back. Returning the
+		// whole file turned every edit into a full disclosure of it, and it is
+		// the model's own replacement text, so it carries no new information.
 		return types.ToolResult{
-			Display:   "Edited " + filepath.Base(a.FilePath),
-			LLMResult: newContent,
+			Display: "Edited " + filepath.Base(resolved),
+			LLMResult: "Replaced " + itoa(count) + " occurrence(s) in " +
+				toRelative(resolved, ctx.RootDir) + ".",
 		}
 	},
 }
@@ -182,16 +188,17 @@ var newFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if v := EnsureAbsoluteWithinRoots(a.FilePath, ctx.Roots()); v != "" {
+		resolved, v := ResolveWritePath(a.FilePath, ctx)
+		if v != "" {
 			return fail("Invalid path", v)
 		}
-		if err := os.MkdirAll(filepath.Dir(a.FilePath), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
 			return fail("Error creating file "+a.FilePath, err.Error())
 		}
-		if err := os.WriteFile(a.FilePath, []byte(a.Content), 0o644); err != nil {
+		if err := os.WriteFile(resolved, []byte(a.Content), 0o644); err != nil {
 			return fail("Error creating file "+a.FilePath, err.Error())
 		}
-		msg := "File " + a.FilePath + " created successfully"
+		msg := "File " + toRelative(resolved, ctx.RootDir) + " created successfully"
 		return types.ToolResult{Display: msg, LLMResult: msg}
 	},
 }
@@ -214,22 +221,24 @@ var renameFileTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if v := EnsureAbsoluteWithinRoots(a.FromPath, ctx.Roots()); v != "" {
+		fromResolved, v := ResolveWritePath(a.FromPath, ctx)
+		if v != "" {
 			return fail("Invalid path", v)
 		}
-		if v := EnsureAbsoluteWithinRoots(a.ToPath, ctx.Roots()); v != "" {
+		toResolved, v := ResolveWritePath(a.ToPath, ctx)
+		if v != "" {
 			return fail("Invalid path", v)
 		}
-		if _, err := os.Stat(a.FromPath); err != nil {
+		if _, err := os.Stat(fromResolved); err != nil {
 			return fail("Rename failed", "Source file does not exist: "+a.FromPath)
 		}
-		if _, err := os.Stat(a.ToPath); err == nil && !a.Overwrite {
+		if _, err := os.Stat(toResolved); err == nil && !a.Overwrite {
 			return fail("Rename failed", "Target already exists: "+a.ToPath)
 		}
-		if err := os.MkdirAll(filepath.Dir(a.ToPath), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(toResolved), 0o755); err != nil {
 			return fail("Rename failed", err.Error())
 		}
-		if err := os.Rename(a.FromPath, a.ToPath); err != nil {
+		if err := os.Rename(fromResolved, toResolved); err != nil {
 			return fail("Rename failed", err.Error())
 		}
 		return types.ToolResult{Display: "File renamed", LLMResult: "Renamed " + a.FromPath + " to " + a.ToPath}
@@ -343,7 +352,13 @@ var replaceInFilesTool = Tool{
 		var results []fileResult
 		total := 0
 		for _, f := range files {
-			if EnsureAbsoluteWithinRoots(f, ctx.Roots()) != "" || BlockedPath(f, ctx.Config) != "" {
+			resolved, reason := ResolveWritePath(f, ctx)
+			if reason != "" || BlockedPath(f, ctx.Config) != "" {
+				continue
+			}
+			f = resolved
+			info, err := os.Stat(f)
+			if err != nil {
 				continue
 			}
 			raw, err := os.ReadFile(f)
@@ -368,7 +383,9 @@ var replaceInFilesTool = Tool{
 				total += count
 				results = append(results, fileResult{toRelative(f, ctx.RootDir), count})
 				if !dryRun {
-					_ = os.WriteFile(f, []byte(replaced), 0o644)
+					// Keep the original mode: rewriting a 0600 file at 0644
+					// would make it world readable.
+					_ = os.WriteFile(f, []byte(replaced), info.Mode().Perm())
 				}
 			}
 		}
@@ -417,7 +434,7 @@ var newModuleTool = Tool{
 			baseDir = "src"
 		}
 		moduleDir := filepath.Join(ctx.RootDir, baseDir, a.ModuleName)
-		if v := EnsureAbsoluteWithinRoots(moduleDir, ctx.Roots()); v != "" {
+		if _, v := ResolveWritePath(moduleDir, ctx); v != "" {
 			return fail("Invalid path", v)
 		}
 		if err := os.MkdirAll(moduleDir, 0o755); err != nil {

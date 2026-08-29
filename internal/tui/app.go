@@ -16,6 +16,7 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/agent"
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
@@ -25,7 +26,12 @@ import (
 type statusMsg string
 type assistantMsg string
 type deltaMsg string
-type toolMsg struct{ name, display string }
+type discardStreamMsg struct{}
+type compactedMsg struct{ summary string }
+type toolMsg struct {
+	name, display string
+	failed        bool
+}
 type tasksMsg struct{ list *types.TaskList }
 type subagentsMsg struct{ lines []string }
 type doneMsg struct {
@@ -41,10 +47,14 @@ type confirmReqMsg struct {
 // the running tea.Program.
 type bridge struct{ prog *tea.Program }
 
-func (b *bridge) Status(t string)            { b.prog.Send(statusMsg(t)) }
-func (b *bridge) AssistantDelta(t string)    { b.prog.Send(deltaMsg(t)) }
-func (b *bridge) Assistant(md string)        { b.prog.Send(assistantMsg(md)) }
-func (b *bridge) Tool(name, display string)  { b.prog.Send(toolMsg{name, display}) }
+func (b *bridge) Status(t string)         { b.prog.Send(statusMsg(t)) }
+func (b *bridge) AssistantDelta(t string) { b.prog.Send(deltaMsg(t)) }
+func (b *bridge) Assistant(md string)     { b.prog.Send(assistantMsg(md)) }
+func (b *bridge) AssistantDiscard()       { b.prog.Send(discardStreamMsg{}) }
+func (b *bridge) Compacted(note string)   { b.prog.Send(compactedMsg{note}) }
+func (b *bridge) Tool(name, display string, failed bool) {
+	b.prog.Send(toolMsg{name, display, failed})
+}
 func (b *bridge) Tasks(list *types.TaskList) { b.prog.Send(tasksMsg{list}) }
 func (b *bridge) Subagents(lines []string)   { b.prog.Send(subagentsMsg{lines}) }
 
@@ -72,21 +82,24 @@ type model struct {
 	sessionID string
 
 	width, height int
+	layout        layout
 	vp            viewport.Model
 	ti            textarea.Model
 	sp            spinner.Model
 	ready         bool
 
-	history    []entry
-	streamIdx  int // index of the in-progress streaming entry, -1 when none
-	inputHist  []string
-	histIdx    int
-	processing bool
-	status     string
-	mode       types.AgentMode
-	tasks      *types.TaskList
-	subagents  []string
-	cancelTurn context.CancelFunc
+	history     []entry
+	prefix      string // cached rendering of every entry but the last
+	prefixCount int
+	streamIdx   int // index of the in-progress streaming entry, -1 when none
+	inputHist   []string
+	histIdx     int
+	processing  bool
+	status      string
+	mode        types.AgentMode
+	tasks       *types.TaskList
+	subagents   []string
+	cancelTurn  context.CancelFunc
 
 	suggestions []slashCommand
 	suggestIdx  int
@@ -179,7 +192,9 @@ const (
 	entryAssistant
 	entryPlan
 	entryTool
+	entryToolFailed
 	entrySystem
+	entryError
 	entryStream // assistant text still streaming: plain wrap, no markdown
 )
 
@@ -190,6 +205,9 @@ type entry struct {
 }
 
 func (m *model) contentWidth() int {
+	if m.layout.transcriptWidth > 0 {
+		return m.layout.contentWidth()
+	}
 	if m.width < 10 {
 		return 80
 	}
@@ -197,22 +215,44 @@ func (m *model) contentWidth() int {
 }
 
 func (m *model) renderEntry(e entry) string {
+	// entryRaw is the banner, which this program styles itself. Every other
+	// kind carries text from a model, a tool or a repository, so its escape
+	// sequences are stripped before it can reach the terminal.
+	raw := e.raw
+	if e.kind != entryRaw {
+		raw = security.SanitizeTerminal(raw)
+	}
 	switch e.kind {
 	case entryUser:
-		return userPrefix.Render("› ") + userText.Render(e.raw)
+		// Wrap, and indent the continuation under the sigil. A long single
+		// line of user input used to run past the terminal width unwrapped.
+		wrapped := ansi.Wordwrap(raw, maxInt(10, m.contentWidth()-2), " /")
+		lines := strings.Split(wrapped, "\n")
+		for i, line := range lines {
+			if i == 0 {
+				lines[i] = userPrefix.Render("› ") + userText.Render(line)
+				continue
+			}
+			lines[i] = "  " + userText.Render(line)
+		}
+		return strings.Join(lines, "\n")
 	case entryAssistant:
-		return renderMarkdown(e.raw, m.contentWidth())
+		return renderMarkdown(raw, m.contentWidth())
 	case entryPlan:
-		body := planCard.Render(renderMarkdown(e.raw, maxInt(20, m.contentWidth()-3)))
+		body := planCard.Render(renderMarkdown(raw, maxInt(20, m.contentWidth()-3)))
 		return planTitle.Render("◆ PLAN READY") + "\n" + body
 	case entryTool:
-		return toolGlyph.Render("  ├─ ") + toolStyle.Render(e.raw)
+		return toolGlyph.Render("  ├─ ") + toolStyle.Render(raw)
+	case entryToolFailed:
+		return errorGlyph.Render("  ✗  ") + toolFailure.Render(raw)
 	case entrySystem:
-		return systemStyle.Render(e.raw)
+		return systemStyle.Render(raw)
+	case entryError:
+		return errorGlyph.Render("⚠ ") + errorStyle.Render(raw)
 	case entryStream:
-		return ansi.Wordwrap(e.raw, m.contentWidth(), " /")
+		return ansi.Wordwrap(raw, m.contentWidth(), " /")
 	default:
-		return e.raw
+		return raw
 	}
 }
 
@@ -228,6 +268,19 @@ func (m *model) appendDelta(delta string) {
 	e := &m.history[m.streamIdx]
 	e.raw += delta
 	e.rendered = m.renderEntry(*e)
+	m.syncViewport()
+}
+
+// discardStream removes the in-progress streaming entry. Text streamed before
+// a tool call is the model reasoning aloud; the tool lines that follow are the
+// record of what actually happened.
+func (m *model) discardStream() {
+	if m.streamIdx < 0 {
+		return
+	}
+	m.history = append(m.history[:m.streamIdx], m.history[m.streamIdx+1:]...)
+	m.streamIdx = -1
+	m.invalidatePrefix()
 	m.syncViewport()
 }
 
@@ -247,6 +300,7 @@ func (m *model) appendEntry(kind entryKind, raw string) {
 	e := entry{kind: kind, raw: raw}
 	e.rendered = m.renderEntry(e)
 	m.history = append(m.history, e)
+	m.extendPrefix()
 	m.syncViewport()
 }
 
@@ -255,6 +309,17 @@ func (m *model) appendUser(text string)    { m.appendEntry(entryUser, text) }
 func (m *model) appendAssistant(md string) { m.appendEntry(entryAssistant, md) }
 func (m *model) appendTool(display string) { m.appendEntry(entryTool, display) }
 func (m *model) appendSystem(text string)  { m.appendEntry(entrySystem, text) }
+func (m *model) appendError(text string)   { m.appendEntry(entryError, text) }
+
+// appendToolResult draws a failed call differently from a successful one.
+// Both used to render as the same muted branch line.
+func (m *model) appendToolResult(display string, failed bool) {
+	if failed {
+		m.appendEntry(entryToolFailed, display)
+		return
+	}
+	m.appendEntry(entryTool, display)
+}
 
 // rerenderHistory refreshes every entry's rendering, e.g. after a resize.
 func (m *model) rerenderHistory() {
@@ -263,6 +328,7 @@ func (m *model) rerenderHistory() {
 			m.history[i].rendered = m.renderEntry(m.history[i])
 		}
 	}
+	m.invalidatePrefix()
 }
 
 // repopulateTranscript rebuilds the visible transcript from the processor's
@@ -297,31 +363,66 @@ func (m *model) promoteLastPlan(final string) {
 		}
 		entry.kind = entryPlan
 		entry.rendered = m.renderEntry(*entry)
+		m.invalidatePrefix()
 		m.syncViewport()
 		return
 	}
 }
 
+// syncViewport rebuilds the transcript. The joined prefix of every entry
+// before the last is cached, because appendDelta calls this once per streamed
+// token and rebuilding the whole history each time is O(history) per token.
 func (m *model) syncViewport() {
 	if !m.ready {
 		return
 	}
 	atBottom := m.vp.AtBottom()
+
+	if m.prefixCount > len(m.history)-1 {
+		// History shrank or was rewritten; drop the cache.
+		m.prefixCount = 0
+		m.prefix = ""
+	}
 	var b strings.Builder
-	for i, e := range m.history {
+	b.WriteString(m.prefix)
+	for i := m.prefixCount; i < len(m.history); i++ {
 		if i > 0 {
-			if e.kind == entryTool && m.history[i-1].kind == entryTool {
-				b.WriteString("\n")
-			} else {
-				b.WriteString("\n\n")
-			}
+			b.WriteString(entrySeparator(m.history[i].kind, m.history[i-1].kind))
 		}
-		b.WriteString(e.rendered)
+		b.WriteString(m.history[i].rendered)
 	}
 	m.vp.SetContent(b.String())
 	if atBottom {
 		m.vp.GotoBottom()
 	}
+}
+
+// extendPrefix folds every entry but the last into the cached prefix. Only
+// the last entry can still change, since that is the one being streamed into.
+func (m *model) extendPrefix() {
+	var b strings.Builder
+	b.WriteString(m.prefix)
+	for i := m.prefixCount; i < len(m.history)-1; i++ {
+		if i > 0 {
+			b.WriteString(entrySeparator(m.history[i].kind, m.history[i-1].kind))
+		}
+		b.WriteString(m.history[i].rendered)
+	}
+	m.prefix = b.String()
+	m.prefixCount = maxInt(0, len(m.history)-1)
+}
+
+// invalidatePrefix forces a full rebuild, for anything that rewrites history.
+func (m *model) invalidatePrefix() {
+	m.prefix = ""
+	m.prefixCount = 0
+}
+
+func entrySeparator(kind, prev entryKind) string {
+	if isToolEntry(kind) && isToolEntry(prev) {
+		return "\n"
+	}
+	return "\n\n"
 }
 
 func (m *model) persist() {
@@ -341,4 +442,10 @@ func (m *model) persist() {
 		ExtraDirs:    m.proc.ExtraDirs(),
 		MessageCount: count,
 	})
+}
+
+// isToolEntry reports whether a kind is one of the compact tool lines, which
+// are joined by a single newline rather than a blank line.
+func isToolEntry(k entryKind) bool {
+	return k == entryTool || k == entryToolFailed
 }

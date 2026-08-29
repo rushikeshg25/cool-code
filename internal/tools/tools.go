@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/project"
@@ -77,7 +79,33 @@ func arrProp(desc string) map[string]any {
 }
 
 func fail(display, msg string) types.ToolResult {
-	return types.ToolResult{Display: display, LLMResult: msg}
+	return types.ToolResult{Display: display, LLMResult: msg, Failed: true}
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// truncateRunes shortens s to at most n bytes without splitting a rune.
+func truncateRunes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+const (
+	beginUntrusted = "--- BEGIN UNTRUSTED CONTENT"
+	endUntrusted   = "--- END UNTRUSTED CONTENT"
+)
+
+// Untrusted wraps text fetched from the network in the markers the system
+// prompt describes, so the model treats it as data rather than as direction.
+// Forged markers inside the body are defanged so the wrapper cannot be closed
+// early.
+func Untrusted(label, body string) string {
+	body = strings.ReplaceAll(body, endUntrusted, "[END UNTRUSTED CONTENT]")
+	body = strings.ReplaceAll(body, beginUntrusted, "[BEGIN UNTRUSTED CONTENT]")
+	return beginUntrusted + " (" + label + ") ---\n" + body + "\n" + endUntrusted + " ---"
+}

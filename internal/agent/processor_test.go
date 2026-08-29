@@ -41,14 +41,31 @@ type captureReporter struct {
 	mu            sync.Mutex
 	tools         []string
 	texts         []string
+	deltas        []string
+	discards      int
+	compactions   []string
 	tasks         *types.TaskList
 	subagentLines []string
 }
 
-func (c *captureReporter) Status(string)         {}
-func (c *captureReporter) AssistantDelta(string) {}
-func (c *captureReporter) Assistant(md string)   { c.texts = append(c.texts, md) }
-func (c *captureReporter) Tool(name, _ string) {
+func (c *captureReporter) Status(string) {}
+func (c *captureReporter) AssistantDelta(t string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.deltas = append(c.deltas, t)
+}
+func (c *captureReporter) Compacted(note string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.compactions = append(c.compactions, note)
+}
+func (c *captureReporter) AssistantDiscard() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.discards++
+}
+func (c *captureReporter) Assistant(md string) { c.texts = append(c.texts, md) }
+func (c *captureReporter) Tool(name, _ string, _ bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.tools = append(c.tools, name)

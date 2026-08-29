@@ -23,9 +23,23 @@ type shellResult struct {
 // execCommand runs a shell command via `bash -c` in dir (or root) with a
 // timeout, capturing stdout/stderr. The parent context cancels the command
 // early when the turn is aborted.
+//
+// The command string is interpreted by bash, so this may only be used for
+// commands the user has confirmed. Anything assembled from model- or
+// repository-controlled values must go through execArgv instead.
 func execCommand(parent context.Context, command, dir string, timeout time.Duration) shellResult {
-	if timeout == 0 {
-		timeout = 30 * time.Second
+	return runCommand(parent, dir, timeout, "bash", "-c", command)
+}
+
+// execArgv runs a program directly, with no shell in between, so caller
+// supplied arguments can never be reinterpreted as shell syntax.
+func execArgv(parent context.Context, dir string, timeout time.Duration, name string, args ...string) shellResult {
+	return runCommand(parent, dir, timeout, name, args...)
+}
+
+func runCommand(parent context.Context, dir string, timeout time.Duration, name string, args ...string) shellResult {
+	if timeout <= 0 {
+		timeout = defaultCommandTimeout
 	}
 	if parent == nil {
 		parent = context.Background()
@@ -33,7 +47,7 @@ func execCommand(parent context.Context, command, dir string, timeout time.Durat
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = safeCommandEnv()
 	if dir != "" {
 		cmd.Dir, _ = filepath.Abs(dir)
@@ -101,4 +115,26 @@ func (r shellResult) combined() string {
 		out += "\nSTDERR:\n" + r.stderr
 	}
 	return out
+}
+
+// Command timeouts. The default stays short so a hung command does not stall a
+// turn, but it used to be the only option: shell_command always passed 0, so
+// 30 seconds was a hard ceiling and builds, installs and long test runs were
+// simply impossible.
+const (
+	defaultCommandTimeout = 30 * time.Second
+	maxCommandTimeout     = 30 * time.Minute
+)
+
+// commandTimeout converts a caller-supplied number of seconds into a bounded
+// duration. Zero or less selects the default.
+func commandTimeout(seconds int) time.Duration {
+	if seconds <= 0 {
+		return defaultCommandTimeout
+	}
+	d := time.Duration(seconds) * time.Second
+	if d > maxCommandTimeout {
+		return maxCommandTimeout
+	}
+	return d
 }

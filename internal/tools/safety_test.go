@@ -2,7 +2,9 @@ package tools
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
@@ -103,6 +105,118 @@ func TestToPascalCase(t *testing.T) {
 	for in, want := range cases {
 		if got := toPascalCase(in); got != want {
 			t.Errorf("toPascalCase(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestCanonicalPathAppliesDotDotAfterSymlink covers the jail escape that
+// filepath.Clean used to allow. Clean collapses "link/.." lexically before any
+// link is followed, so the validator saw <root>/credentials while the kernel
+// opened <target dir>/credentials.
+func TestCanonicalPathAppliesDotDotAfterSymlink(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "proj")
+	secrets := filepath.Join(base, "secrets")
+	if err := os.MkdirAll(filepath.Join(secrets, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(secrets, "credentials")
+	if err := os.WriteFile(secret, []byte("AWS_SECRET_ACCESS_KEY=hunter2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(secrets, "sub"), filepath.Join(root, "vendor")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The raw, uncleaned path a model would supply.
+	escape := root + "/vendor/../credentials"
+
+	resolvedSecret, err := canonicalPath(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := canonicalPath(escape)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != resolvedSecret {
+		t.Fatalf("canonicalPath(%q) = %q, want %q", escape, got, resolvedSecret)
+	}
+	if reason := EnsureAbsoluteWithinRoots(escape, []string{root}); reason == "" {
+		t.Fatal("path escaping the root via a symlink was allowed")
+	}
+}
+
+// TestCanonicalPathStopsAtSymlinkCycles keeps a link loop from spinning.
+func TestCanonicalPathStopsAtSymlinkCycles(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a")
+	b := filepath.Join(dir, "b")
+	if err := os.Symlink(b, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(a, b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := canonicalPath(filepath.Join(a, "x")); err == nil {
+		t.Fatal("expected an error for a symlink cycle")
+	}
+}
+
+// TestProtectedWritePathsAreRefused keeps tools out of .git, where a written
+// config or hook becomes code execution on the next git command.
+func TestProtectedWritePathsAreRefused(t *testing.T) {
+	root := t.TempDir()
+	ctx := Context{RootDir: root, Config: config.Default()}
+	for _, rel := range []string{
+		".git/config",
+		".git/hooks/pre-commit",
+		".coolcode/skills/x/SKILL.md",
+		".coolcode.json",
+	} {
+		if _, reason := ResolveWritePath(filepath.Join(root, rel), ctx); reason == "" {
+			t.Errorf("write to %s was allowed", rel)
+		}
+	}
+	// An ordinary file in the workspace still resolves.
+	if _, reason := ResolveWritePath(filepath.Join(root, "main.go"), ctx); reason != "" {
+		t.Errorf("ordinary write refused: %s", reason)
+	}
+	// A name that merely contains ".git" is not a protected component.
+	if _, reason := ResolveWritePath(filepath.Join(root, ".gitignore"), ctx); reason != "" {
+		t.Errorf(".gitignore write refused: %s", reason)
+	}
+}
+
+// TestGuardrailedFilesAreNotWritable covers the edit_file bypass. edit_file
+// checked containment but not the read guardrails, and returned the whole
+// post-edit file, so replacing "=" with "=" in .env disclosed all of it.
+func TestGuardrailedFilesAreNotWritable(t *testing.T) {
+	root := t.TempDir()
+	ctx := Context{RootDir: root, Config: config.Default()}
+	env := filepath.Join(root, ".env")
+	if err := os.WriteFile(env, []byte("SENTRY_DSN=https://abc@sentry.io/1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, reason := ResolveWritePath(env, ctx); reason == "" {
+		t.Fatal("write to a guardrailed file was allowed")
+	}
+	if _, reason := ResolveReadPath(env, ctx); reason == "" {
+		t.Fatal("read of a guardrailed file was allowed")
+	}
+}
+
+// TestGitExcludePathspecsCoverGuardrails keeps a bare git diff from printing
+// the contents of blocked files.
+func TestGitExcludePathspecsCoverGuardrails(t *testing.T) {
+	specs := GitExcludePathspecs(config.Default())
+	joined := strings.Join(specs, " ")
+	for _, want := range []string{":(exclude,glob).env", ":(exclude,glob)**/.env", ":(exclude,glob)**/*.pem"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing pathspec %q in %v", want, specs)
 		}
 	}
 }

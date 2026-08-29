@@ -87,7 +87,10 @@ var webFetchTool = Tool{
 		if text == "" {
 			text = "(empty response)"
 		}
-		return types.ToolResult{Display: "Fetched " + u.Hostname(), LLMResult: text}
+		return types.ToolResult{
+			Display:   "Fetched " + u.Hostname(),
+			LLMResult: Untrusted("web page "+u.Hostname(), text),
+		}
 	},
 }
 
@@ -166,7 +169,7 @@ var webSearchTool = Tool{
 		}
 		return types.ToolResult{
 			Display:   "Found " + itoa(len(results)) + " result(s)",
-			LLMResult: strings.TrimRight(b.String(), "\n"),
+			LLMResult: Untrusted("web search results", strings.TrimRight(b.String(), "\n")),
 		}
 	},
 }

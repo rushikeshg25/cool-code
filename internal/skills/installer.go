@@ -1,12 +1,14 @@
 package skills
 
 import (
+	"context"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // InstallResult reports the outcome of an install.
@@ -41,11 +43,15 @@ func collectSkillDirs(root string) []string {
 	seen := map[string]bool{}
 	var out []string
 	check := func(dir string) {
-		if _, err := os.Stat(filepath.Join(dir, skillFile)); err == nil {
-			if !seen[dir] {
-				seen[dir] = true
-				out = append(out, dir)
-			}
+		// Lstat, not Stat: a symlinked SKILL.md must not be accepted as one,
+		// matching the check the skills loader applies at discovery time.
+		info, err := os.Lstat(filepath.Join(dir, skillFile))
+		if err != nil || !info.Mode().IsRegular() {
+			return
+		}
+		if !seen[dir] {
+			seen[dir] = true
+			out = append(out, dir)
 		}
 	}
 	check(root)
@@ -102,8 +108,18 @@ func Install(source string, global bool, rootDir string) InstallResult {
 		if err != nil {
 			return InstallResult{Dest: destBase, Error: err.Error()}
 		}
-		cmd := exec.Command("git", "clone", "--depth", "1", source, tempDir)
+		ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
+		defer cancel()
+		// "--" keeps a source like "--upload-pack=x.git" from being read as an
+		// option, and the environment is trimmed so the clone cannot reach the
+		// user's API keys, GITHUB_TOKEN, SSH agent or proxy settings. Every
+		// other subprocess this program starts is already restricted this way.
+		cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "--", source, tempDir)
+		cmd.Env = cloneEnv()
 		if out, err := cmd.CombinedOutput(); err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				return InstallResult{Dest: destBase, Error: "git clone timed out"}
+			}
 			return InstallResult{Dest: destBase, Error: "git clone failed: " + strings.TrimSpace(string(out))}
 		}
 		for _, dir := range collectSkillDirs(tempDir) {
@@ -178,6 +194,17 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		// filepath.Walk lstats, so a symlink arrives here as an entry rather
+		// than as the thing it points at. Copying it would open the target and
+		// write its bytes out as a regular file, which both escapes the source
+		// tree and defeats the symlink checks in the skills loader, since what
+		// lands on disk is no longer a link.
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			return nil
+		}
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
@@ -188,4 +215,26 @@ func copyDir(src, dst string) error {
 		}
 		return copyFile(path, target)
 	})
+}
+
+// cloneTimeout bounds `git clone` so a hostile or unreachable remote cannot
+// hang the install indefinitely.
+const cloneTimeout = 2 * time.Minute
+
+// cloneEnv is the allowlisted environment for `git clone`. It deliberately
+// omits API keys, GITHUB_TOKEN, SSH_AUTH_SOCK and proxy variables.
+func cloneEnv() []string {
+	allowed := map[string]bool{
+		"PATH": true, "HOME": true, "TMPDIR": true, "TMP": true, "TEMP": true,
+		"USER": true, "LOGNAME": true, "LANG": true,
+	}
+	var env []string
+	for _, item := range os.Environ() {
+		name, _, _ := strings.Cut(item, "=")
+		if allowed[name] || strings.HasPrefix(name, "LC_") {
+			env = append(env, item)
+		}
+	}
+	// Never prompt: a clone that needs credentials must fail, not block.
+	return append(env, "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "GCM_INTERACTIVE=never")
 }

@@ -109,7 +109,6 @@ func Catalog(rootDir string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("--- Available Skills ---\n")
 	b.WriteString("Use the 'use_skill' tool with a skill's name to load its full instructions when relevant.\n")
 	for _, s := range skills {
 		b.WriteString("- " + s.Name + ": " + s.Description + "\n")

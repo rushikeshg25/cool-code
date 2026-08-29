@@ -20,6 +20,9 @@ func (m AgentMode) Valid() bool {
 type ToolResult struct {
 	LLMResult string
 	Display   string
+	// Failed marks a call that did not do what it was asked. Without it the
+	// UI drew a failure exactly like a success.
+	Failed bool
 }
 
 // TaskStatus is the state of a single task item.

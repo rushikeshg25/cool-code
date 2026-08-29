@@ -39,6 +39,12 @@ var globTool = Tool{
 			if matchesAny(rel, []string{"**/node_modules/**", "node_modules/**"}) {
 				continue
 			}
+			// glob went straight to doublestar rather than through globFiles,
+			// so "**/.git/**" listed the repository's git directory, whose
+			// config commonly holds a remote URL with an embedded token.
+			if hasDotComponent(rel) {
+				continue
+			}
 			if ctx.GitIgnore != nil && ctx.GitIgnore(rel) {
 				continue
 			}
@@ -179,22 +185,22 @@ var findSymbolTool = Tool{
 				return fail("Search blocked", reason)
 			}
 		}
-		includeFlag := ""
+		rgArgs := []string{"-n", "--hidden", "--glob", "!.git/*", "--glob", "!node_modules/*"}
 		if a.Include != "" {
-			includeFlag = " -g '" + shellEscapeSingleQuotes(a.Include) + "'"
+			rgArgs = append(rgArgs, "-g", a.Include)
 		}
-		excludeFlags := ""
 		for _, pattern := range ctx.Config.Guardrails.BlockReadPatterns {
-			excludeFlags += " -g '!" + shellEscapeSingleQuotes(pattern) + "'"
+			rgArgs = append(rgArgs, "-g", "!"+pattern)
 		}
-		command := "rg -n --hidden --glob '!.git/*' --glob '!node_modules/*'" + includeFlag + excludeFlags +
-			" '" + shellEscapeSingleQuotes(a.Pattern) + "' '" + shellEscapeSingleQuotes(searchPath) + "'"
-		res := execCommand(ctx.Context(), command, ctx.RootDir, 0)
+		// "--" keeps a pattern or path that begins with a dash from being
+		// parsed as an option.
+		rgArgs = append(rgArgs, "--", a.Pattern, searchPath)
+		res := execArgv(ctx.Context(), ctx.RootDir, 0, "rg", rgArgs...)
 		display := "Symbol search results"
 		if !res.success {
 			display = "Symbol search failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined()}
+		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
 	},
 }
 

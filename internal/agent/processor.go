@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,12 +22,14 @@ import (
 // Reporter receives live updates during a turn. All methods may be called from
 // the processor goroutine or, for Subagents, from subagent worker goroutines.
 type Reporter interface {
-	Status(text string)         // spinner / progress text
-	AssistantDelta(text string) // a streamed fragment of the current reply
-	Assistant(markdown string)  // final or intermediate model text
-	Tool(name, display string)  // a tool finished with this display line
-	Tasks(list *types.TaskList) // the task list changed
-	Subagents(lines []string)   // live subagent status lines; nil clears them
+	Status(text string)                     // spinner / progress text
+	AssistantDelta(text string)             // a streamed fragment of the current reply
+	Assistant(markdown string)              // final or intermediate model text
+	Tool(name, display string, failed bool) // a tool finished with this display line
+	AssistantDiscard()                      // drop streamed text that turned out to be scratch
+	Compacted(note string)                  // the conversation was summarized and trimmed
+	Tasks(list *types.TaskList)             // the task list changed
+	Subagents(lines []string)               // live subagent status lines; nil clears them
 }
 
 // Options configure a Processor.
@@ -54,11 +57,12 @@ type Processor struct {
 	allowDangerous bool
 	confirmEdits   bool
 
-	mu        sync.Mutex
-	mode      types.AgentMode
-	taskList  *types.TaskList
-	queue     []string
-	lastUsage llm.Usage
+	mu         sync.Mutex
+	mode       types.AgentMode
+	taskList   *types.TaskList
+	queue      []string
+	lastUsage  llm.Usage
+	totalUsage llm.Usage // cumulative across the session, for cost
 
 	confirm     func(string) bool
 	confirmEdit func(string, string) bool
@@ -164,11 +168,11 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		}
 		var resp llm.Message
 		var err error
+		streamed := false
 		if streamer, ok := p.provider.(llm.Streamer); ok && reporter != nil {
-			// Stage provider text until the response is known to be final. Models
-			// often emit scratch prose before tool calls; streaming it directly
-			// exposes internal work and leaves it below task/plan UI elements.
-			resp, err = streamer.Stream(ctx, req, func(string) {})
+			sink := newStreamSink(reporter)
+			resp, err = streamer.Stream(ctx, req, sink.write)
+			streamed = sink.flush()
 		} else {
 			resp, err = p.provider.Complete(ctx, req)
 		}
@@ -178,6 +182,8 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if resp.Usage.Input > 0 || resp.Usage.Output > 0 {
 			p.mu.Lock()
 			p.lastUsage = resp.Usage
+			p.totalUsage.Input += resp.Usage.Input
+			p.totalUsage.Output += resp.Usage.Output
 			p.mu.Unlock()
 		}
 		p.ctxMgr.addAssistant(redactMessage(resp))
@@ -185,9 +191,19 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if len(resp.ToolCalls) == 0 {
 			finalText = security.Redact(resp.Text)
 			if finalText != "" && reporter != nil {
+				// Replaces the streamed text with its markdown rendering.
 				reporter.Assistant(finalText)
+			} else if streamed && reporter != nil {
+				reporter.AssistantDiscard()
 			}
 			break
+		}
+
+		// The turn continues, so whatever was streamed was the model talking
+		// to itself before deciding on a tool. Drop it: the tool lines that
+		// follow say what actually happened.
+		if streamed && reporter != nil {
+			reporter.AssistantDiscard()
 		}
 
 		toolCtx := p.toolCtx
@@ -318,7 +334,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			results[i].LLMResult = security.Redact(results[i].LLMResult)
 			p.ctxMgr.addToolResult(call, results[i].LLMResult)
 			if executed[i] && reporter != nil {
-				reporter.Tool(call.Name, results[i].Display)
+				reporter.Tool(call.Name, results[i].Display, results[i].Failed)
 			}
 		}
 
@@ -336,7 +352,12 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		}
 	}
 
-	p.summarize(ctx)
+	// Compaction is destructive and used to happen with no signal at all, so
+	// a session silently lost most of its history. Say so when it runs.
+	if note := p.summarize(ctx); note != "" && reporter != nil {
+		reporter.Status("")
+		reporter.Compacted(note)
+	}
 	return finalText, nil
 }
 
@@ -371,24 +392,63 @@ func (p *Processor) handleTaskList(call llm.ToolCall, reporter Reporter) string 
 	return "Task list updated."
 }
 
-func (p *Processor) summarize(ctx context.Context) {
-	count, _ := p.ctxMgr.stats()
-	if count < 20 {
-		return
+// summarize condenses the conversation once it grows past the configured
+// threshold, then trims the history it summarized.
+//
+// The request used to concatenate every message with no budget at all, so on a
+// long conversation the compaction call could itself exceed the context window,
+// and it ran on every turn past the threshold rather than only when the history
+// had grown since the last one.
+func (p *Processor) summarize(ctx context.Context) string {
+	threshold := p.cfg.CompactAfter()
+	if threshold <= 0 {
+		return ""
 	}
+	count, _ := p.ctxMgr.stats()
+	if count < threshold {
+		return ""
+	}
+	return p.compact(ctx, false)
+}
+
+// compact summarizes and trims the conversation. When manual, it runs
+// regardless of the threshold and reports the outcome.
+func (p *Processor) compact(ctx context.Context, manual bool) string {
+	before, _ := p.ctxMgr.stats()
+	if before <= keepRecentMessages {
+		return "Nothing to compact yet."
+	}
+
 	var b strings.Builder
 	b.WriteString("Summarize the key technical objectives and progress in the following conversation in under 200 words. Focus on specific code changes and design decisions. Avoid filler.\n\n")
-	for _, m := range p.ctxMgr.snapshotMessages() {
-		if m.Text != "" {
-			b.WriteString(string(m.Role) + ": " + m.Text + "\n")
-		}
+	if prior := p.ctxMgr.currentSummary(); prior != "" {
+		b.WriteString("Summary of the conversation before this excerpt:\n" + prior + "\n\n")
 	}
+	b.WriteString(p.ctxMgr.transcriptForSummary(summaryInputBudget))
+
 	resp, err := p.provider.Complete(ctx, llm.Request{
 		Messages: []llm.Message{{Role: llm.RoleUser, Text: b.String()}},
 	})
-	if err == nil && resp.Text != "" {
-		p.ctxMgr.applySummary(security.Redact(resp.Text))
+	if err != nil {
+		if manual {
+			return "Compaction failed: " + err.Error()
+		}
+		return ""
 	}
+	if resp.Text == "" {
+		if manual {
+			return "Compaction produced no summary; history left as is."
+		}
+		return ""
+	}
+	p.ctxMgr.applySummary(security.Redact(resp.Text))
+	after, _ := p.ctxMgr.stats()
+	return fmt.Sprintf("Compacted %d messages into a summary; %d kept.", before-after, after)
+}
+
+// Compact runs compaction on demand, for the /compact command.
+func (p *Processor) Compact(ctx context.Context) string {
+	return p.compact(ctx, true)
 }
 
 func redactMessage(message llm.Message) llm.Message {
@@ -413,6 +473,12 @@ type Status struct {
 	TotalTokens int
 	// Estimated is true when TotalTokens is the fallback estimate.
 	Estimated bool
+	// SessionCost is the running spend in US dollars, summed across every
+	// request this session. Zero when the model's rate is not known.
+	SessionCost float64
+	// CostKnown is false for a model with no published rate, including any
+	// custom endpoint, so the UI can stay silent rather than show $0.00.
+	CostKnown bool
 }
 
 // GetStatus returns a footer snapshot.
@@ -420,6 +486,7 @@ func (p *Processor) GetStatus() Status {
 	count, tokens := p.ctxMgr.stats()
 	p.mu.Lock()
 	usage := p.lastUsage
+	total := p.totalUsage
 	p.mu.Unlock()
 	model := p.cfg.LLM.Model + " (not connected)"
 	if p.provider != nil {
@@ -436,6 +503,12 @@ func (p *Processor) GetStatus() Status {
 	if usage.Input > 0 {
 		s.TotalTokens = usage.Input
 		s.Estimated = false
+	}
+	if total.Input > 0 || total.Output > 0 {
+		if cost, ok := llm.Cost(model, total.Input, total.Output); ok {
+			s.SessionCost = cost
+			s.CostKnown = true
+		}
 	}
 	return s
 }
@@ -467,6 +540,12 @@ func (p *Processor) ConfigureLLM(llmCfg config.LLM) error {
 	p.cfg.LLM = llmCfg
 	p.provider = provider
 	return nil
+}
+
+// LLMConfig returns the current provider settings, so callers can adjust one
+// field and hand the whole thing back to ConfigureLLM.
+func (p *Processor) LLMConfig() config.LLM {
+	return p.cfg.LLM
 }
 
 // SetConfirmHandlers wires interactive confirmation callbacks.
@@ -600,4 +679,49 @@ func (p *Processor) Restore(messages []llm.Message, summary string, pinned []str
 	if mode.Valid() {
 		p.SetMode(mode)
 	}
+}
+
+// streamSink turns provider deltas into whole redacted lines.
+//
+// Redaction cannot run on a raw fragment, because a provider splits wherever
+// it likes and a credential can straddle two of them. Buffering to the last
+// newline keeps every emitted line complete, so security.Redact sees the same
+// text it would have seen in a non-streamed response. The cost is that output
+// appears a line at a time rather than a token at a time.
+type streamSink struct {
+	reporter Reporter
+	buf      strings.Builder
+	emitted  bool
+}
+
+func newStreamSink(reporter Reporter) *streamSink {
+	return &streamSink{reporter: reporter}
+}
+
+func (s *streamSink) write(chunk string) {
+	s.buf.WriteString(chunk)
+	text := s.buf.String()
+	cut := strings.LastIndexByte(text, '\n')
+	if cut < 0 {
+		return
+	}
+	complete, rest := text[:cut+1], text[cut+1:]
+	s.buf.Reset()
+	s.buf.WriteString(rest)
+	if out := security.Redact(complete); out != "" {
+		s.emitted = true
+		s.reporter.AssistantDelta(out)
+	}
+}
+
+// flush emits any trailing partial line and reports whether anything was shown.
+func (s *streamSink) flush() bool {
+	if rest := s.buf.String(); rest != "" {
+		s.buf.Reset()
+		if out := security.Redact(rest); out != "" {
+			s.emitted = true
+			s.reporter.AssistantDelta(out)
+		}
+	}
+	return s.emitted
 }
