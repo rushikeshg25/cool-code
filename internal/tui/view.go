@@ -167,7 +167,7 @@ func (m *model) footer() string {
 	if !l.showSidebar && m.tasks != nil && len(m.tasks.Items) > 0 {
 		sections = append(sections, m.renderTasks())
 	}
-	sections = append(sections, m.renderStatusBar(), m.renderInputRegion())
+	sections = append(sections, m.renderStatusBar(l), m.renderInputRegion())
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
@@ -207,7 +207,10 @@ func (m *model) renderTasks() string {
 	return ansi.Truncate(line, maxInt(1, m.width), "…")
 }
 
-func (m *model) renderStatusBar() string {
+// renderStatusBar shows what the header does not. Mode, model and effort live
+// in the header, so repeating them here printed each of them twice; they come
+// back only on a terminal too short for a header.
+func (m *model) renderStatusBar(l layout) string {
 	status := m.proc.GetStatus()
 	project := filepath.Base(m.rootDir)
 	if project == "." || project == string(filepath.Separator) || project == "" {
@@ -218,14 +221,17 @@ func (m *model) renderStatusBar() string {
 	}
 
 	sep := sepStyle.Render("  ·  ")
-	parts := []string{statusValue.Render(project), modeStyle(m.mode).Render(string(m.mode))}
-	if m.width >= 72 {
-		parts = append(parts, statusValue.Render(status.Model))
-		if status.Effort != "" {
-			parts = append(parts, statusBar.Render(status.Effort+" effort"))
+	parts := []string{statusValue.Render(project)}
+	if !l.showHeader {
+		parts = append(parts, modeStyle(m.mode).Render(string(m.mode)))
+		if m.width >= 72 {
+			parts = append(parts, statusValue.Render(status.Model))
+			if status.Effort != "" {
+				parts = append(parts, statusBar.Render(status.Effort+" effort"))
+			}
 		}
 	}
-	if m.width >= 100 {
+	if m.width >= 72 {
 		parts = append(parts, statusBar.Render(fmt.Sprintf("%d msgs", status.MessageCount)))
 	}
 	prefix := ""

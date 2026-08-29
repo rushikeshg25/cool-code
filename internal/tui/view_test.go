@@ -148,7 +148,8 @@ func TestActivityRendersAboveTaskAndStatus(t *testing.T) {
 	footer := ansi.Strip(m.footer())
 	activity := strings.Index(footer, "Thinking")
 	plan := strings.Index(footer, "Plan")
-	status := strings.Index(footer, "agent")
+	// "ctx" belongs to the status bar alone; the mode moved to the header.
+	status := strings.Index(footer, "ctx")
 	if activity < 0 || plan < 0 || status < 0 || !(activity < plan && plan < status) {
 		t.Fatalf("footer order should be activity, plan, status:\n%s", footer)
 	}
@@ -469,5 +470,39 @@ func TestSidebarOnlyAppearsWithContent(t *testing.T) {
 	m = resizeModel(t, m, 120, 40)
 	if !m.layout.showSidebar {
 		t.Error("sidebar hidden despite a running subagent")
+	}
+}
+
+// TestStatusBarDoesNotRepeatTheHeader covers the duplication in v2.3.0, where
+// mode, model and effort were printed in both places at once.
+func TestStatusBarDoesNotRepeatTheHeader(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 40)
+
+	header := ansi.Strip(m.renderHeader(m.layout))
+	status := ansi.Strip(m.renderStatusBar(m.layout))
+
+	for _, field := range []string{"agent", "gemini-2.5-flash"} {
+		if !strings.Contains(header, field) {
+			t.Errorf("header lost %q: %q", field, header)
+		}
+		if strings.Contains(status, field) {
+			t.Errorf("status bar still repeats %q: %q", field, status)
+		}
+	}
+	if !strings.Contains(status, "ctx") || !strings.Contains(status, "msgs") {
+		t.Errorf("status bar lost its own fields: %q", status)
+	}
+}
+
+// TestStatusBarKeepsModeWithoutAHeader covers the short-terminal fallback,
+// where there is no header to carry them.
+func TestStatusBarKeepsModeWithoutAHeader(t *testing.T) {
+	m := resizeModel(t, newTestModel(t), 120, 10)
+	if m.layout.showHeader {
+		t.Skip("header still fits at this height")
+	}
+	status := ansi.Strip(m.renderStatusBar(m.layout))
+	if !strings.Contains(status, "agent") {
+		t.Errorf("mode missing with no header to show it: %q", status)
 	}
 }
