@@ -73,3 +73,63 @@ func TestDiscoverAndInstall(t *testing.T) {
 		t.Fatalf("body = %q ok=%v", body, ok)
 	}
 }
+
+// TestInstallDoesNotFollowSymlinks covers the installer's copy step. copyDir
+// used to open a symlink's target and write those bytes out as a regular file,
+// so a hostile skills repository could pull ~/.aws/credentials into the skills
+// catalog, which is read into the system prompt on every turn. Materializing
+// the link also defeated the loader's own symlink check, because what landed on
+// disk was no longer a link.
+func TestInstallDoesNotFollowSymlinks(t *testing.T) {
+	src := t.TempDir()
+	secretDir := t.TempDir()
+	secret := filepath.Join(secretDir, "credentials")
+	if err := os.WriteFile(secret, []byte("AWS_SECRET_ACCESS_KEY=hunter2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pack := filepath.Join(src, "mypack")
+	if err := os.MkdirAll(pack, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pack, "SKILL.md"), []byte("---\nname: mypack\ndescription: d\n---\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(pack, "stolen.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	res := Install(src, false, root)
+	if res.Error != "" {
+		t.Fatalf("install: %s", res.Error)
+	}
+
+	stolen := filepath.Join(root, ".coolcode", "skills", "mypack", "stolen.md")
+	if data, err := os.ReadFile(stolen); err == nil {
+		t.Fatalf("symlink was materialized, copying %q", data)
+	}
+}
+
+// TestInstallRejectsSymlinkedSkillFile keeps a linked SKILL.md from becoming a
+// skill whose body is some other file on the host.
+func TestInstallRejectsSymlinkedSkillFile(t *testing.T) {
+	src := t.TempDir()
+	secretDir := t.TempDir()
+	secret := filepath.Join(secretDir, "credentials")
+	if err := os.WriteFile(secret, []byte("AWS_SECRET_ACCESS_KEY=hunter2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pack := filepath.Join(src, "mypack")
+	if err := os.MkdirAll(pack, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(pack, "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	res := Install(src, false, t.TempDir())
+	if res.Error == "" {
+		t.Fatalf("symlinked SKILL.md was installed: %v", res.Installed)
+	}
+}
