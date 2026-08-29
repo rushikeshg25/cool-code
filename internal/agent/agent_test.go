@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -148,5 +150,59 @@ func TestStreamSinkReportsNothingWhenEmpty(t *testing.T) {
 	}
 	if len(rep.deltas) != 0 {
 		t.Errorf("empty stream emitted %q", rep.deltas)
+	}
+}
+
+// TestTranscriptForSummaryRespectsBudget covers the compaction request itself.
+// It used to concatenate every message with no budget, so on a long
+// conversation the call meant to relieve the context window could exceed it.
+func TestTranscriptForSummaryRespectsBudget(t *testing.T) {
+	c := &contextManager{mode: types.ModeAgent}
+	for i := 0; i < 400; i++ {
+		c.messages = append(c.messages, llm.Message{
+			Role: llm.RoleUser,
+			Text: strings.Repeat("some conversation text ", 50),
+		})
+	}
+	out := c.transcriptForSummary(4000)
+	if got := estimateTokens(out); got > 4000 {
+		t.Errorf("summary input = %d tokens, budget was 4000", got)
+	}
+	if out == "" {
+		t.Error("summary input was empty")
+	}
+}
+
+// TestTranscriptForSummaryExcludesKeptMessages keeps the budget from being
+// spent on text that survives compaction verbatim anyway.
+func TestTranscriptForSummaryExcludesKeptMessages(t *testing.T) {
+	c := &contextManager{mode: types.ModeAgent}
+	for i := 0; i < keepRecentMessages+5; i++ {
+		c.messages = append(c.messages, llm.Message{
+			Role: llm.RoleUser,
+			Text: fmt.Sprintf("message-%d", i),
+		})
+	}
+	out := c.transcriptForSummary(100000)
+	// The last keepRecentMessages entries stay verbatim, so they must not
+	// also appear in the text being summarized.
+	if strings.Contains(out, fmt.Sprintf("message-%d", keepRecentMessages+4)) {
+		t.Error("summary input included a message that will be kept verbatim")
+	}
+	if !strings.Contains(out, "message-0") {
+		t.Error("summary input dropped the oldest message")
+	}
+}
+
+// TestWindowCountsToolCallArguments covers the budget's blind spot: it counted
+// only Text, so a turn carrying large tool-call arguments was bigger than the
+// window believed.
+func TestWindowCountsToolCallArguments(t *testing.T) {
+	args := json.RawMessage(`{"content":"` + strings.Repeat("x", 4000) + `"}`)
+	m := llm.Message{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{
+		{ID: "1", Name: "new_file", Arguments: args},
+	}}
+	if got := messageTokens(m); got < 900 {
+		t.Errorf("tool call arguments not counted: %d tokens", got)
 	}
 }

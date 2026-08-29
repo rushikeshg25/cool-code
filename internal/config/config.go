@@ -29,6 +29,7 @@ type Features struct {
 	AllowDangerous   *bool `json:"allowDangerous,omitempty"`
 	ConfirmEdits     *bool `json:"confirmEdits,omitempty"`
 	MaxContextTokens *int  `json:"maxContextTokens,omitempty"`
+	CompactAfter     *int  `json:"compactAfter,omitempty"`
 }
 
 // Guardrails holds read-blocking patterns.
@@ -54,7 +55,8 @@ func Default() Config {
 			ScanCache:        boolPtr(true),
 			AllowDangerous:   boolPtr(false),
 			ConfirmEdits:     boolPtr(false),
-			MaxContextTokens: intPtr(20000),
+			MaxContextTokens: intPtr(120000),
+			CompactAfter:     intPtr(40),
 		},
 		Guardrails: Guardrails{
 			BlockReadPatterns: []string{
@@ -239,6 +241,9 @@ func merge(base, over Config) Config {
 	if over.Features.ConfirmEdits != nil {
 		m.Features.ConfirmEdits = over.Features.ConfirmEdits
 	}
+	if over.Features.CompactAfter != nil {
+		m.Features.CompactAfter = over.Features.CompactAfter
+	}
 	if over.Features.MaxContextTokens != nil {
 		m.Features.MaxContextTokens = over.Features.MaxContextTokens
 	}
@@ -378,12 +383,21 @@ func (c Config) ScanCache() bool {
 	return c.Features.ScanCache != nil && *c.Features.ScanCache
 }
 
-// MaxContextTokens returns the configured window (default 20000).
+// CompactAfter returns the message count at which the conversation is
+// summarized (default 40). Zero or less disables compaction.
+func (c Config) CompactAfter() int {
+	if c.Features.CompactAfter != nil {
+		return *c.Features.CompactAfter
+	}
+	return 40
+}
+
+// MaxContextTokens returns the configured window (default 120000).
 func (c Config) MaxContextTokens() int {
 	if c.Features.MaxContextTokens != nil {
 		return *c.Features.MaxContextTokens
 	}
-	return 20000
+	return 120000
 }
 
 // GetByPath resolves a dotted key against the config, returning the value and

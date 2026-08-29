@@ -16,8 +16,11 @@ func TestDefaultAndAccessors(t *testing.T) {
 	if c.AllowDangerous() {
 		t.Fatal("default should not allow dangerous")
 	}
-	if c.MaxContextTokens() != 20000 {
+	if c.MaxContextTokens() != 120000 {
 		t.Fatalf("default max tokens = %d", c.MaxContextTokens())
+	}
+	if c.CompactAfter() != 40 {
+		t.Fatalf("default compact threshold = %d", c.CompactAfter())
 	}
 	if !c.ScanCache() {
 		t.Fatal("scan cache should default on")

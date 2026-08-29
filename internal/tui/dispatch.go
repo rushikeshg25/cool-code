@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -127,6 +128,12 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		}
 		m.appendSystem(fmt.Sprintf("Context: %d messages, %s%.1fk tokens, %d pinned",
 			status.MessageCount, approx, float64(status.TotalTokens)/1000, len(m.proc.PinnedFiles())))
+	case "/compact":
+		// Compaction talks to the provider, so it runs off the UI goroutine.
+		m.appendSystem("Compacting the conversation…")
+		return m, func() tea.Msg {
+			return compactedMsg{summary: m.proc.Compact(context.Background())}
+		}
 	case "/sessions":
 		sessions := session.List(m.rootDir)
 		if len(sessions) == 0 {

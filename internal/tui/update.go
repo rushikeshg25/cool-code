@@ -43,6 +43,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 		return m, nil
 
+	case compactedMsg:
+		m.appendSystem(msg.summary)
+		m.persist()
+		return m, nil
+
 	case discardStreamMsg:
 		m.discardStream()
 		return m, nil

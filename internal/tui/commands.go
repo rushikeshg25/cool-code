@@ -33,6 +33,7 @@ var commands = []slashCommand{
 	{"/pin", "Pin a file into context (e.g. /pin src/main.go)"},
 	{"/unpin", "Unpin a file (or list pinned files)"},
 	{"/context", "Preview context, pinned files, and token usage"},
+	{"/compact", "Summarize the conversation and free up context"},
 	{"/sessions", "List saved sessions for this directory"},
 	{"/install-skill", "Install a skill from a local path or git URL"},
 	{"/clear", "Clear the screen"},

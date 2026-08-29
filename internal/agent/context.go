@@ -56,6 +56,17 @@ func newContextManager(rootDir string, cfg config.Config, checker project.GitIgn
 
 func estimateTokens(s string) int { return (len(s) + 3) / 4 }
 
+// messageTokens estimates one message. The budget used to count only Text,
+// which ignored tool-call arguments entirely, so every request carrying tool
+// calls was larger than the window believed it to be.
+func messageTokens(m llm.Message) int {
+	n := estimateTokens(m.Text)
+	for _, call := range m.ToolCalls {
+		n += estimateTokens(call.Name) + estimateTokens(string(call.Arguments))
+	}
+	return n
+}
+
 func (c *contextManager) addUser(text string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -186,7 +197,7 @@ func (c *contextManager) window() []llm.Message {
 	start := len(c.messages)
 	used := 0
 	for i := len(c.messages) - 1; i >= 0; i-- {
-		t := estimateTokens(c.messages[i].Text)
+		t := messageTokens(c.messages[i])
 		if used+t > budget {
 			break
 		}
@@ -255,11 +266,61 @@ func (c *contextManager) reloadSkills() {
 	c.mu.Unlock()
 }
 
+// keepRecentMessages is how much verbatim history survives a compaction.
+// Everything older is represented only by the summary, so this is the main
+// lever on how lossy compaction is.
+const keepRecentMessages = 20
+
+// summaryInputBudget caps the transcript handed to the summarizer, in
+// estimated tokens. Without it a long conversation produced a request larger
+// than the context window it was meant to relieve.
+const summaryInputBudget = 24000
+
+// currentSummary returns the summary carried from earlier compactions.
+func (c *contextManager) currentSummary() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.summary
+}
+
+// transcriptForSummary renders the messages about to be dropped, newest first
+// until the budget is spent, then restores chronological order. The recent
+// messages that will survive verbatim are excluded, since summarizing text
+// that is being kept wastes the budget.
+func (c *contextManager) transcriptForSummary(budget int) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	end := len(c.messages) - keepRecentMessages
+	if end <= 0 {
+		end = len(c.messages)
+	}
+	var picked []string
+	used := 0
+	for i := end - 1; i >= 0; i-- {
+		m := c.messages[i]
+		if m.Text == "" {
+			continue
+		}
+		line := string(m.Role) + ": " + m.Text
+		t := estimateTokens(line)
+		if used+t > budget {
+			break
+		}
+		used += t
+		picked = append(picked, line)
+	}
+	for i, j := 0, len(picked)-1; i < j; i, j = i+1, j-1 {
+		picked[i], picked[j] = picked[j], picked[i]
+	}
+	return strings.Join(picked, "\n")
+}
+
 func (c *contextManager) applySummary(summary string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.summary = summary
-	const keepRecent = 6
+	const keepRecent = keepRecentMessages
 	if len(c.messages) > keepRecent {
 		// Trim to a suffix beginning at a real user message.
 		trimmed := c.messages[len(c.messages)-keepRecent:]

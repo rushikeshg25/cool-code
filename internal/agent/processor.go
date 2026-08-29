@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,6 +27,7 @@ type Reporter interface {
 	Assistant(markdown string)              // final or intermediate model text
 	Tool(name, display string, failed bool) // a tool finished with this display line
 	AssistantDiscard()                      // drop streamed text that turned out to be scratch
+	Compacted(note string)                  // the conversation was summarized and trimmed
 	Tasks(list *types.TaskList)             // the task list changed
 	Subagents(lines []string)               // live subagent status lines; nil clears them
 }
@@ -347,7 +349,12 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		}
 	}
 
-	p.summarize(ctx)
+	// Compaction is destructive and used to happen with no signal at all, so
+	// a session silently lost most of its history. Say so when it runs.
+	if note := p.summarize(ctx); note != "" && reporter != nil {
+		reporter.Status("")
+		reporter.Compacted(note)
+	}
 	return finalText, nil
 }
 
@@ -382,24 +389,63 @@ func (p *Processor) handleTaskList(call llm.ToolCall, reporter Reporter) string 
 	return "Task list updated."
 }
 
-func (p *Processor) summarize(ctx context.Context) {
-	count, _ := p.ctxMgr.stats()
-	if count < 20 {
-		return
+// summarize condenses the conversation once it grows past the configured
+// threshold, then trims the history it summarized.
+//
+// The request used to concatenate every message with no budget at all, so on a
+// long conversation the compaction call could itself exceed the context window,
+// and it ran on every turn past the threshold rather than only when the history
+// had grown since the last one.
+func (p *Processor) summarize(ctx context.Context) string {
+	threshold := p.cfg.CompactAfter()
+	if threshold <= 0 {
+		return ""
 	}
+	count, _ := p.ctxMgr.stats()
+	if count < threshold {
+		return ""
+	}
+	return p.compact(ctx, false)
+}
+
+// compact summarizes and trims the conversation. When manual, it runs
+// regardless of the threshold and reports the outcome.
+func (p *Processor) compact(ctx context.Context, manual bool) string {
+	before, _ := p.ctxMgr.stats()
+	if before <= keepRecentMessages {
+		return "Nothing to compact yet."
+	}
+
 	var b strings.Builder
 	b.WriteString("Summarize the key technical objectives and progress in the following conversation in under 200 words. Focus on specific code changes and design decisions. Avoid filler.\n\n")
-	for _, m := range p.ctxMgr.snapshotMessages() {
-		if m.Text != "" {
-			b.WriteString(string(m.Role) + ": " + m.Text + "\n")
-		}
+	if prior := p.ctxMgr.currentSummary(); prior != "" {
+		b.WriteString("Summary of the conversation before this excerpt:\n" + prior + "\n\n")
 	}
+	b.WriteString(p.ctxMgr.transcriptForSummary(summaryInputBudget))
+
 	resp, err := p.provider.Complete(ctx, llm.Request{
 		Messages: []llm.Message{{Role: llm.RoleUser, Text: b.String()}},
 	})
-	if err == nil && resp.Text != "" {
-		p.ctxMgr.applySummary(security.Redact(resp.Text))
+	if err != nil {
+		if manual {
+			return "Compaction failed: " + err.Error()
+		}
+		return ""
 	}
+	if resp.Text == "" {
+		if manual {
+			return "Compaction produced no summary; history left as is."
+		}
+		return ""
+	}
+	p.ctxMgr.applySummary(security.Redact(resp.Text))
+	after, _ := p.ctxMgr.stats()
+	return fmt.Sprintf("Compacted %d messages into a summary; %d kept.", before-after, after)
+}
+
+// Compact runs compaction on demand, for the /compact command.
+func (p *Processor) Compact(ctx context.Context) string {
+	return p.compact(ctx, true)
 }
 
 func redactMessage(message llm.Message) llm.Message {

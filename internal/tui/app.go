@@ -27,6 +27,7 @@ type statusMsg string
 type assistantMsg string
 type deltaMsg string
 type discardStreamMsg struct{}
+type compactedMsg struct{ summary string }
 type toolMsg struct {
 	name, display string
 	failed        bool
@@ -50,6 +51,7 @@ func (b *bridge) Status(t string)         { b.prog.Send(statusMsg(t)) }
 func (b *bridge) AssistantDelta(t string) { b.prog.Send(deltaMsg(t)) }
 func (b *bridge) Assistant(md string)     { b.prog.Send(assistantMsg(md)) }
 func (b *bridge) AssistantDiscard()       { b.prog.Send(discardStreamMsg{}) }
+func (b *bridge) Compacted(note string)   { b.prog.Send(compactedMsg{note}) }
 func (b *bridge) Tool(name, display string, failed bool) {
 	b.prog.Send(toolMsg{name, display, failed})
 }
