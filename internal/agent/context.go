@@ -70,7 +70,7 @@ func messageTokens(m llm.Message) int {
 func (c *contextManager) addUser(text string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.messages = append(c.messages, llm.Message{Role: llm.RoleUser, Text: text})
+	c.messages = append(c.messages, llm.Message{Role: llm.RoleUser, Text: security.Redact(text)})
 }
 
 func (c *contextManager) addAssistant(m llm.Message) {
@@ -396,9 +396,12 @@ func (c *contextManager) restore(messages []llm.Message, summary string, pinned 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(messages) > 0 {
-		c.messages = messages
+		c.messages = make([]llm.Message, len(messages))
+		for i, message := range messages {
+			c.messages[i] = redactMessage(message)
+		}
 	}
-	c.summary = summary
+	c.summary = security.Redact(summary)
 	if pinned != nil {
 		c.pinned = pinned
 	}

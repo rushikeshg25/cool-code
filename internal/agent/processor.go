@@ -147,7 +147,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 	if p.provider == nil {
 		return "", errors.New("no API key configured - run /connect to set one up")
 	}
-	p.ctxMgr.addUser(security.Redact(query))
+	p.ctxMgr.addUser(query)
 	if reporter != nil {
 		reporter.Status(waitingLabel())
 	}
@@ -589,7 +589,7 @@ func (p *Processor) SetConfirmHandlers(confirm func(string) bool, confirmEdit fu
 // EnqueueMessage queues a message to interrupt the running turn.
 func (p *Processor) EnqueueMessage(msg string) {
 	p.mu.Lock()
-	p.queue = append(p.queue, msg)
+	p.queue = append(p.queue, security.Redact(msg))
 	p.mu.Unlock()
 }
 

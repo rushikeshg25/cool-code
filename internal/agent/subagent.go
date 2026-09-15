@@ -51,7 +51,7 @@ func (p *Processor) runSubagent(ctx context.Context, task string, report func(st
 	if extras := p.ctxMgr.extraDirList(); len(extras) > 0 {
 		system += "\nAdditional directories (use absolute paths): " + strings.Join(extras, ", ")
 	}
-	messages := []llm.Message{{Role: llm.RoleUser, Text: task}}
+	messages := []llm.Message{{Role: llm.RoleUser, Text: security.Redact(task)}}
 	toolCtx := p.toolCtx
 	toolCtx.Ctx = ctx
 
@@ -69,7 +69,7 @@ func (p *Processor) runSubagent(ctx context.Context, task string, report func(st
 		if err != nil {
 			return "[subagent error] " + err.Error()
 		}
-		messages = append(messages, resp)
+		messages = append(messages, redactMessage(resp))
 		if resp.Text != "" {
 			lastText = resp.Text
 		}
