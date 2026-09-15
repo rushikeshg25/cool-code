@@ -49,13 +49,9 @@ func runPrint(flags rootFlags, args []string) error {
 		cfg.Features.AllowDangerous = &t
 	}
 
-	mode := types.ModeAgent
-	if flags.mode != "" {
-		parsed, ok := parseMode(flags.mode)
-		if !ok {
-			return fmt.Errorf("invalid mode %q (use plan, agent, or ask)", flags.mode)
-		}
-		mode = parsed
+	mode, err := startingMode(flags.mode)
+	if err != nil {
+		return err
 	}
 
 	proc, err := agent.New(rootDir, cfg, agent.Options{

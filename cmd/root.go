@@ -78,6 +78,10 @@ func Execute() {
 }
 
 func runInteractive(flags rootFlags) error {
+	mode, err := startingMode(flags.mode)
+	if err != nil {
+		return err
+	}
 	loadEnv()
 
 	rootDir, err := os.Getwd()
@@ -103,7 +107,7 @@ func runInteractive(flags rootFlags) error {
 	}
 
 	proc, err := agent.New(rootDir, cfg, agent.Options{
-		Mode:            types.ModeAgent,
+		Mode:            mode,
 		AllowDangerous:  cfg.AllowDangerous(),
 		AllowMissingKey: true,
 	})
@@ -140,9 +144,7 @@ func runInteractive(flags rootFlags) error {
 		restoreFrom = session.Latest(rootDir)
 	}
 	if restoreFrom != nil {
-		var messages []llm.Message
-		_ = json.Unmarshal(restoreFrom.Messages, &messages)
-		proc.Restore(messages, restoreFrom.Summary, restoreFrom.PinnedFiles, types.AgentMode(restoreFrom.Mode))
+		restoreConversation(proc, restoreFrom, flags.mode, mode)
 		for _, d := range restoreFrom.ExtraDirs {
 			_, _ = proc.AddDir(d) // dir may have been removed since; ignore
 		}
@@ -230,4 +232,26 @@ func sameDir(a, b string) bool {
 		return false
 	}
 	return ra == rb
+}
+
+// startingMode is shared by interactive and print startup.
+func startingMode(requested string) (types.AgentMode, error) {
+	if requested == "" {
+		return types.ModeAgent, nil
+	}
+	mode, ok := parseMode(requested)
+	if !ok {
+		return "", fmt.Errorf("invalid mode %q (use plan, agent, or ask)", requested)
+	}
+	return mode, nil
+}
+
+func restoreConversation(proc *agent.Processor, saved *session.Data, requested string, mode types.AgentMode) {
+	var messages []llm.Message
+	_ = json.Unmarshal(saved.Messages, &messages)
+	proc.Restore(messages, saved.Summary, saved.PinnedFiles, types.AgentMode(saved.Mode))
+	// An explicit operator choice overrides persisted session authority.
+	if requested != "" {
+		proc.SetMode(mode)
+	}
 }
