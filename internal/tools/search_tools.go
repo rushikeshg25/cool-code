@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
@@ -177,30 +178,62 @@ var findSymbolTool = Tool{
 		if searchPath == "" {
 			searchPath = ctx.RootDir
 		}
-		if reason := EnsureAbsoluteWithinRoots(searchPath, ctx.Roots()); reason != "" {
+		resolved, reason := ResolveReadPath(searchPath, ctx)
+		if reason != "" {
 			return fail("Search blocked", reason)
 		}
-		if info, err := os.Stat(searchPath); err == nil && !info.IsDir() {
-			if reason := ValidateReadPath(searchPath, ctx); reason != "" {
-				return fail("Search blocked", reason)
-			}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return fail("Search failed", err.Error())
 		}
-		rgArgs := []string{"-n", "--hidden", "--glob", "!.git/*", "--glob", "!node_modules/*"}
+		// Enumerate filenames without reading content. External glob syntax
+		// and directory aliases cannot replace the application's read policy.
+		listArgs := []string{"--files", "--null", "--hidden", "--no-follow"}
 		if a.Include != "" {
-			rgArgs = append(rgArgs, "-g", a.Include)
+			listArgs = append(listArgs, "-g", a.Include)
 		}
-		for _, pattern := range ctx.Config.Guardrails.BlockReadPatterns {
-			rgArgs = append(rgArgs, "--iglob", "!"+pattern)
+		listArgs = append(listArgs, "-g", "!**/.git/**", "-g", "!**/node_modules/**", "--", resolved)
+		listed := runCommandRaw(ctx.Context(), ctx.RootDir, 0, "rg", listArgs...)
+		if !listed.success && listed.exitCode != 1 {
+			return fail("Search failed", security.Redact(listed.combined()))
 		}
-		// "--" keeps a pattern or path that begins with a dash from being
-		// parsed as an option.
-		rgArgs = append(rgArgs, "--", a.Pattern, searchPath)
-		res := execArgv(ctx.Context(), ctx.RootDir, 0, "rg", rgArgs...)
-		display := "Symbol search results"
-		if !res.success {
-			display = "Symbol search failed"
+		var permitted []string
+		for _, file := range strings.Split(listed.stdout, "\x00") {
+			if file == "" {
+				continue
+			}
+			original := searchPath
+			if info.IsDir() {
+				rel, err := filepath.Rel(resolved, file)
+				if err != nil {
+					return fail("Search failed", err.Error())
+				}
+				original += string(filepath.Separator) + rel
+			}
+			if _, reason := ResolveReadPath(original, ctx); reason != "" {
+				continue
+			}
+			canonical, reason := ResolveReadPath(file, ctx)
+			if reason != "" {
+				continue
+			}
+			permitted = append(permitted, canonical)
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
+		var output strings.Builder
+		for start := 0; start < len(permitted); start += 128 {
+			end := min(start+128, len(permitted))
+			argv := []string{"-n", "--with-filename", "--no-heading", "--color", "never", "--", a.Pattern}
+			argv = append(argv, permitted[start:end]...)
+			res := execArgv(ctx.Context(), ctx.RootDir, 0, "rg", argv...)
+			if !res.success && res.exitCode != 1 {
+				return fail("Symbol search failed", res.combined())
+			}
+			output.WriteString(res.combined())
+		}
+		if output.Len() == 0 {
+			return types.ToolResult{Display: "No matches found", LLMResult: "No matches found."}
+		}
+		return types.ToolResult{Display: "Symbol search results", LLMResult: output.String()}
 	},
 }
 
