@@ -119,23 +119,6 @@ func ResolveWritePath(absPath string, ctx Context) (string, string) {
 	return resolved, ""
 }
 
-// GitExcludePathspecs renders the read guardrails as git pathspecs so the git
-// tools cannot print the contents of a blocked file.
-func GitExcludePathspecs(cfg config.Config) []string {
-	var specs []string
-	for _, pattern := range cfg.Guardrails.BlockReadPatterns {
-		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
-		if pattern == "" {
-			continue
-		}
-		specs = append(specs, ":(exclude,glob,icase)"+pattern)
-		if !strings.HasPrefix(pattern, "**/") {
-			specs = append(specs, ":(exclude,glob,icase)**/"+strings.TrimPrefix(pattern, "/"))
-		}
-	}
-	return specs
-}
-
 // protectedWrite reports why resolved must not be written, or "".
 func protectedWrite(resolved string, roots []string) string {
 	rel := resolved

@@ -38,6 +38,15 @@ func execArgv(parent context.Context, dir string, timeout time.Duration, name st
 }
 
 func runCommand(parent context.Context, dir string, timeout time.Duration, name string, args ...string) shellResult {
+	res := runCommandRaw(parent, dir, timeout, name, args...)
+	res.stdout = security.Redact(res.stdout)
+	res.stderr = security.Redact(res.stderr)
+	return res
+}
+
+// runCommandRaw also supports internal NUL-delimited filename enumeration.
+// Raw metadata must be validated before use and never returned to the model.
+func runCommandRaw(parent context.Context, dir string, timeout time.Duration, name string, args ...string) shellResult {
 	if timeout <= 0 {
 		timeout = defaultCommandTimeout
 	}
@@ -58,8 +67,8 @@ func runCommand(parent context.Context, dir string, timeout time.Duration, name 
 
 	err := cmd.Run()
 	res := shellResult{
-		stdout: security.Redact(stdout.String()),
-		stderr: security.Redact(stderr.String()),
+		stdout: stdout.String(),
+		stderr: stderr.String(),
 	}
 	if ctx.Err() == context.DeadlineExceeded {
 		res.exitCode = -1

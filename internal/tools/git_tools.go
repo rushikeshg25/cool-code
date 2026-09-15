@@ -2,8 +2,10 @@ package tools
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
@@ -36,28 +38,52 @@ var gitDiffTool = Tool{
 			Staged   bool   `json:"staged"`
 		}
 		_ = json.Unmarshal(args, &a)
-		gitArgs := []string{"diff"}
+		gitArgs := []string{"diff", "--no-renames", "--no-ext-diff", "--no-textconv"}
 		if a.Staged {
 			gitArgs = append(gitArgs, "--staged")
 		}
+		selection := "."
 		if a.FilePath != "" {
-			resolved, v := ResolveReadPath(a.FilePath, ctx)
-			if v != "" {
-				return fail("Invalid path", v)
+			resolved, reason := ResolveReadPath(a.FilePath, ctx)
+			if reason != "" {
+				return fail("Invalid path", reason)
 			}
-			gitArgs = append(gitArgs, "--", pathArg(toRelative(resolved, ctx.RootDir)))
-		} else if specs := GitExcludePathspecs(ctx.Config); len(specs) > 0 {
-			// A bare diff would print every tracked file, guardrailed ones
-			// included, so exclude them by pathspec.
-			gitArgs = append(gitArgs, "--", ".")
-			gitArgs = append(gitArgs, specs...)
+			selection = ":(literal)" + filepath.ToSlash(toRelative(resolved, ctx.RootDir))
 		}
-		res := execArgv(ctx.Context(), ctx.RootDir, 0, "git", gitArgs...)
-		display := "Git diff"
-		if !res.success {
-			display = "Git diff failed"
+		// Git wildmatch and our doublestar policy have different grammars
+		// (notably braces). Enumerate names only, then apply the actual policy
+		// before requesting any content. Disable renames so excluded source
+		// content cannot be included via a permitted destination's rename diff.
+		listArgs := append(append([]string{}, gitArgs...), "--name-only", "-z", "--", selection)
+		listed := runCommandRaw(ctx.Context(), ctx.RootDir, 0, "git", listArgs...)
+		if !listed.success {
+			return fail("Git diff failed", security.Redact(listed.combined()))
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
+		var permitted []string
+		for _, name := range strings.Split(listed.stdout, "\x00") {
+			if name == "" {
+				continue
+			}
+			if _, reason := ResolveReadPath(filepath.Join(ctx.RootDir, name), ctx); reason == "" {
+				permitted = append(permitted, ":(literal)"+name)
+			}
+		}
+		if len(permitted) == 0 {
+			return types.ToolResult{Display: "Git diff", LLMResult: "No permitted changes."}
+		}
+		// Bound argv size while preserving all permitted file changes.
+		var output strings.Builder
+		for start := 0; start < len(permitted); start += 128 {
+			end := min(start+128, len(permitted))
+			argv := append(append([]string{}, gitArgs...), "--")
+			argv = append(argv, permitted[start:end]...)
+			result := execArgv(ctx.Context(), ctx.RootDir, 0, "git", argv...)
+			if !result.success {
+				return fail("Git diff failed", result.combined())
+			}
+			output.WriteString(result.combined())
+		}
+		return types.ToolResult{Display: "Git diff", LLMResult: output.String()}
 	},
 }
 

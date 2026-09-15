@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,5 +104,86 @@ func TestGitStatusReportsChanges(t *testing.T) {
 	res := gitStatusTool.Execute(ctx, mustArgs(t, map[string]any{}))
 	if !strings.Contains(res.LLMResult, "app.go") {
 		t.Errorf("git_status missed a modified file:\n%s", res.LLMResult)
+	}
+}
+
+func TestTargetedDirectoryDiffExcludesBlockedFiles(t *testing.T) {
+	for _, staged := range []bool{false, true} {
+		for _, nested := range []bool{false, true} {
+			t.Run(fmt.Sprintf("staged=%v/nested=%v", staged, nested), func(t *testing.T) {
+				ctx, root := gitRepo(t)
+				run := func(argv ...string) {
+					t.Helper()
+					cmd := exec.Command("git", argv...)
+					cmd.Dir = root
+					if out, err := cmd.CombinedOutput(); err != nil {
+						t.Fatalf("%v %s", err, out)
+					}
+				}
+				target := root
+				if nested {
+					target = filepath.Join(root, "nested")
+					if err := os.Mkdir(target, 0755); err != nil {
+						t.Fatal(err)
+					}
+					for _, name := range []string{"app.go", ".env"} {
+						if err := os.WriteFile(filepath.Join(target, name), []byte("before\n"), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					run("add", "nested")
+					if err := os.WriteFile(filepath.Join(target, "app.go"), []byte("ordinary change\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(target, ".env"), []byte("BLOCKED_DIFF_SENTINEL\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if staged {
+					run("add", "-A")
+				}
+				res := gitDiffTool.Execute(ctx, mustArgs(t, map[string]any{"filePath": target, "staged": staged}))
+				if res.Failed || strings.Contains(res.LLMResult, "BLOCKED_DIFF_SENTINEL") || strings.Contains(res.LLMResult, "sentry.io") || strings.Contains(res.LLMResult, "sk_live") {
+					t.Fatal(res.LLMResult)
+				}
+				if !strings.Contains(res.LLMResult, "app.go") {
+					t.Fatalf("ordinary file omitted: %s", res.LLMResult)
+				}
+			})
+		}
+	}
+}
+
+func TestGitDiffUsesApplicationPatternGrammar(t *testing.T) {
+	ctx, root := gitRepo(t)
+	ctx.Config.Guardrails.BlockReadPatterns = append(ctx.Config.Guardrails.BlockReadPatterns, "private/{a,b}.txt")
+	if err := os.Mkdir(filepath.Join(root, "private"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.txt", "b.txt", "allowed.txt", "[literal].txt"} {
+		if err := os.WriteFile(filepath.Join(root, "private", name), []byte("old\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("git", "add", "private")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(root, "private", name), []byte("BLOCKED_BRACE_SENTINEL\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"allowed.txt", "[literal].txt"} {
+		if err := os.WriteFile(filepath.Join(root, "private", name), []byte("ordinary change\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, target := range []string{root, filepath.Join(root, "private"), filepath.Join(root, "private", "[literal].txt")} {
+		res := gitDiffTool.Execute(ctx, mustArgs(t, map[string]any{"filePath": target}))
+		if res.Failed || strings.Contains(res.LLMResult, "BLOCKED_BRACE_SENTINEL") || !strings.Contains(res.LLMResult, "ordinary change") {
+			t.Fatal(res.LLMResult)
+		}
 	}
 }
