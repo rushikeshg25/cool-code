@@ -247,7 +247,7 @@ make vet     # go vet ./...
 make fmt     # gofmt -w .
 ```
 
-Requires Go 1.25+. External tools used at runtime when present: `git`, `rg` (ripgrep, for `find_symbol`), `bash`, and `npx prettier` (for `format_file`).
+Requires Go 1.25.13+ (or a newer supported, patched Go release). External tools used at runtime when present: `git`, `rg` (ripgrep, for `find_symbol`), `bash`, and `npx prettier` (for `format_file`).
 
 ## Future scope
 
