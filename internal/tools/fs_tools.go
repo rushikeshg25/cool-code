@@ -229,8 +229,14 @@ var renameFileTool = Tool{
 		if v != "" {
 			return fail("Invalid path", v)
 		}
-		if _, err := os.Stat(fromResolved); err != nil {
+		info, err := os.Stat(fromResolved)
+		if err != nil {
 			return fail("Rename failed", "Source file does not exist: "+a.FromPath)
+		}
+		// This is a file tool: moving a directory could launder protected
+		// descendants into ordinary paths without checking their read policy.
+		if !info.Mode().IsRegular() {
+			return fail("Rename failed", "Only regular files can be renamed; directory moves are not supported.")
 		}
 		if _, err := os.Stat(toResolved); err == nil && !a.Overwrite {
 			return fail("Rename failed", "Target already exists: "+a.ToPath)
