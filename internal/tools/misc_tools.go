@@ -50,8 +50,8 @@ var generateReadmeSectionTool = Tool{
 		if strings.TrimSpace(a.Title) == "" {
 			return fail("Invalid arguments", "title is required.")
 		}
-		readmePath := filepath.Join(ctx.RootDir, "README.md")
-		if reason := EnsureAbsoluteWithinRoots(readmePath, ctx.Roots()); reason != "" {
+		readmePath, reason := ResolveWritePath(filepath.Join(ctx.RootDir, "README.md"), ctx)
+		if reason != "" {
 			return fail("README update blocked", reason)
 		}
 		heading := "## " + a.Title + "\n"
@@ -74,10 +74,20 @@ var generateReadmeSectionTool = Tool{
 			if err != nil {
 				return fail("README update failed", err.Error())
 			}
-			_, _ = f.WriteString(section)
-			_ = f.Close()
+			_, writeErr := f.WriteString(section)
+			closeErr := f.Close()
+			if writeErr != nil {
+				return fail("README update failed", writeErr.Error())
+			}
+			if closeErr != nil {
+				return fail("README update failed", closeErr.Error())
+			}
+		} else if os.IsNotExist(err) {
+			if err := os.WriteFile(readmePath, []byte("# "+filepath.Base(ctx.RootDir)+"\n"+section), 0o644); err != nil {
+				return fail("README update failed", err.Error())
+			}
 		} else {
-			_ = os.WriteFile(readmePath, []byte("# "+filepath.Base(ctx.RootDir)+"\n"+section), 0o644)
+			return fail("README update failed", err.Error())
 		}
 		return types.ToolResult{Display: "README updated", LLMResult: "Added section \"" + a.Title + "\" to README.md"}
 	},
