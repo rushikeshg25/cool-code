@@ -214,7 +214,7 @@ func TestGuardrailedFilesAreNotWritable(t *testing.T) {
 func TestGitExcludePathspecsCoverGuardrails(t *testing.T) {
 	specs := GitExcludePathspecs(config.Default())
 	joined := strings.Join(specs, " ")
-	for _, want := range []string{":(exclude,glob).env", ":(exclude,glob)**/.env", ":(exclude,glob)**/*.pem"} {
+	for _, want := range []string{":(exclude,glob,icase).env", ":(exclude,glob,icase)**/.env", ":(exclude,glob,icase)**/*.pem"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing pathspec %q in %v", want, specs)
 		}

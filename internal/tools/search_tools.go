@@ -190,7 +190,7 @@ var findSymbolTool = Tool{
 			rgArgs = append(rgArgs, "-g", a.Include)
 		}
 		for _, pattern := range ctx.Config.Guardrails.BlockReadPatterns {
-			rgArgs = append(rgArgs, "-g", "!"+pattern)
+			rgArgs = append(rgArgs, "--iglob", "!"+pattern)
 		}
 		// "--" keeps a pattern or path that begins with a dash from being
 		// parsed as an option.
