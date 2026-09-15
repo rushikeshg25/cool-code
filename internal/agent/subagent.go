@@ -77,7 +77,7 @@ func (p *Processor) runSubagent(ctx context.Context, task string, report func(st
 			return lastText
 		}
 		for _, call := range resp.ToolCalls {
-			result := tools.Run(toolCtx, call.Name, call.Arguments)
+			result := tools.RunReadOnly(toolCtx, call.Name, call.Arguments)
 			messages = append(messages, llm.Message{
 				Role: llm.RoleTool,
 				// Redact here as the parent loop does. These messages are

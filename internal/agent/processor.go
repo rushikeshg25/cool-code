@@ -259,7 +259,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				wg.Add(1)
 				go func(i int, call llm.ToolCall) {
 					defer wg.Done()
-					r := tools.Run(toolCtx, call.Name, call.Arguments)
+					r := tools.RunReadOnly(toolCtx, call.Name, call.Arguments)
 					results[i] = &r
 				}(i, resp.ToolCalls[i])
 			}

@@ -60,6 +60,15 @@ func Run(ctx Context, name string, args json.RawMessage) types.ToolResult {
 	return t.Execute(ctx, args)
 }
 
+// RunReadOnly enforces the capability at dispatch, independently of the
+// tool definitions advertised to a model. Unknown tools fail closed.
+func RunReadOnly(ctx Context, name string, args json.RawMessage) types.ToolResult {
+	if !IsReadOnly(name) || IsMutating(name) {
+		return fail("Tool refused", "Tool is not permitted in read-only exploration: "+name)
+	}
+	return Run(ctx, name, args)
+}
+
 // DangerReason returns a short reason string when a tool call is potentially
 // dangerous and should be confirmed, or "" otherwise.
 func DangerReason(name string, args json.RawMessage) string {
