@@ -210,10 +210,10 @@ against a guess.
 - **Protected paths** - tools cannot write inside `.git` or `.coolcode`, where a hook or config would become code execution.
 - **Read guardrails** - `blockReadPatterns` applies to reads, edits, searches, pins, context trees, git diffs, and subagents. `.gitignore` is respected by trees and searches.
 - **Trusted endpoints** - repositories cannot select proxy hosts, credential variables, guardrails, or bypass flags. Remote proxies require HTTPS and cross-origin redirects are disabled.
-- **Command isolation** - every arbitrary shell command and project-code execution (`run_tests`, `lint_fix`, `format_file`, `add_script`) requires confirmation by default. Commands assembled from model- or repository-controlled values run as argv with no shell, so a crafted search pattern or filename cannot inject. Child processes receive a small environment allowlist without API keys, tokens, cookies, or cloud credentials.
+- **Command isolation** - every arbitrary shell command and project-code execution (`run_tests`, `lint_fix`, `format_file`, `add_script`) requires confirmation by default. Commands assembled from model- or repository-controlled values run as argv with no shell, so a crafted search pattern or filename cannot inject. Child processes receive a small environment allowlist without API keys, tokens, cookies, or cloud credentials. Shell, test, and lint commands whose executable text would be hidden by credential redaction are refused.
 - **Network isolation** - web fetches require HTTPS and reject loopback, private, carrier-grade NAT, reserved, link-local, multicast, NAT64, and cloud metadata addresses, including after redirects and DNS resolution.
 - **Data-loss prevention** - common credentials and sensitive environment values are redacted before provider egress, terminal rendering, and session persistence, in subagents as well as the main loop. Provider errors never include endpoint URLs, and any provider message they quote is redacted and truncated.
-- **Terminal integrity** - escape sequences are stripped from model output, tool output, and confirmation prompts, so nothing can rewrite the screen or the command you are approving.
+- **Terminal integrity** - escape sequences are stripped from model and tool output. Command approvals show the complete command with control characters visibly escaped and long lines available by scrolling.
 - **Untrusted content** - `COOLCODE.md`, skills, and fetched pages enter the prompt inside untrusted-content markers, and the agent is told to treat directions found there as data to report rather than follow.
 - **Private persistence** - credentials and sessions use private directories and mode 0600 files; symlink-backed config, credential, session, memory, skill, and `.env` files are rejected.
 - **Read-only modes** - Plan and Ask modes deterministically block mutating tools and project-code execution.
@@ -247,7 +247,7 @@ make vet     # go vet ./...
 make fmt     # gofmt -w .
 ```
 
-Requires Go 1.25+. External tools used at runtime when present: `git`, `rg` (ripgrep, for `find_symbol`), `bash`, and `npx prettier` (for `format_file`).
+Requires Go 1.25.13+ (or a newer supported, patched Go release). External tools used at runtime when present: `git`, `rg` (ripgrep, for `find_symbol`), `bash`, and `npx prettier` (for `format_file`).
 
 ## Future scope
 

@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/spf13/cobra"
 
@@ -21,10 +22,9 @@ func scanCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rootDir, _ := os.Getwd()
 			cfg := config.Load(rootDir)
-			cachePath := filepath.Join(rootDir, ".coolcode.scan.json")
 
 			if !refresh && cfg.ScanCache() {
-				if raw, err := os.ReadFile(cachePath); err == nil {
+				if raw, err := readScanCache(rootDir); err == nil {
 					var cached project.Scan
 					if json.Unmarshal(raw, &cached) == nil {
 						printScan(cached, asJSON)
@@ -35,7 +35,7 @@ func scanCmd() *cobra.Command {
 			scan := project.ScanProject(rootDir)
 			if cfg.ScanCache() {
 				if data, err := json.MarshalIndent(scan, "", "  "); err == nil {
-					_ = os.WriteFile(cachePath, data, 0o644)
+					_ = writeScanCache(rootDir, data)
 				}
 			}
 			printScan(scan, asJSON)
@@ -75,4 +75,54 @@ func yesno(b bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+const scanCacheName = ".coolcode.scan.json"
+
+func readScanCache(rootDir string) ([]byte, error) {
+	root, err := os.OpenRoot(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	info, err := root.Lstat(scanCacheName)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("scan cache is not a regular file")
+	}
+	return root.ReadFile(scanCacheName)
+}
+
+// Replace the directory entry rather than truncating a potentially linked
+// target. Root keeps even concurrent symlink replacements inside the workspace.
+func writeScanCache(rootDir string, data []byte) error {
+	root, err := os.OpenRoot(rootDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if info, err := root.Lstat(scanCacheName); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("scan cache is not a regular file")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	temp := ".coolcode-scan-" + uuid.NewString()
+	file, err := root.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer root.Remove(temp)
+	_, writeErr := file.Write(data)
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return root.Rename(temp, scanCacheName)
 }

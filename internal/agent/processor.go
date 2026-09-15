@@ -147,7 +147,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 	if p.provider == nil {
 		return "", errors.New("no API key configured - run /connect to set one up")
 	}
-	p.ctxMgr.addUser(security.Redact(query))
+	p.ctxMgr.addUser(query)
 	if reporter != nil {
 		reporter.Status(waitingLabel())
 	}
@@ -231,6 +231,13 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			case p.getMode() != types.ModeAgent && tools.IsMutating(call.Name):
 				results[i] = &types.ToolResult{LLMResult: "[READ-ONLY MODE] Cannot execute tool '" + call.Name + "'. Switch to Agent mode to make changes or execute project code."}
 			default:
+				prepared, err := tools.PrepareCommand(toolCtx, call.Name, call.Arguments)
+				if err != nil {
+					results[i] = &types.ToolResult{Failed: true, LLMResult: err.Error()}
+					continue
+				}
+				call.Arguments = prepared
+				resp.ToolCalls[i] = call
 				if declined, msg := p.gate(call); declined {
 					results[i] = &types.ToolResult{LLMResult: msg}
 				} else if tools.IsReadOnly(call.Name) {
@@ -259,7 +266,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				wg.Add(1)
 				go func(i int, call llm.ToolCall) {
 					defer wg.Done()
-					r := tools.Run(toolCtx, call.Name, call.Arguments)
+					r := tools.RunReadOnly(toolCtx, call.Name, call.Arguments)
 					results[i] = &r
 				}(i, resp.ToolCalls[i])
 			}
@@ -589,7 +596,7 @@ func (p *Processor) SetConfirmHandlers(confirm func(string) bool, confirmEdit fu
 // EnqueueMessage queues a message to interrupt the running turn.
 func (p *Processor) EnqueueMessage(msg string) {
 	p.mu.Lock()
-	p.queue = append(p.queue, msg)
+	p.queue = append(p.queue, security.Redact(msg))
 	p.mu.Unlock()
 }
 

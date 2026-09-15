@@ -2,7 +2,9 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/rushikeshg25/cool-code/internal/security"
@@ -60,24 +62,36 @@ func Run(ctx Context, name string, args json.RawMessage) types.ToolResult {
 	return t.Execute(ctx, args)
 }
 
+// RunReadOnly enforces the capability at dispatch, independently of the
+// tool definitions advertised to a model. Unknown tools fail closed.
+func RunReadOnly(ctx Context, name string, args json.RawMessage) types.ToolResult {
+	if !IsReadOnly(name) || IsMutating(name) {
+		return fail("Tool refused", "Tool is not permitted in read-only exploration: "+name)
+	}
+	return Run(ctx, name, args)
+}
+
 // DangerReason returns a short reason string when a tool call is potentially
 // dangerous and should be confirmed, or "" otherwise.
 func DangerReason(name string, args json.RawMessage) string {
 	switch name {
-	case "shell_command":
+	case "shell_command", "run_tests", "lint_fix":
 		var a struct {
-			Command string `json:"command"`
+			Command   string `json:"command"`
+			Directory string `json:"directory"`
 		}
 		_ = json.Unmarshal(args, &a)
-		// Collapse to one line: padding a command with blank lines used to
-		// push the real payload out of the overlay's visible window.
-		command := security.SanitizeLine(security.Redact(a.Command))
-		if len(command) > 160 {
-			command = truncateRunes(command, 160) + "..."
+		label := "shell command"
+		if name != "shell_command" {
+			label = "project code execution (" + name + ")"
 		}
-		return "shell command: " + command
-	case "run_tests", "lint_fix":
-		return "project code execution"
+		dir := a.Directory
+		if dir == "" {
+			dir = "project root"
+		}
+		// Escape controls visibly: deleting OSC/DCS bodies can hide shell
+		// operators that bash still executes. Never truncate approval text.
+		return label + ": " + strconv.Quote(security.Redact(a.Command)) + "\nDirectory: " + strconv.Quote(security.Redact(dir))
 	case "format_file":
 		// The fallback formatter is `npx prettier`, which resolves
 		// ./node_modules/.bin/prettier before anything else, so a repository
@@ -176,4 +190,58 @@ func ReadOnlyTools() []Tool {
 		}
 	}
 	return out
+}
+
+// PrepareCommand freezes inferred commands and their working directory before
+// approval. Execution consumes these same arguments, even if project markers
+// change while the user is reading the confirmation.
+func PrepareCommand(ctx Context, name string, args json.RawMessage) (json.RawMessage, error) {
+	if name != "shell_command" && name != "run_tests" && name != "lint_fix" {
+		return args, nil
+	}
+	var command struct {
+		Command   string `json:"command"`
+		Directory string `json:"directory"`
+	}
+	if err := json.Unmarshal(args, &command); err != nil {
+		return nil, err
+	}
+	if command.Command == "" {
+		switch name {
+		case "run_tests":
+			command.Command = defaultTestCommand(ctx.RootDir)
+		case "lint_fix":
+			command.Command = defaultLintFixCommand(ctx.RootDir)
+		}
+	}
+	// Redaction cannot distinguish secret literals from executable shell
+	// syntax inside a matched value. Refuse hidden commands rather than
+	// showing credentials or approving an incomplete representation.
+	if security.Redact(command.Command) != command.Command {
+		return nil, fmt.Errorf("command blocked: secret redaction would hide executable text; remove literal secrets from the command")
+	}
+	if strings.TrimSpace(command.Command) == "" {
+		return nil, fmt.Errorf("no command found; provide a command explicitly")
+	}
+	directory := ctx.RootDir
+	if name == "shell_command" && command.Directory != "" {
+		directory = command.Directory
+		if !filepath.IsAbs(directory) {
+			directory = ctx.RootDir + string(filepath.Separator) + directory
+		}
+	}
+	resolved, reason := ResolveWithinRoots(directory, ctx.Roots())
+	if reason != "" {
+		return nil, fmt.Errorf("invalid command directory: %s", reason)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(args, &fields); err != nil {
+		return nil, err
+	}
+	if fields == nil {
+		fields = make(map[string]json.RawMessage)
+	}
+	fields["command"], _ = json.Marshal(command.Command)
+	fields["directory"], _ = json.Marshal(resolved)
+	return json.Marshal(fields)
 }

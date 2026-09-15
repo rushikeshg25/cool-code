@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
@@ -206,17 +205,5 @@ func TestGuardrailedFilesAreNotWritable(t *testing.T) {
 	}
 	if _, reason := ResolveReadPath(env, ctx); reason == "" {
 		t.Fatal("read of a guardrailed file was allowed")
-	}
-}
-
-// TestGitExcludePathspecsCoverGuardrails keeps a bare git diff from printing
-// the contents of blocked files.
-func TestGitExcludePathspecsCoverGuardrails(t *testing.T) {
-	specs := GitExcludePathspecs(config.Default())
-	joined := strings.Join(specs, " ")
-	for _, want := range []string{":(exclude,glob).env", ":(exclude,glob)**/.env", ":(exclude,glob)**/*.pem"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("missing pathspec %q in %v", want, specs)
-		}
 	}
 }

@@ -643,3 +643,40 @@ func TestElapsedIsIdleBeforeATurn(t *testing.T) {
 		t.Errorf("elapsed before any turn = %q, want empty", got)
 	}
 }
+
+func TestTaskAndExplorerViewsSanitizeControls(t *testing.T) {
+	payload := "visible Ω\x1b]52;c;BAD\x07\x1b[2K\r"
+	for _, width := range []int{70, 140} {
+		m := newTestModel(t)
+		m.processing = true
+		m.tasks = &types.TaskList{Goal: payload, Items: []types.TaskItem{{ID: "1", Title: payload, Status: types.TaskInProgress}}}
+		m.subagents = []string{payload}
+		m = resizeModel(t, m, width, 30)
+		for _, view := range []string{m.View(), m.renderTasks(), m.renderActivity()} {
+			for _, bad := range []string{"\x1b]52", "\x1b[2K", "\x07", "\r", "BAD"} {
+				if strings.Contains(view, bad) {
+					t.Errorf("unsafe view %q", view)
+				}
+			}
+		}
+		if !strings.Contains(ansi.Strip(m.View()), "visible Ω") {
+			t.Fatal("ordinary task text lost")
+		}
+	}
+}
+
+func TestConfirmationWrapsLongUnbrokenCommand(t *testing.T) {
+	m := newTestModel(t)
+	m.confirmMsg = strings.Repeat("x", 504) + "VISIBLE_SUFFIX"
+	m = resizeModel(t, m, 60, 24)
+	for _, line := range m.confirmLines() {
+		if ansi.StringWidth(line) > 56 {
+			t.Fatalf("unreadable command line: %d", ansi.StringWidth(line))
+		}
+	}
+	m.confirmOff = len(m.confirmLines())
+	m.clampConfirmOffset()
+	if !strings.Contains(ansi.Strip(m.renderConfirmation()), "VISIBLE_SUFFIX") {
+		t.Fatal("command suffix cannot be scrolled into view")
+	}
+}

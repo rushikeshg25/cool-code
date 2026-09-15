@@ -1,6 +1,6 @@
 module github.com/rushikeshg25/cool-code
 
-go 1.25.0
+go 1.25.13
 
 require (
 	github.com/atotto/clipboard v0.1.4

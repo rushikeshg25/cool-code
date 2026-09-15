@@ -7,6 +7,7 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 )
 
 // TaskPlanStep is a single planned step.
@@ -46,12 +47,12 @@ func CreateTaskPlan(ctx context.Context, cfg config.Config, goal string) (*TaskP
 		return nil, err
 	}
 	resp, err := provider.Complete(ctx, llm.Request{
-		Messages: []llm.Message{{Role: llm.RoleUser, Text: taskPromptTemplate + goal}},
+		Messages: []llm.Message{{Role: llm.RoleUser, Text: taskPromptTemplate + security.Redact(goal)}},
 	})
 	if err != nil {
 		return nil, err
 	}
-	plan := parseTaskPlan(resp.Text)
+	plan := parseTaskPlan(security.Redact(resp.Text))
 	if plan == nil || plan.Goal == "" {
 		return nil, nil
 	}

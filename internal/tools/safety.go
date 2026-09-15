@@ -18,10 +18,12 @@ func BlockedPath(filePath string, cfg config.Config) string {
 	if len(patterns) == 0 {
 		return ""
 	}
-	base := filepath.Base(filePath)
-	normalized := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(filePath)), "/")
+	// Guardrails deliberately match case-insensitively on every platform so
+	// aliases cannot gain authority on case-insensitive volumes.
+	base := strings.ToLower(filepath.Base(filePath))
+	normalized := strings.ToLower(strings.TrimPrefix(filepath.ToSlash(filepath.Clean(filePath)), "/"))
 	for _, pattern := range patterns {
-		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+		pattern = strings.ToLower(filepath.ToSlash(strings.TrimSpace(pattern)))
 		matched, _ := doublestar.Match(pattern, base)
 		if !matched {
 			matched, _ = doublestar.Match(pattern, normalized)
@@ -117,23 +119,6 @@ func ResolveWritePath(absPath string, ctx Context) (string, string) {
 	return resolved, ""
 }
 
-// GitExcludePathspecs renders the read guardrails as git pathspecs so the git
-// tools cannot print the contents of a blocked file.
-func GitExcludePathspecs(cfg config.Config) []string {
-	var specs []string
-	for _, pattern := range cfg.Guardrails.BlockReadPatterns {
-		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
-		if pattern == "" {
-			continue
-		}
-		specs = append(specs, ":(exclude,glob)"+pattern)
-		if !strings.HasPrefix(pattern, "**/") {
-			specs = append(specs, ":(exclude,glob)**/"+strings.TrimPrefix(pattern, "/"))
-		}
-	}
-	return specs
-}
-
 // protectedWrite reports why resolved must not be written, or "".
 func protectedWrite(resolved string, roots []string) string {
 	rel := resolved
@@ -148,11 +133,11 @@ func protectedWrite(resolved string, roots []string) string {
 		}
 	}
 	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-		if protectedWriteComponents[part] {
+		if protectedWriteComponents[strings.ToLower(part)] {
 			return "Writing inside \"" + part + "\" is not allowed."
 		}
 	}
-	if base := filepath.Base(rel); protectedWriteNames[base] {
+	if base := filepath.Base(rel); protectedWriteNames[strings.ToLower(base)] {
 		return "Writing \"" + base + "\" is not allowed."
 	}
 	return ""
