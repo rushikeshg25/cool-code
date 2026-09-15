@@ -132,7 +132,7 @@ func (m *model) renderSidebar(l layout) string {
 	if hasTasks {
 		for _, item := range m.tasks.Items {
 			glyph, style := taskGlyph(item.Status)
-			lines = append(lines, ansi.Truncate(style.Render(glyph+" ")+sidebarTodo.Render(item.Title), maxInt(1, w), "…"))
+			lines = append(lines, ansi.Truncate(style.Render(glyph+" ")+sidebarTodo.Render(security.SanitizeLine(item.Title)), maxInt(1, w), "…"))
 		}
 	}
 
@@ -143,7 +143,7 @@ func (m *model) renderSidebar(l layout) string {
 			lines = append(lines, "", sidebarTitle.Render("Agents"))
 		}
 		for _, sub := range m.subagents {
-			lines = append(lines, ansi.Truncate(sidebarNow.Render("◆ ")+sidebarTodo.Render(sub), maxInt(1, w), "…"))
+			lines = append(lines, ansi.Truncate(sidebarNow.Render("◆ ")+sidebarTodo.Render(security.SanitizeLine(sub)), maxInt(1, w), "…"))
 		}
 	}
 
@@ -197,7 +197,7 @@ func (m *model) renderTasks() string {
 	if current != "" {
 		label = current
 	}
-	line := taskStyle.Render(glyph+" Plan ") + count + taskStyle.Render("  ·  "+label)
+	line := taskStyle.Render(glyph+" Plan ") + count + taskStyle.Render("  ·  "+security.SanitizeLine(label))
 	return ansi.Truncate(line, maxInt(1, m.width), "…")
 }
 
@@ -293,7 +293,7 @@ func (m *model) renderActivity() string {
 		if i == len(m.subagents)-1 {
 			branch = "└─ "
 		}
-		lines = append(lines, m.truncateToWidth(faintStyle.Render("  "+branch+sub)))
+		lines = append(lines, m.truncateToWidth(faintStyle.Render("  "+branch+security.SanitizeLine(sub))))
 	}
 	return strings.Join(lines, "\n")
 }

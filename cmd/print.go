@@ -11,6 +11,7 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/agent"
 	"github.com/rushikeshg25/cool-code/internal/config"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
@@ -94,7 +95,7 @@ func runPrint(flags rootFlags, args []string) error {
 		return enc.Encode(out)
 	}
 
-	fmt.Println(final)
+	writePlainText(os.Stdout, final)
 	return nil
 }
 
@@ -156,12 +157,12 @@ func (r *printReporter) Tool(name, display string, failed bool) {
 	if failed {
 		marker = "✗"
 	}
-	fmt.Fprintf(r.out, "%s %s: %s\n", marker, name, display)
+	fmt.Fprintf(r.out, "%s %s: %s\n", marker, security.SanitizeLine(name), security.SanitizeLine(display))
 }
 
 func (r *printReporter) Compacted(note string) {
 	if r.verbose {
-		fmt.Fprintln(r.out, "• "+note)
+		writePlainText(r.out, "• "+note)
 	}
 }
 
@@ -172,6 +173,10 @@ func (r *printReporter) Subagents(lines []string) {
 		return
 	}
 	for _, line := range lines {
-		fmt.Fprintln(r.out, "• "+line)
+		writePlainText(r.out, "• "+line)
 	}
+}
+
+func writePlainText(out io.Writer, text string) {
+	fmt.Fprintln(out, security.SanitizeTerminal(text))
 }
