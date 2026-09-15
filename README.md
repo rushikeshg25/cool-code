@@ -259,6 +259,36 @@ Requires Go 1.25.13+ (or a newer supported, patched Go release). External tools 
 
 ## Changelog
 
+### 2.3.2: Security fixes and accurate activity status (2026-09-15)
+
+**Upgrading.** Source builds now require Go 1.25.13 or a newer supported,
+patched Go release. Directory moves through `rename_file` are refused; regular
+file renames remain supported. Shell, test, and lint commands are refused when
+credential redaction would hide executable text in their approval preview.
+Path guardrails now match case-insensitively on every platform.
+
+**Tool authorization and approvals.** Read-only subagents enforce their tool
+permissions at execution. Interactive `--mode ask` and `--mode plan` are
+honored, including when resuming a session at startup. Command approvals show
+the full command and working directory, visibly escape control characters,
+and allow long commands to be scrolled into view. Inferred test and lint
+commands are fixed before approval.
+
+**Filesystem protection.** Module scaffolding validates every output path;
+README writes respect protected paths. Skill installation uses trusted
+directory handles and preserves the previous installation if copying fails.
+Scan-cache updates cannot truncate symlink or hardlink targets. Directory
+renames cannot move protected files into readable locations.
+
+**Data protection.** Git diffs and symbol searches apply the application's
+read policy to individual paths, including case aliases, directory aliases,
+and custom glob patterns. Queued prompts, task planning, and restored history
+receive secret redaction. Task, subagent, and CLI output strip terminal control
+sequences before rendering.
+
+**Activity status.** The interface reports the operation the agent is actually
+performing and shows elapsed time while it is working.
+
 ### 2.3.1: TUI fixes on top of 2.3.0 (2026-08)
 
 Everything here corrects something 2.3.0 introduced.
