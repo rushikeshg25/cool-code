@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -9,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // InstallResult reports the outcome of an install.
@@ -147,49 +150,71 @@ func Install(source string, global bool, rootDir string) InstallResult {
 		return InstallResult{Dest: destBase, Error: "No SKILL.md found in the provided source."}
 	}
 
-	if err := os.MkdirAll(destBase, 0o755); err != nil {
+	trustedDir := rootDir
+	if global {
+		trustedDir = home
+	}
+	trusted, err := os.OpenRoot(trustedDir)
+	if err != nil {
 		return InstallResult{Dest: destBase, Error: err.Error()}
 	}
+	defer trusted.Close()
+	configDir, err := openInstallDir(trusted, ".coolcode")
+	if err != nil {
+		return InstallResult{Dest: destBase, Error: err.Error()}
+	}
+	defer configDir.Close()
+	base, err := openInstallDir(configDir, "skills")
+	if err != nil {
+		return InstallResult{Dest: destBase, Error: err.Error()}
+	}
+	defer base.Close()
 	var installed []string
 	for _, item := range items {
-		destDir := filepath.Join(destBase, sanitizeName(item.name))
-		_ = os.RemoveAll(destDir)
-		if item.fileOnly {
-			if err := os.MkdirAll(destDir, 0o755); err != nil {
-				return InstallResult{Dest: destBase, Error: err.Error()}
-			}
-			if err := copyFile(item.src, filepath.Join(destDir, skillFile)); err != nil {
-				return InstallResult{Dest: destBase, Error: err.Error()}
-			}
-		} else {
-			if err := copyDir(item.src, destDir); err != nil {
-				return InstallResult{Dest: destBase, Error: err.Error()}
-			}
+		if err := installItemInto(base, item); err != nil {
+			return InstallResult{Installed: installed, Dest: destBase, Error: err.Error()}
 		}
 		installed = append(installed, item.name)
 	}
 	return InstallResult{Installed: installed, Dest: destBase}
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src string, root *os.Root, dst string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("skill source is not a regular file: %s", src)
+	}
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	out, err := os.Create(dst)
+	opened, err := in.Stat()
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	if !os.SameFile(info, opened) {
+		return fmt.Errorf("skill source changed during copy")
+	}
+	if err := root.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	out, err := root.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
 	_, err = io.Copy(out, in)
-	return err
+	closeErr := out.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
 }
 
-func copyDir(src, dst string) error {
+func copyDir(src string, root *os.Root) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -209,11 +234,11 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(dst, rel)
+		target := rel
 		if info.IsDir() {
-			return os.MkdirAll(target, 0o755)
+			return root.MkdirAll(target, 0o755)
 		}
-		return copyFile(path, target)
+		return copyFile(path, root, target)
 	})
 }
 
@@ -237,4 +262,78 @@ func cloneEnv() []string {
 	}
 	// Never prompt: a clone that needs credentials must fail, not block.
 	return append(env, "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "GCM_INTERACTIVE=never")
+}
+
+// Open each administrative directory from its trusted parent. Compare the
+// opened handle to the checked entry so a swapped symlink cannot redirect it.
+func openInstallDir(parent *os.Root, name string) (*os.Root, error) {
+	if err := parent.Mkdir(name, 0o755); err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+	info, err := parent.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("skill destination must be a real directory: %s", name)
+	}
+	dir, err := parent.OpenRoot(name)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := dir.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		dir.Close()
+		return nil, fmt.Errorf("skill destination changed while opening: %s", name)
+	}
+	return dir, nil
+}
+
+func installItemInto(base *os.Root, item installItem) error {
+	name := sanitizeName(item.name)
+	if info, err := base.Lstat(name); err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("skill destination must be a real directory: %s", name)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	stageName := ".install-" + uuid.NewString()
+	stage, err := openInstallDir(base, stageName)
+	if err != nil {
+		return err
+	}
+	defer base.RemoveAll(stageName)
+	if item.fileOnly {
+		err = copyFile(item.src, stage, skillFile)
+	} else {
+		err = copyDir(item.src, stage)
+	}
+	closeErr := stage.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	// Preserve the old installation until the full replacement has been copied.
+	backup := ".backup-" + uuid.NewString()
+	hadPrevious := false
+	if err := base.Rename(name, backup); err == nil {
+		hadPrevious = true
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := base.Rename(stageName, name); err != nil {
+		if hadPrevious {
+			if restoreErr := base.Rename(backup, name); restoreErr != nil {
+				return fmt.Errorf("install failed: %v; restoring previous skill failed: %w", err, restoreErr)
+			}
+		}
+		return err
+	}
+	if hadPrevious {
+		return base.RemoveAll(backup)
+	}
+	return nil
 }
