@@ -426,44 +426,71 @@ var newModuleTool = Tool{
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		if strings.TrimSpace(a.ModuleName) == "" {
-			return fail("Invalid arguments", "moduleName is required.")
+		// A module name is one identifier-like folder component, never a path
+		// or a fragment of the generated TypeScript import.
+		if a.ModuleName == "" || strings.IndexFunc(a.ModuleName, func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-')
+		}) >= 0 {
+			return fail("Invalid arguments", "moduleName must contain only letters, digits, underscores, or hyphens.")
 		}
 		baseDir := a.BaseDir
 		if baseDir == "" {
 			baseDir = "src"
 		}
-		moduleDir := filepath.Join(ctx.RootDir, baseDir, a.ModuleName)
-		if _, v := ResolveWritePath(moduleDir, ctx); v != "" {
-			return fail("Invalid path", v)
+		// Preserve symlink/.. semantics until the canonical resolver sees them.
+		basePath := ctx.RootDir + string(filepath.Separator) + baseDir
+		if filepath.IsAbs(baseDir) {
+			return fail("Invalid path", "baseDir must be relative to the project root.")
 		}
+		moduleDir, reason := ResolveWritePath(basePath+string(filepath.Separator)+a.ModuleName, ctx)
+		if reason != "" {
+			return fail("Invalid path", reason)
+		}
+		moduleFile, reason := ResolveWritePath(filepath.Join(moduleDir, a.ModuleName+".ts"), ctx)
+		if reason != "" {
+			return fail("Invalid path", reason)
+		}
+		indexFile, reason := ResolveWritePath(filepath.Join(moduleDir, "index.ts"), ctx)
+		if reason != "" {
+			return fail("Invalid path", reason)
+		}
+		var rootIndex string
+		if a.ExportFromRootIndex {
+			rootIndex, reason = ResolveWritePath(basePath+string(filepath.Separator)+"index.ts", ctx)
+			if reason != "" {
+				return fail("Invalid path", reason)
+			}
+		}
+		// Validate every destination before the first mutation.
 		if err := os.MkdirAll(moduleDir, 0o755); err != nil {
-			return fail("Create failed", "Failed to create module: "+err.Error())
+			return fail("Create failed", err.Error())
 		}
 		exportName := toPascalCase(a.ModuleName)
 		if exportName == "" {
 			exportName = "NewModule"
 		}
-		moduleFile := filepath.Join(moduleDir, a.ModuleName+".ts")
-		if _, err := os.Stat(moduleFile); err != nil {
-			_ = os.WriteFile(moduleFile, []byte("export const "+exportName+" = () => {\n  // TODO: implement\n};\n"), 0o644)
-		}
-		indexFile := filepath.Join(moduleDir, "index.ts")
-		if _, err := os.Stat(indexFile); err != nil {
-			_ = os.WriteFile(indexFile, []byte("export * from './"+a.ModuleName+"';\n"), 0o644)
+		for _, file := range []struct{ path, body string }{
+			{moduleFile, "export const " + exportName + " = () => {\n  // TODO: implement\n};\n"},
+			{indexFile, "export * from './" + a.ModuleName + "';\n"},
+		} {
+			if _, err := os.Stat(file.path); os.IsNotExist(err) {
+				if err := os.WriteFile(file.path, []byte(file.body), 0o644); err != nil {
+					return fail("Create failed", err.Error())
+				}
+			} else if err != nil {
+				return fail("Create failed", err.Error())
+			}
 		}
 		if a.ExportFromRootIndex {
-			rootIndex := filepath.Join(ctx.RootDir, baseDir, "index.ts")
 			line := "export * from './" + a.ModuleName + "';\n"
-			if raw, err := os.ReadFile(rootIndex); err == nil {
-				if !strings.Contains(string(raw), line) {
-					if f, err := os.OpenFile(rootIndex, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-						_, _ = f.WriteString(line)
-						_ = f.Close()
-					}
+			raw, err := os.ReadFile(rootIndex)
+			if err != nil && !os.IsNotExist(err) {
+				return fail("Create failed", err.Error())
+			}
+			if !strings.Contains(string(raw), line) {
+				if err := os.WriteFile(rootIndex, append(raw, []byte(line)...), 0o644); err != nil {
+					return fail("Create failed", err.Error())
 				}
-			} else {
-				_ = os.WriteFile(rootIndex, []byte(line), 0o644)
 			}
 		}
 		return types.ToolResult{Display: "Module created", LLMResult: "Created " + moduleDir}
