@@ -231,6 +231,13 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			case p.getMode() != types.ModeAgent && tools.IsMutating(call.Name):
 				results[i] = &types.ToolResult{LLMResult: "[READ-ONLY MODE] Cannot execute tool '" + call.Name + "'. Switch to Agent mode to make changes or execute project code."}
 			default:
+				prepared, err := tools.PrepareCommand(toolCtx, call.Name, call.Arguments)
+				if err != nil {
+					results[i] = &types.ToolResult{Failed: true, LLMResult: err.Error()}
+					continue
+				}
+				call.Arguments = prepared
+				resp.ToolCalls[i] = call
 				if declined, msg := p.gate(call); declined {
 					results[i] = &types.ToolResult{LLMResult: msg}
 				} else if tools.IsReadOnly(call.Name) {

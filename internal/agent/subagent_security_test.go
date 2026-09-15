@@ -49,3 +49,53 @@ func TestSubagentEnforcesReadOnlyTools(t *testing.T) {
 		})
 	}
 }
+
+func TestFullCommandApprovalControlsExecution(t *testing.T) {
+	for _, name := range []string{"shell_command", "run_tests", "lint_fix"} {
+		for _, approve := range []bool{false, true} {
+			t.Run(name+map[bool]string{false: "/decline", true: "/approve"}[approve], func(t *testing.T) {
+				root := t.TempDir()
+				command := "printf '" + strings.Repeat("x", 200) + "' >/dev/null; printf approved > marker"
+				provider := &fakeProvider{responses: []llm.Message{{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{toolCall("1", name, map[string]any{"command": command})}}}}
+				p := newTestProcessor(t, root, provider, types.ModeAgent)
+				p.allowDangerous = false
+				seen := false
+				p.confirm = func(message string) bool {
+					seen = true
+					if !strings.Contains(message, "printf approved > marker") {
+						t.Error("suffix hidden")
+					}
+					return approve
+				}
+				if _, err := p.ProcessQuery(context.Background(), "run", nil); err != nil {
+					t.Fatal(err)
+				}
+				if !seen {
+					t.Fatal("no approval requested")
+				}
+				data, err := os.ReadFile(filepath.Join(root, "marker"))
+				if approve {
+					if err != nil || string(data) != "approved" {
+						t.Fatalf("approved command failed: %q %v", data, err)
+					}
+				} else if !os.IsNotExist(err) {
+					t.Fatal("declined command executed")
+				}
+			})
+		}
+	}
+}
+
+func TestRedactionCannotHideCommandExecution(t *testing.T) {
+	root := t.TempDir()
+	provider := &fakeProvider{responses: []llm.Message{{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{toolCall("1", "shell_command", map[string]any{"command": "password=$(>hidden-marker)"})}}}}
+	p := newTestProcessor(t, root, provider, types.ModeAgent)
+	p.allowDangerous = false
+	p.confirm = func(string) bool { t.Error("incomplete preview offered for approval"); return true }
+	if _, err := p.ProcessQuery(context.Background(), "run", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "hidden-marker")); !os.IsNotExist(err) {
+		t.Fatal("hidden command executed")
+	}
+}

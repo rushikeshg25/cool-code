@@ -341,7 +341,7 @@ func (m *model) renderSuggestions() string {
 // The text quotes a model-supplied command, so escapes are stripped before it
 // can redraw over what the user is being asked to approve.
 func (m *model) confirmLines() []string {
-	wrapped := ansi.Wordwrap(security.SanitizeTerminal(m.confirmMsg), maxInt(20, m.width-4), " /")
+	wrapped := ansi.Wrap(security.SanitizeTerminal(m.confirmMsg), maxInt(20, m.width-4), " /")
 	return strings.Split(wrapped, "\n")
 }
 
