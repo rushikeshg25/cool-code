@@ -51,14 +51,11 @@ func (p *Processor) PrepareAside() func(context.Context, string) (string, error)
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		resp, err := provider.Complete(ctx, llm.Request{System: system, Messages: []llm.Message{{Role: llm.RoleUser, Text: security.Redact(question)}}, Temperature: temperature, MaxTokens: 2048})
+		resp, _, err := p.completeMetered(ctx, "btw", provider, llm.Request{System: system, Messages: []llm.Message{{Role: llm.RoleUser, Text: security.Redact(question)}}, Temperature: temperature, MaxTokens: 2048}, nil)
 		if err != nil {
 			return "", err
 		}
-		p.mu.Lock()
-		p.totalUsage.Input += resp.Usage.Input
-		p.totalUsage.Output += resp.Usage.Output
-		p.mu.Unlock()
+
 		if len(resp.ToolCalls) > 0 {
 			return "", errors.New("side questions cannot run tools; ask in the main chat for actions")
 		}

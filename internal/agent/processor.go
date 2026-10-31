@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
@@ -51,6 +52,7 @@ type Options struct {
 
 // Processor drives the agentic loop.
 type Processor struct {
+	meter          usageMeter
 	rootDir        string
 	cfg            config.Config
 	provider       llm.Provider
@@ -180,24 +182,19 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		}
 		var resp llm.Message
 		var err error
+		var requestID string
 		streamed := false
-		if streamer, ok := p.provider.(llm.Streamer); ok && reporter != nil {
+		if _, ok := p.provider.(llm.Streamer); ok && reporter != nil {
 			sink := newStreamSink(reporter)
-			resp, err = streamer.Stream(ctx, req, sink.write)
+			resp, requestID, err = p.completeMetered(ctx, "main", p.provider, req, sink.write)
 			streamed = sink.flush()
 		} else {
-			resp, err = p.provider.Complete(ctx, req)
+			resp, requestID, err = p.completeMetered(ctx, "main", p.provider, req, nil)
 		}
 		if err != nil {
 			return finalText, err
 		}
-		if resp.Usage.Input > 0 || resp.Usage.Output > 0 {
-			p.mu.Lock()
-			p.lastUsage = resp.Usage
-			p.totalUsage.Input += resp.Usage.Input
-			p.totalUsage.Output += resp.Usage.Output
-			p.mu.Unlock()
-		}
+
 		p.ctxMgr.addAssistant(redactMessage(resp))
 
 		if len(resp.ToolCalls) == 0 {
@@ -281,7 +278,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				wg.Add(1)
 				go func(i int, call llm.ToolCall) {
 					defer wg.Done()
-					r := tools.RunReadOnly(toolCtx, call.Name, call.Arguments)
+					r := p.runMeteredTool(toolCtx, "main", requestID, i, call, true)
 					results[i] = &r
 				}(i, resp.ToolCalls[i])
 			}
@@ -300,6 +297,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				for k, i := range spawnIdx {
 					task, ok := parseSpawnTask(resp.ToolCalls[i].Arguments)
 					if !ok {
+						p.recordTool("main", requestID, i, spawnAgentTool, time.Now(), "failed")
 						results[i] = &types.ToolResult{Display: "Subagent failed", LLMResult: "Invalid arguments: spawn_agent requires a non-empty task."}
 						continue
 					}
@@ -314,7 +312,16 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 					wg.Add(1)
 					go func(k, i int, task string) {
 						defer wg.Done()
+						start := time.Now()
 						text := p.runSubagent(ctx, task, func(state string) { setLine(k, state) })
+						status := "completed"
+						if strings.HasPrefix(text, "[subagent error]") || strings.HasPrefix(text, "[subagent hit") {
+							status = "failed"
+						}
+						if ctx.Err() != nil {
+							status = "cancelled"
+						}
+						p.recordTool("main", requestID, i, spawnAgentTool, start, status)
 						results[i] = &types.ToolResult{Display: "Subagent: " + truncateTask(task), LLMResult: text}
 						setLine(k, "done")
 					}(k, i, task)
@@ -343,7 +350,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			if reporter != nil {
 				reporter.Status(toolStatus(call.Name))
 			}
-			r := tools.Run(toolCtx, call.Name, call.Arguments)
+			r := p.runMeteredTool(toolCtx, "main", requestID, i, call, false)
 			results[i] = &r
 			executed[i] = true
 			if structuralTools[call.Name] {
@@ -356,7 +363,15 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		// closed by the deferred closeOpenToolCalls.
 		for i, call := range resp.ToolCalls {
 			if results[i] == nil {
+				p.recordTool("main", requestID, i, call.Name, time.Now(), "cancelled")
 				continue
+			}
+			if !executed[i] {
+				status := "blocked"
+				if call.Name == updateTaskListTool {
+					status = "handled"
+				}
+				p.recordTool("main", requestID, i, call.Name, time.Now(), status)
 			}
 			results[i].LLMResult = security.Redact(results[i].LLMResult)
 			p.ctxMgr.addToolResult(call, results[i].LLMResult)
@@ -453,9 +468,9 @@ func (p *Processor) compact(ctx context.Context, manual bool) string {
 	}
 	b.WriteString(p.ctxMgr.transcriptForSummary(summaryInputBudget))
 
-	resp, err := p.provider.Complete(ctx, llm.Request{
+	resp, _, err := p.completeMetered(ctx, "compaction", p.provider, llm.Request{
 		Messages: []llm.Message{{Role: llm.RoleUser, Text: b.String()}},
-	})
+	}, nil)
 	if err != nil {
 		if manual {
 			return "Compaction failed: " + err.Error()

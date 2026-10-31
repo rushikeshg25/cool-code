@@ -26,6 +26,7 @@ const (
 
 var commands = []slashCommand{
 	{"/send", "Send queued follow-ups now, cancelling the active turn first"},
+	{"/usage", "Show dev token usage, request/tool timing, and log path"},
 	{"/tasks", "Show full task titles, status, and details"},
 	{"/help", "Show available commands"},
 	{"/connect", "Connect a model provider (API key)"},

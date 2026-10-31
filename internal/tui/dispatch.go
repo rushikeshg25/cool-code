@@ -39,6 +39,9 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.appendSystem(m.helpText())
 	case "/send":
 		return m.sendQueuedNow()
+	case "/usage":
+		m.followOutput = true
+		m.appendSystem(m.proc.UsageReport())
 	case "/tasks":
 		if m.tasks == nil || len(m.tasks.Items) == 0 {
 			m.appendSystem("No tasks yet.")

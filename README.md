@@ -465,6 +465,30 @@ Requires Go 1.27.3+ (or a newer supported, patched Go release). External tools u
 - **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **hooks**, and **multimodal input**.
 - **`@file` mentions** - the composer already completes paths; it does not yet attach the file's contents.
 
+## Dev token metering
+
+On dev, each running instance writes metadata-only JSONL records to
+`logs/token-usage-dev-<run-id>.jsonl` inside the project. Files are private (0600).
+Use `/usage` at any time for totals and the latest 20 events, including while the
+agent works. `--print --json` includes `usage_report`; `--verbose` prints it too.
+The log retains all events across `/fork` and restored chats in that instance.
+
+- Model requests record UTC start/end timestamps, duration, provider/model,
+  outcome, input/output tokens, cached input and reasoning counts when supplied.
+- Requests are labelled `main`, `subagent`, `btw`, or `compaction`. Tool events
+  record tool names, request IDs, call indices, timestamps, duration and outcome.
+  Request records also list requested tools and tool results present in input.
+- Prompts, arguments, tool output, provider error text and credentials are not
+  logged. Unknown tool names are recorded as `unknown_tool`.
+- Missing usage is **unavailable**, not zero. Cached input and reasoning are
+  subsets of input/output. Counts are provider-reported, not measured locally.
+  The proxy does not provide exact per-tool token allocations, hidden retry
+  costs, remaining subscription quota, or billing information. Request duration
+  includes transport retries; only returned usage can be counted.
+- A log write failure leaves the agent running; `/usage` displays the error.
+  Totals remain in memory, with the latest 20 events. Logs are not uploaded or
+  automatically removed. Keep generated logs out of commits.
+
 ## Changelog
 
 ### 2.4.0-dev.2: Web tools, background processes, and conversation controls (2026-10-31)

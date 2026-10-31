@@ -61,11 +61,11 @@ func (p *Processor) runSubagent(ctx context.Context, task string, report func(st
 		if err := ctx.Err(); err != nil {
 			return "[subagent cancelled] " + lastText
 		}
-		resp, err := p.provider.Complete(ctx, llm.Request{
+		resp, requestID, err := p.completeMetered(ctx, "subagent", p.provider, llm.Request{
 			System:   system,
 			Messages: messages,
 			Tools:    subagentToolDefs,
-		})
+		}, nil)
 		if err != nil {
 			return "[subagent error] " + err.Error()
 		}
@@ -76,8 +76,8 @@ func (p *Processor) runSubagent(ctx context.Context, task string, report func(st
 		if len(resp.ToolCalls) == 0 {
 			return lastText
 		}
-		for _, call := range resp.ToolCalls {
-			result := tools.RunReadOnly(toolCtx, call.Name, call.Arguments)
+		for i, call := range resp.ToolCalls {
+			result := p.runMeteredTool(toolCtx, "subagent", requestID, i, call, true)
 			messages = append(messages, llm.Message{
 				Role: llm.RoleTool,
 				// Redact here as the parent loop does. These messages are

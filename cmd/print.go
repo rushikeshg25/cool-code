@@ -81,17 +81,22 @@ func runPrint(flags rootFlags, args []string) error {
 	rep := &printReporter{verbose: flags.verbose, out: os.Stderr}
 	final, err := proc.ProcessQuery(context.Background(), prompt, rep)
 	if err != nil {
+		fmt.Fprintln(os.Stderr, proc.UsageReport())
 		return err
 	}
 
+	if flags.verbose {
+		fmt.Fprintln(os.Stderr, proc.UsageReport())
+	}
 	if flags.printJSON {
 		status := proc.GetStatus()
 		out := map[string]any{
-			"result":   final,
-			"mode":     string(mode),
-			"model":    status.Model,
-			"messages": status.MessageCount,
-			"tools":    rep.tools,
+			"result":       final,
+			"mode":         string(mode),
+			"model":        status.Model,
+			"messages":     status.MessageCount,
+			"tools":        rep.tools,
+			"usage_report": proc.UsageReport(),
 		}
 		if status.CostKnown {
 			out["cost_usd"] = status.SessionCost
