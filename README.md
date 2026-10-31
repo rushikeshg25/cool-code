@@ -205,6 +205,32 @@ Fetch preserves headings, links, lists, and code blocks as Markdown. Use
 long pages. Downloads are limited to 4 MiB and each result to 20,000 characters.
 Binary files are rejected. Existing network protections apply to every fetch.
 
+### Optional browser
+
+Install Node.js 18+, Google Chrome, and the tested Playwright CLI version:
+
+```sh
+npm install -g @playwright/cli@0.1.23
+```
+
+The agent's `browser` tool starts a separate headless Chrome session on its first
+`navigate` call. No extension, Chrome login profile, or automatic download is
+used. Each Coolcode process owns its session and closes it on exit; idle sessions
+also expire after five minutes. After an idle timeout, use `close`, then `navigate` to restart.
+
+Actions: `navigate`, `snapshot`, `find`, `click`, `fill`, `select`, `press`,
+`console`, `network`, and `close`. Snapshots expose accessible page text and
+numbered element refs; interaction uses those refs. Ask the agent to test a
+local application or inspect a page that needs JavaScript. Use `web_fetch` for
+ordinary documentation. Arbitrary JavaScript, file uploads, screenshots, and
+access to an existing browser session are not part of this tool.
+
+Browser actions require the normal action approval in implementation mode.
+They are blocked in Ask/Plan and unavailable to read-only subagents. Unlike
+`web_fetch`, the browser can access local applications and website subresources;
+it is not a network sandbox. Page content is marked as untrusted. Downloads are
+disabled, output is bounded, and temporary browser files are removed on close.
+
 ## Configuration (`.coolcode.json`)
 
 ```json

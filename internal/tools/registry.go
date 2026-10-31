@@ -37,6 +37,7 @@ var All = []Tool{
 	useSkillTool,
 	webFetchTool,
 	webSearchTool,
+	browserTool,
 }
 
 var byName = func() map[string]Tool {
@@ -75,6 +76,8 @@ func RunReadOnly(ctx Context, name string, args json.RawMessage) types.ToolResul
 // dangerous and should be confirmed, or "" otherwise.
 func DangerReason(name string, args json.RawMessage) string {
 	switch name {
+	case "browser":
+		return "browser access (can interact with websites and local apps): " + strconv.Quote(security.Redact(string(args)))
 	case "shell_command", "run_tests", "lint_fix":
 		var a struct {
 			Command   string `json:"command"`

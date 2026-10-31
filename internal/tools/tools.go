@@ -26,6 +26,7 @@ type Context struct {
 	ExtraDirs []string
 	Config    config.Config
 	GitIgnore project.GitIgnoreChecker
+	Browser   *Browser
 }
 
 // Roots returns every directory tools may operate in: RootDir plus ExtraDirs.
