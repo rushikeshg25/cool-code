@@ -12,7 +12,7 @@ func TestYOLOCommandDuringTurn(t *testing.T) {
 			t.Fatalf("%s: YOLO=%v", command, m.proc.YOLO())
 		}
 	}
-	m = typeLine(t, m, "/yolo invalid")
+	m = typeLine(t, m, "/yolo --off")
 	if !m.proc.YOLO() {
 		t.Fatal("invalid argument changed approvals")
 	}

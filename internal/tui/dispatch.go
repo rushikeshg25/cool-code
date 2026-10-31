@@ -55,6 +55,9 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.followOutput = true
 		m.appendSystem(text.String())
 	case "/yolo":
+		if len(parts) == 2 {
+			arg = strings.ToLower(parts[1])
+		}
 		enabled := !m.proc.YOLO()
 		if len(parts) > 2 || (arg != "" && arg != "on" && arg != "off") {
 			m.appendError("Usage: /yolo [on|off]")
