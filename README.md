@@ -1,6 +1,6 @@
 # Cool-Code: a fast, native CLI coding agent
 
-> **Dev branch / v2.4.0-dev.1.** Subscription access through an already-running CLIProxyAPI instance is available only on `dev`. Stable `main` is unchanged.
+> **Dev branch / v2.4.1-dev.1.** Subscription access through an already-running CLIProxyAPI instance is available only on `dev`. Stable `main` is unchanged.
 
 An intelligent command-line coding agent - describe what you want, and it reads, plans, and edits your codebase using live tools. Similar in spirit to Claude Code and Gemini CLI, now rewritten in **Go** with a **Bubble Tea** TUI and **native provider tool-calling**.
 
@@ -490,6 +490,18 @@ The log retains all events across `/fork` and restored chats in that instance.
   automatically removed. Keep generated logs out of commits.
 
 ## Changelog
+
+### 2.4.1-dev.1: Token metering and terminal fixes (2026-11-01)
+
+- Include stable 2.4.1 fixes: Ghostty typing shortcuts, auto-scroll, Alt+S and
+  `/send` for queued follow-ups, `/yolo`, readable tasks, and Enter/Y approvals.
+- Add dev-only `/usage` with provider-reported request tokens, timestamps,
+  duration, model, cached-input/reasoning details, and tool timing.
+- Save metadata-only JSONL under the project `logs/` folder. Cover main chat,
+  subagents, `/btw`, and compaction; mark missing usage as unavailable.
+- Keep CLI proxy integration and token metering exclusive to dev. Existing
+  proxy configuration is unchanged; no subscription quota or cost is inferred.
+
 
 ### 2.4.0-dev.2: Web tools, background processes, and conversation controls (2026-10-31)
 

@@ -20,7 +20,7 @@ import (
 )
 
 // Version is the CLI version, overridable at build time via -ldflags.
-var Version = "2.4.0-dev.2"
+var Version = "2.4.1-dev.1"
 
 type rootFlags struct {
 	yes            bool
