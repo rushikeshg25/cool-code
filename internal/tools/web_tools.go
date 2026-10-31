@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -19,43 +20,35 @@ const (
 	maxSearchHits = 8
 )
 
-var (
-	scriptRe  = regexp.MustCompile(`(?is)<script.*?</script>`)
-	styleRe   = regexp.MustCompile(`(?is)<style.*?</style>`)
-	commentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
-	tagRe     = regexp.MustCompile(`<[^>]+>`)
-	wsRe      = regexp.MustCompile(`[ \t]+`)
-	blankRe   = regexp.MustCompile(`\n\s*\n\s*\n+`)
-)
-
-// htmlToText strips an HTML document down to readable text.
-func htmlToText(html string) string {
-	s := scriptRe.ReplaceAllString(html, " ")
-	s = styleRe.ReplaceAllString(s, " ")
-	s = commentRe.ReplaceAllString(s, " ")
-	s = tagRe.ReplaceAllString(s, " ")
-	replacer := strings.NewReplacer(
-		"&nbsp;", " ", "&amp;", "&", "&lt;", "<", "&gt;", ">", "&quot;", "\"", "&#39;", "'",
-	)
-	s = replacer.Replace(s)
-	s = wsRe.ReplaceAllString(s, " ")
-	s = blankRe.ReplaceAllString(s, "\n\n")
-	return strings.TrimSpace(s)
+// htmlToText is used for short search-result fragments.
+func htmlToText(source string) string {
+	text, err := extractHTML(source, nil, false)
+	if err != nil {
+		return ""
+	}
+	return strings.Join(strings.Fields(text), " ")
 }
 
 var webFetchTool = Tool{
 	Name:        "web_fetch",
-	Description: "Fetches the contents of an http(s) URL and returns it as readable text (HTML is stripped).",
+	Description: "Reads an HTTPS page as Markdown or text without JavaScript. Preserves documentation links and code. Use offset to read further chunks; use browser tools for JavaScript-rendered pages.",
 	ReadOnly:    true,
 	Schema: obj(map[string]any{
-		"url": strProp("The absolute http(s) URL to fetch."),
+		"url":    strProp("The absolute HTTPS URL to fetch."),
+		"format": map[string]any{"type": "string", "enum": []string{"markdown", "text"}, "description": "Output format; defaults to markdown."},
+		"offset": numProp("Optional character offset for the next chunk, starting at zero."),
 	}, "url"),
 	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
-			URL string `json:"url"`
+			URL    string `json:"url"`
+			Format string `json:"format"`
+			Offset int    `json:"offset"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
+		}
+		if a.Offset < 0 || (a.Format != "" && a.Format != "markdown" && a.Format != "text") {
+			return fail("Invalid arguments", "Use a nonnegative offset and format markdown or text.")
 		}
 		u, err := url.Parse(a.URL)
 		if err != nil {
@@ -73,23 +66,48 @@ var webFetchTool = Tool{
 			return fail("Fetch failed", "Secure fetch failed: "+err.Error())
 		}
 		defer res.Body.Close()
-		raw, _ := io.ReadAll(io.LimitReader(res.Body, 4*1024*1024))
+		raw, err := io.ReadAll(io.LimitReader(res.Body, 4*1024*1024+1))
+		if err != nil {
+			return fail("Fetch failed", "Could not read the complete response.")
+		}
+		if len(raw) > 4*1024*1024 {
+			return fail("Fetch failed", "Page exceeds the 4 MiB download limit.")
+		}
+		media, _, _ := mime.ParseMediaType(res.Header.Get("Content-Type"))
+		if media == "" {
+			media, _, _ = mime.ParseMediaType(http.DetectContentType(raw))
+		}
 		text := strings.TrimSpace(string(raw))
-		if strings.Contains(res.Header.Get("Content-Type"), "html") {
-			text = htmlToText(string(raw))
+		if media == "text/html" || media == "application/xhtml+xml" {
+			text, err = extractHTML(string(raw), res.Request.URL, a.Format != "text")
+			if err != nil {
+				return fail("Fetch failed", "Could not parse page HTML.")
+			}
+		} else if !strings.HasPrefix(media, "text/") && media != "application/json" && media != "application/xml" && !strings.HasSuffix(media, "+json") && !strings.HasSuffix(media, "+xml") {
+			return fail("Unsupported content", "Use web_fetch for text, HTML, JSON, or XML; binary content is not supported.")
 		}
-		if len(text) > webMaxChars {
-			text = text[:webMaxChars] + "\n... (truncated)"
+		chars := []rune(text)
+		if a.Offset > len(chars) {
+			return fail("Invalid offset", "Page contains "+itoa(len(chars))+" characters.")
 		}
+		end := a.Offset + webMaxChars
+		if end > len(chars) {
+			end = len(chars)
+		}
+		text = string(chars[a.Offset:end])
+		if end < len(chars) {
+			text += "\n[More content: call web_fetch with offset " + itoa(end) + ".]"
+		}
+
 		if res.StatusCode >= 400 {
-			return fail("Fetch failed", "HTTP "+itoa(res.StatusCode)+" for "+u.String()+"\n"+text)
+			return fail("Fetch failed", Untrusted("web error", "HTTP "+itoa(res.StatusCode)+" for "+u.String()+"\n"+text))
 		}
 		if text == "" {
 			text = "(empty response)"
 		}
 		return types.ToolResult{
 			Display:   "Fetched " + u.Hostname(),
-			LLMResult: Untrusted("web page "+u.Hostname(), text),
+			LLMResult: Untrusted("web page "+u.Hostname(), "Source: "+res.Request.URL.String()+"\n\n"+text),
 		}
 	},
 }

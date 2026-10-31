@@ -38,6 +38,8 @@ var commands = []slashCommand{
 	{"/compact", "Summarize the conversation and free up context"},
 	{"/model", "Choose a model from connected providers"},
 	{"/cost", "Show token usage and estimated spend for this session"},
+	{"/btw", "Ask a side question in a small window without changing this chat"},
+	{"/fork", "Copy this conversation into a new chat and switch to it"},
 	{"/sessions", "List saved sessions for this directory"},
 	{"/install-skill", "Install a skill from a local path or git URL"},
 	{"/clear", "Clear the screen"},

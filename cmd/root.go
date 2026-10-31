@@ -118,6 +118,11 @@ func runInteractive(flags rootFlags) error {
 	if err != nil {
 		return handleProviderError(err)
 	}
+	defer func() {
+		if err := proc.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "Browser cleanup:", err)
+		}
+	}()
 
 	// Startup notices. The persistent header carries the name and version now,
 	// so there is no banner to hang these off.

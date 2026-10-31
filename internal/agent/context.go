@@ -395,16 +395,14 @@ func (c *contextManager) pinnedFiles() []string {
 func (c *contextManager) restore(messages []llm.Message, summary string, pinned []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(messages) > 0 {
-		c.messages = make([]llm.Message, len(messages))
-		for i, message := range messages {
-			c.messages[i] = redactMessage(message)
-		}
+	c.messages = make([]llm.Message, len(messages))
+	for i, message := range messages {
+		c.messages[i] = redactMessage(message)
 	}
 	c.summary = security.Redact(summary)
-	if pinned != nil {
-		c.pinned = pinned
-	}
+	c.pinned = append([]string(nil), pinned...)
+	c.extraDirs = nil
+	c.extraTrees = nil
 }
 
 // untrusted wraps repository- or web-sourced text in the markers described by

@@ -72,7 +72,7 @@ type Processor struct {
 	confirmEdit func(string, string) bool
 }
 
-var structuralTools = map[string]bool{"new_file": true, "rename_file": true, "new_module": true}
+var structuralTools = map[string]bool{"apply_patch": true, "new_file": true, "rename_file": true, "new_module": true}
 
 const updateTaskListTool = "update_task_list"
 
@@ -102,7 +102,7 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		provider:       provider,
 		setupError:     err,
 		ctxMgr:         cm,
-		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker},
+		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker, Browser: &tools.Browser{}, Processes: &tools.BackgroundProcesses{}},
 		allowDangerous: opts.YOLO || opts.AllowDangerous || cfg.AllowDangerous(),
 		confirmEdits:   cfg.ConfirmEdits() && !opts.YOLO,
 		mode:           mode,
@@ -722,6 +722,13 @@ func (p *Processor) Snapshot() (messages []llm.Message, summary string, pinned [
 
 // Restore loads persisted session state.
 func (p *Processor) Restore(messages []llm.Message, summary string, pinned []string, mode types.AgentMode) {
+	p.mu.Lock()
+	p.toolCtx.ExtraDirs = nil
+	p.taskList = nil
+	p.queue = nil
+	p.lastUsage = llm.Usage{}
+	p.totalUsage = llm.Usage{}
+	p.mu.Unlock()
 	p.ctxMgr.restore(messages, summary, pinned)
 	// Guard against sessions persisted mid-turn with unanswered tool calls.
 	p.ctxMgr.closeOpenToolCalls("[Session restored before this tool ran]")
@@ -777,3 +784,17 @@ func (s *streamSink) flush() bool {
 
 // SetupError reports why a disconnected processor needs /connect.
 func (p *Processor) SetupError() error { return p.setupError }
+
+// Close releases optional resources owned by this processor.
+func (p *Processor) Close() error {
+	p.toolCtx.Processes.Close()
+	if p.toolCtx.Browser != nil {
+		return p.toolCtx.Browser.Close()
+	}
+	return nil
+}
+
+// SetQuestionHandler connects interactive user input before a turn starts.
+func (p *Processor) SetQuestionHandler(handler tools.QuestionHandler) {
+	p.toolCtx.AskQuestion = handler
+}

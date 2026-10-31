@@ -13,6 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/net v0.62.0
 )
 
 require (
@@ -43,7 +44,6 @@ require (
 	github.com/xo/terminfo v1.3.0 // indirect
 	github.com/yuin/goldmark v1.8.7 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
-	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect

@@ -21,6 +21,10 @@ import (
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case asideMsg:
+		return m.receiveAside(msg)
+	case questionReqMsg:
+		return m.receiveQuestion(msg)
 	case catalogMsg:
 		return m.receiveCatalog(msg)
 	case effortTickMsg:
@@ -119,6 +123,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
+	m.answerQuestion("", context.Canceled)
 	m.processing = false
 	m.status = ""
 	m.turnStart = time.Time{}
@@ -179,6 +184,12 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.question != nil {
+		return m.handleQuestionKey(msg)
+	}
+	if m.aside != nil {
+		return m.handleAsideKey(msg)
+	}
 	if m.picker != nil {
 		return m.handlePickerKey(msg)
 	}
@@ -385,8 +396,18 @@ func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
 		m.appendSystem("Could not load that session.")
 		return m, nil
 	}
+	if data.ID == m.sessionID {
+		return m, nil
+	}
+	if err := m.saveSession(m.sessionID); err != nil {
+		m.appendError("Cannot switch chats: " + err.Error())
+		return m, nil
+	}
 	var messages []llm.Message
-	_ = json.Unmarshal(data.Messages, &messages)
+	if err := json.Unmarshal(data.Messages, &messages); err != nil {
+		m.appendError("Saved chat is invalid: " + err.Error())
+		return m, nil
+	}
 	m.proc.Restore(messages, data.Summary, data.PinnedFiles, types.AgentMode(data.Mode))
 	for _, d := range data.ExtraDirs {
 		_, _ = m.proc.AddDir(d) // dir may have been removed since; ignore
@@ -394,7 +415,10 @@ func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
 	m.fileCache = nil
 	m.sessionID = data.ID
 	m.mode = m.proc.Mode()
+	m.tasks = m.proc.TaskList()
 	m.history = nil
+	m.invalidatePrefix()
+	m.streamIdx = -1
 	m.repopulateTranscript()
 	short := data.ID
 	if len(short) > 8 {
@@ -517,6 +541,12 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	}
 	m.inputHist = append(m.inputHist, value)
 	m.histIdx = len(m.inputHist)
+	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/fork") {
+		return m.forkSession()
+	}
+	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/btw") {
+		return m.openAside(strings.TrimSpace(strings.TrimPrefix(value, fields[0])))
+	}
 	if m.processing {
 		m.proc.EnqueueMessage(value)
 		m.appendSystem("(queued) " + value)
@@ -555,6 +585,7 @@ func (m *model) interruptTurn() {
 
 // quit persists the session before exiting so nothing is lost on Ctrl+C.
 func (m *model) quit() (tea.Model, tea.Cmd) {
+	m.closeAside()
 	m.closePicker()
 	m.persist()
 	return m, tea.Quit
