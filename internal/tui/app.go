@@ -87,6 +87,7 @@ type model struct {
 	ti            textarea.Model
 	sp            spinner.Model
 	ready         bool
+	followOutput  bool
 
 	history     []entry
 	prefix      string // cached rendering of every entry but the last
@@ -171,18 +172,19 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 	ki.EchoMode = textinput.EchoPassword
 
 	return &model{
-		proc:       proc,
-		rootDir:    rootDir,
-		version:    version,
-		copy:       copyOut,
-		sessionID:  sessionID,
-		ti:         ti,
-		sp:         sp,
-		mode:       proc.Mode(),
-		tasks:      proc.TaskList(),
-		streamIdx:  -1,
-		connectFor: -1,
-		keyInput:   ki,
+		proc:         proc,
+		rootDir:      rootDir,
+		version:      version,
+		copy:         copyOut,
+		sessionID:    sessionID,
+		followOutput: true,
+		ti:           ti,
+		sp:           sp,
+		mode:         proc.Mode(),
+		tasks:        proc.TaskList(),
+		streamIdx:    -1,
+		connectFor:   -1,
+		keyInput:     ki,
 	}
 }
 
@@ -377,7 +379,6 @@ func (m *model) syncViewport() {
 	if !m.ready {
 		return
 	}
-	atBottom := m.vp.AtBottom()
 
 	if m.prefixCount > len(m.history)-1 {
 		// History shrank or was rewritten; drop the cache.
@@ -393,7 +394,7 @@ func (m *model) syncViewport() {
 		b.WriteString(m.history[i].rendered)
 	}
 	m.vp.SetContent(b.String())
-	if atBottom {
+	if m.followOutput {
 		m.vp.GotoBottom()
 	}
 }

@@ -118,6 +118,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ready {
 		var cmd tea.Cmd
 		m.vp, cmd = m.vp.Update(msg)
+		if mouse, ok := msg.(tea.MouseMsg); ok && (mouse.Button == tea.MouseButtonWheelUp || mouse.Button == tea.MouseButtonWheelDown) {
+			m.followOutput = m.vp.AtBottom()
+		}
 		return m, cmd
 	}
 	return m, nil
@@ -273,9 +276,16 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+	case tea.KeyEnd:
+		if msg.Alt {
+			m.followOutput = true
+			m.vp.GotoBottom()
+			return m, nil
+		}
 	case tea.KeyPgUp, tea.KeyPgDown:
 		var cmd tea.Cmd
 		m.vp, cmd = m.vp.Update(msg)
+		m.followOutput = m.vp.AtBottom()
 		return m, cmd
 	case tea.KeyEnter:
 		if !msg.Alt {
@@ -569,6 +579,7 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) runQuery(text string) (tea.Model, tea.Cmd) {
+	m.followOutput = true
 	m.processing = true
 	m.turnStart = time.Now()
 	m.ti.Placeholder = "Queue a follow-up…"
