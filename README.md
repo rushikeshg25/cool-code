@@ -242,6 +242,16 @@ Create a `COOLCODE.md` in your project root for persistent, project-specific ins
 
 Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md` (project) or `~/.coolcode/skills/<name>/SKILL.md` (global), each with optional `name`/`description` frontmatter. The agent sees a catalog and calls the `use_skill` tool to load one on demand. Install skills from a local path or git URL with `cool-code skill install` or `/install-skill`.
 
+### Side questions
+
+`/btw` opens a small question window; `/btw what does this term mean?` submits
+immediately. It also works while the main agent is running. Answers use a
+bounded excerpt of the conversation captured when the window opens, with no
+tools. Each question is independent; side questions and answers are not added
+to the main conversation or saved session. Token usage still counts toward
+session spend. Esc closes the window and cancels its request while the main
+turn continues. Use PgUp/PgDn to scroll long answers.
+
 ### Fork a conversation
 
 `/fork` saves the current conversation, copies its messages, summary, pinned
@@ -359,7 +369,7 @@ cmd/                         # cobra CLI: root + config / scan / skill / task
 internal/
   llm/        provider-agnostic tool-calling over Anthropic / OpenAI / Gemini
   agent/      processor (agentic loop), context, prompts, danger gating, task plan
-  tools/      24 tools + JSON-schema defs, path safety, registry
+  tools/      registered tools + JSON-schema defs, path safety, registry
   config/     .coolcode.json load/save + dotted get/set
   session/    ~/.coolcode/sessions persistence
   skills/     SKILL.md discovery + install (local path / git URL)
