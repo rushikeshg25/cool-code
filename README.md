@@ -167,6 +167,8 @@ You can also type new messages while the agent is working - they're queued and p
 | Ctrl+U / Ctrl+K | Delete to the start/end of the current line |
 | Ctrl+Home/End | Move to the start/end of the whole prompt |
 | Up/Down | Recall earlier/later prompts at the first/last input line |
+| PgUp/PgDn or mouse wheel | Scroll the transcript; scrolling up pauses auto-scroll |
+| Alt+End | Jump to the latest output and resume auto-scroll |
 
 Coolcode enables [enhanced keyboard reporting](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
 inside its terminal screen and restores the previous setting on exit. Ghostty

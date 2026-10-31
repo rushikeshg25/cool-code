@@ -210,7 +210,7 @@ func (m *model) helpText() string {
 	b.WriteString("\n  Ctrl+Left/Right or Alt+B/F moves by word · Home/End or Ctrl+A/E moves to line ends")
 	b.WriteString("\n  Ctrl+U/K deletes to line start/end · Ctrl+Home/End moves to prompt start/end")
 	b.WriteString("\n  Esc or Ctrl+C cancels a running turn · Ctrl+C when idle quits")
-	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript")
+	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript\n  Alt+End jumps to the latest output and resumes auto-scroll")
 	return b.String()
 }
 

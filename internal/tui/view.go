@@ -32,6 +32,9 @@ func (m *model) View() string {
 
 	m.vp.Height = l.transcriptHeight
 	m.vp.Width = l.transcriptWidth
+	if m.followOutput {
+		m.vp.GotoBottom()
+	}
 
 	body := m.vp.View()
 	if l.showSidebar {
