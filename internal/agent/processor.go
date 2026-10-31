@@ -102,7 +102,7 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		provider:       provider,
 		setupError:     err,
 		ctxMgr:         cm,
-		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker, Browser: &tools.Browser{}},
+		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker, Browser: &tools.Browser{}, Processes: &tools.BackgroundProcesses{}},
 		allowDangerous: opts.YOLO || opts.AllowDangerous || cfg.AllowDangerous(),
 		confirmEdits:   cfg.ConfirmEdits() && !opts.YOLO,
 		mode:           mode,
@@ -789,7 +789,13 @@ func (s *streamSink) flush() bool {
 func (p *Processor) SetupError() error { return p.setupError }
 
 // Close releases optional resources owned by this processor.
-func (p *Processor) Close() error { return p.toolCtx.Browser.Close() }
+func (p *Processor) Close() error {
+	p.toolCtx.Processes.Close()
+	if p.toolCtx.Browser != nil {
+		return p.toolCtx.Browser.Close()
+	}
+	return nil
+}
 
 // SetQuestionHandler connects interactive user input before a turn starts.
 func (p *Processor) SetQuestionHandler(handler tools.QuestionHandler) {

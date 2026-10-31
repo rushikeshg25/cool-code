@@ -28,6 +28,7 @@ type Context struct {
 	GitIgnore   project.GitIgnoreChecker
 	Browser     *Browser
 	AskQuestion QuestionHandler
+	Processes   *BackgroundProcesses
 }
 
 // Roots returns every directory tools may operate in: RootDir plus ExtraDirs.

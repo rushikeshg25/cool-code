@@ -242,6 +242,31 @@ Create a `COOLCODE.md` in your project root for persistent, project-specific ins
 
 Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md` (project) or `~/.coolcode/skills/<name>/SKILL.md` (global), each with optional `name`/`description` frontmatter. The agent sees a catalog and calls the `use_skill` tool to load one on demand. Install skills from a local path or git URL with `cool-code skill install` or `/install-skill`.
 
+### Background processes
+
+Use `background_process` for a dev server, watcher, or long-running build while
+the agent continues other work. `start` accepts a command, working directory,
+and optional timeout, then returns an opaque job ID. `list` shows this instance's
+jobs; `status` reports state and exit code; `logs` returns recent output; `stop`
+terminates the job's process group; `forget` removes a completed job record.
+A started process is not necessarily ready: check logs and the application's
+health before using it.
+
+Jobs survive the originating turn, including turn cancellation, and stop on
+explicit stop, timeout, or Coolcode exit. The default lifetime is 30 minutes;
+`timeout` can extend it up to 24 hours. Run the server command in the foreground
+without `nohup`, `&`, or daemonization. Detached processes are outside the
+manager's lifecycle. Process state and logs are kept only in memory, with up to
+64 tracked jobs and 64 KiB of recent complete log lines per job. `logs` accepts
+`tail` (default 100, maximum 500); oversized lines are omitted and incomplete
+lines appear after completion or process exit.
+
+This tool currently supports Linux and macOS. It uses the same working-directory
+jail, command approval, and restricted child environment as shell commands.
+Start and stop require normal action approval, and all operations are restricted
+to implementation mode. It cannot adopt or stop an arbitrary PID, another
+Coolcode instance's jobs, or an existing service such as CLIProxyAPI.
+
 ### Side questions
 
 `/btw` opens a small question window; `/btw what does this term mean?` submits
