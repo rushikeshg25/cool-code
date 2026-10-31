@@ -15,6 +15,7 @@ import (
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/creds"
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
@@ -96,6 +97,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case confirmReqMsg:
+		if len(m.sendNowMessages) > 0 {
+			msg.resp <- false
+			return m, nil
+		}
 		m.status = ""
 		m.confirmMsg = msg.message
 		m.confirmResp = msg.resp
@@ -592,11 +597,15 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	}
 	if m.processing {
 		m.proc.EnqueueMessage(value)
-		m.appendSystem("(queued) " + value)
+		m.appendSystem("(queued) " + security.Redact(value))
 		return m, nil
 	}
 	if strings.HasPrefix(value, "/") {
 		return m.dispatchCommand(value)
+	}
+	if queued := m.proc.TakeQueuedMessages(); len(queued) > 0 {
+		m.markQueuedSent(queued)
+		value = strings.Join(append(queued, value), "\n")
 	}
 	return m.runQuery(value)
 }

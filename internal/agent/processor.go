@@ -371,7 +371,6 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if cancelErr != nil {
 			return finalText, cancelErr
 		}
-
 	}
 
 	// Compaction is destructive and used to happen with no signal at all, so

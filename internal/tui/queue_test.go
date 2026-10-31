@@ -75,3 +75,30 @@ func TestQueueDeliveryUpdatesOnlyMatchingLabels(t *testing.T) {
 		t.Fatal("delivery labels not matched to their messages")
 	}
 }
+
+func TestSendNowDeclinesLateApproval(t *testing.T) {
+	m := newTestModel(t)
+	m.processing = true
+	m.sendNowMessages = []string{"next"}
+	response := make(chan bool, 1)
+	m.Update(confirmReqMsg{message: "pending tool", resp: response})
+	select {
+	case approved := <-response:
+		if approved {
+			t.Fatal("cancelled tool approved")
+		}
+	default:
+		t.Fatal("late approval left worker blocked")
+	}
+	if m.confirmMsg != "" {
+		t.Fatal("cancelled turn reopened confirmation")
+	}
+}
+func TestNewPromptKeepsPendingFollowupsInOrder(t *testing.T) {
+	m := newTestModel(t)
+	m.proc.EnqueueMessage("old")
+	m = typeLine(t, m, "new")
+	if got := m.history[len(m.history)-1].raw; got != "old\nnew" {
+		t.Fatalf("prompt order: %q", got)
+	}
+}
