@@ -100,7 +100,7 @@ var webFetchTool = Tool{
 		}
 
 		if res.StatusCode >= 400 {
-			return fail("Fetch failed", "HTTP "+itoa(res.StatusCode)+" for "+u.String()+"\n"+text)
+			return fail("Fetch failed", Untrusted("web error", "HTTP "+itoa(res.StatusCode)+" for "+u.String()+"\n"+text))
 		}
 		if text == "" {
 			text = "(empty response)"

@@ -59,7 +59,7 @@ var browserTool = Tool{
 		}
 		out, err := ctx.Browser.run(ctx.Context(), a)
 		if err != nil {
-			return fail("Browser failed", security.Redact(err.Error()))
+			return fail("Browser failed", Untrusted("browser error", security.Redact(err.Error())))
 		}
 		return types.ToolResult{Display: "Browser: " + a.Action, LLMResult: Untrusted("browser output", security.Redact(out))}
 	},
@@ -101,7 +101,7 @@ func browserCommand(a browserArgs) ([]string, error) {
 	}
 }
 
-func (b *Browser) run(ctx context.Context, a browserArgs) (string, error) {
+func (b *Browser) run(ctx context.Context, a browserArgs) (out string, err error) {
 	args, err := browserCommand(a)
 	if err != nil {
 		return "", err
@@ -111,6 +111,11 @@ func (b *Browser) run(ctx context.Context, a browserArgs) (string, error) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	defer func() {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			err = errors.Join(err, b.closeLocked())
+		}
+	}()
 	if a.Action == "close" {
 		return "Browser closed.", b.closeLocked()
 	}
@@ -129,14 +134,10 @@ func (b *Browser) run(ctx context.Context, a browserArgs) (string, error) {
 			return "", errors.Join(err, b.closeLocked())
 		}
 	}
-	var out string
 	if a.Action != "snapshot" && a.Action != "find" {
 		out, err = b.command(ctx, args...)
 	}
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			err = errors.Join(err, b.closeLocked())
-		}
 		return "", err
 	}
 	if a.Action == "console" || a.Action == "network" {
