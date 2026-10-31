@@ -166,7 +166,7 @@ func (m *model) footer() string {
 }
 
 func (m *model) hasOverlay() bool {
-	return m.confirmMsg != "" || m.connectFor >= 0 || m.connectMenu || m.sessionMenu || m.planMenu
+	return m.picker != nil || m.confirmMsg != "" || m.connectFor >= 0 || m.connectMenu || m.sessionMenu || m.planMenu
 }
 
 func (m *model) renderTasks() string {
@@ -222,7 +222,7 @@ func (m *model) renderStatusBar(l layout) string {
 		parts = append(parts, statusValue.Render(status.Model))
 	}
 	if m.width >= 100 && status.Effort != "" {
-		parts = append(parts, statusBar.Render(status.Effort+" effort"))
+		parts = append(parts, statusBar.Render(effortMeter(status.Effort, 0)+" "+status.Effort+" effort"))
 	}
 	if m.width >= 110 {
 		parts = append(parts, statusBar.Render(fmt.Sprintf("%d msgs", status.MessageCount)))
@@ -242,6 +242,8 @@ func (m *model) renderInputRegion() string {
 	switch {
 	case m.confirmMsg != "":
 		return m.renderConfirmation()
+	case m.picker != nil:
+		return m.renderPicker()
 	case m.connectFor >= 0:
 		return lipgloss.JoinVertical(lipgloss.Left,
 			menuTitle.Render(truncate("Connect "+connectOptions[m.connectFor].provider, m.width)),

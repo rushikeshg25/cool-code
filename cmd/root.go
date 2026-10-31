@@ -26,6 +26,7 @@ type rootFlags struct {
 	yes            bool
 	noInit         bool
 	allowDangerous bool
+	yolo           bool
 	copy           bool
 	continueSess   bool
 	resumeID       string
@@ -59,6 +60,8 @@ func Execute() {
 	root.Flags().BoolVarP(&flags.yes, "yes", "y", false, "Start without the initialization prompt")
 	root.Flags().BoolVar(&flags.noInit, "no-init", false, "Exit without initializing in the current directory")
 	root.Flags().BoolVar(&flags.allowDangerous, "allow-dangerous", false, "Allow dangerous actions without prompting")
+	root.Flags().BoolVar(&flags.yolo, "YOLO", false, "Skip action and edit approval prompts for this run")
+	root.Flags().BoolVar(&flags.yolo, "yolo", false, "Alias for --YOLO")
 	root.Flags().BoolVar(&flags.copy, "copy", false, "Copy final responses to the clipboard")
 	root.Flags().BoolVar(&flags.continueSess, "continue", false, "Resume the most recent session for this directory")
 	root.Flags().StringVar(&flags.resumeID, "resume", "", "Resume a specific session by id")
@@ -109,6 +112,7 @@ func runInteractive(flags rootFlags) error {
 	proc, err := agent.New(rootDir, cfg, agent.Options{
 		Mode:            mode,
 		AllowDangerous:  cfg.AllowDangerous(),
+		YOLO:            flags.yolo,
 		AllowMissingKey: true,
 	})
 	if err != nil {
@@ -118,6 +122,9 @@ func runInteractive(flags rootFlags) error {
 	// Startup notices. The persistent header carries the name and version now,
 	// so there is no banner to hang these off.
 	var notices []string
+	if flags.yolo {
+		notices = append(notices, "YOLO enabled: action and edit approval prompts are skipped for this run.")
+	}
 	if !proc.Connected() {
 		notices = append(notices, fmt.Sprintf("Run /connect to choose an API-key provider.\nProvider setup: %v", proc.SetupError()))
 	}

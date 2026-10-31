@@ -50,7 +50,7 @@ func TestTypingUpdatesInput(t *testing.T) {
 
 func TestSlashModeSwitch(t *testing.T) {
 	m := newTestModel(t)
-	m = typeLine(t, m, "/mode plan")
+	m = typeLine(t, m, "/plan")
 	if m.mode != types.ModePlan {
 		t.Fatalf("mode = %q, want plan", m.mode)
 	}
@@ -126,18 +126,18 @@ func TestExitQuits(t *testing.T) {
 
 func TestCommandSuggestions(t *testing.T) {
 	m := newTestModel(t)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/mo")})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/pl")})
 	m = updated.(*model)
 	if len(m.suggestions) == 0 {
 		t.Fatal("expected suggestions for /mo")
 	}
 	found := false
 	for _, s := range m.suggestions {
-		if s.name == "/mode" {
+		if s.name == "/plan" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected /mode in suggestions, got %v", m.suggestions)
+		t.Fatalf("expected /plan in suggestions, got %v", m.suggestions)
 	}
 }
