@@ -242,6 +242,15 @@ Create a `COOLCODE.md` in your project root for persistent, project-specific ins
 
 Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md` (project) or `~/.coolcode/skills/<name>/SKILL.md` (global), each with optional `name`/`description` frontmatter. The agent sees a catalog and calls the `use_skill` tool to load one on demand. Install skills from a local path or git URL with `cool-code skill install` or `/install-skill`.
 
+### Multi-file patches
+
+`apply_patch` adds, updates, or deletes several text files in one call. It uses
+`*** Begin Patch` / `*** End Patch` markers, file headers, and exact `@@` context
+hunks. All targets and hunks are checked before writes; ambiguous matches fail.
+Writes preserve existing file permissions, and write failures trigger rollback
+of completed files. Delete operations require action approval; edit previews
+follow `confirmEdits`. The usual path jail and read/write guardrails apply.
+
 ### Web reading
 
 `web_search` finds pages; `web_fetch` reads HTTPS pages without running JavaScript.

@@ -72,7 +72,7 @@ type Processor struct {
 	confirmEdit func(string, string) bool
 }
 
-var structuralTools = map[string]bool{"new_file": true, "rename_file": true, "new_module": true}
+var structuralTools = map[string]bool{"apply_patch": true, "new_file": true, "rename_file": true, "new_module": true}
 
 const updateTaskListTool = "update_task_list"
 
