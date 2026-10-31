@@ -415,6 +415,7 @@ func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
 	m.fileCache = nil
 	m.sessionID = data.ID
 	m.mode = m.proc.Mode()
+	m.tasks = m.proc.TaskList()
 	m.history = nil
 	m.invalidatePrefix()
 	m.streamIdx = -1
@@ -544,6 +545,9 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	}
 	m.inputHist = append(m.inputHist, value)
 	m.histIdx = len(m.inputHist)
+	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/fork") {
+		return m.forkSession()
+	}
 	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/btw") {
 		return m.openAside(strings.TrimSpace(strings.TrimPrefix(value, fields[0])))
 	}

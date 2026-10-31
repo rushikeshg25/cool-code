@@ -58,3 +58,35 @@ func TestForkFailureKeepsCurrentChat(t *testing.T) {
 		t.Fatal("unexpected saved state")
 	}
 }
+
+func TestForkCannotBeQueuedAsAgentInstruction(t *testing.T) {
+	m := newTestModel(t)
+	m.sessionID = session.NewID()
+	m.processing = true
+	m.ti.SetValue("/fork")
+	m.submit()
+	for _, entry := range m.history {
+		if entry.raw == "(queued) /fork" {
+			t.Fatal("fork was queued as an agent instruction")
+		}
+	}
+}
+func TestReturningToEmptyParentClearsChildState(t *testing.T) {
+	m := newTestModel(t)
+	m.sessionID = session.NewID()
+	parent := m.sessionID
+	m.forkSession()
+	original := session.Load(parent)
+	extra := t.TempDir()
+	m.proc.Restore([]llm.Message{{Role: llm.RoleUser, Text: "Child"}}, "", nil, types.ModeAgent)
+	if _, err := m.proc.AddDir(extra); err != nil {
+		t.Fatal(err)
+	}
+	m.sessionList = []session.Data{*original}
+	m.sessionIdx = 0
+	m.resumeSelectedSession()
+	messages, _, pins, _, _ := m.proc.Snapshot()
+	if len(messages) != 0 || len(pins) != 0 || len(m.proc.ExtraDirs()) != 0 {
+		t.Fatalf("child state leaked: messages=%d pins=%d roots=%d", len(messages), len(pins), len(m.proc.ExtraDirs()))
+	}
+}

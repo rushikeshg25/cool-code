@@ -725,6 +725,13 @@ func (p *Processor) Snapshot() (messages []llm.Message, summary string, pinned [
 
 // Restore loads persisted session state.
 func (p *Processor) Restore(messages []llm.Message, summary string, pinned []string, mode types.AgentMode) {
+	p.mu.Lock()
+	p.toolCtx.ExtraDirs = nil
+	p.taskList = nil
+	p.queue = nil
+	p.lastUsage = llm.Usage{}
+	p.totalUsage = llm.Usage{}
+	p.mu.Unlock()
 	p.ctxMgr.restore(messages, summary, pinned)
 	// Guard against sessions persisted mid-turn with unanswered tool calls.
 	p.ctxMgr.closeOpenToolCalls("[Session restored before this tool ran]")
