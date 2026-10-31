@@ -34,17 +34,43 @@ var enhancedKeys = func() map[string]tea.Msg {
 			if !ok {
 				continue
 			}
-			add(fmt.Sprintf("%d;%du", code, mod), key)
-			add(fmt.Sprintf("%d;%d:1u", code, mod), key)  // press
-			add(fmt.Sprintf("%d;%d:2u", code, mod), key)  // repeat
-			add(fmt.Sprintf("%d;%d:3u", code, mod), nil)  // release is not a second edit
+			for _, locks := range []int{0, 64, 128, 192} {
+				encodedMod := mod + locks
+				add(fmt.Sprintf("%d;%du", code, encodedMod), key)
+				add(fmt.Sprintf("%d;%d:1u", code, encodedMod), key)
+				add(fmt.Sprintf("%d;%d:2u", code, encodedMod), key)
+				add(fmt.Sprintf("%d;%d:3u", code, encodedMod), nil)
+			}
 			add(fmt.Sprintf("27;%d;%d~", mod, code), key) // xterm modifyOtherKeys
 			if mod == 1 {
 				add(fmt.Sprintf("%du", code), key)
 			}
 		}
 	}
-	add("3;5~", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}, Alt: true})
+	// Navigation remains usable with Caps Lock/Num Lock set as well.
+	for _, nav := range []struct {
+		code, end      string
+		plain, control tea.KeyType
+	}{
+		{"1", "A", tea.KeyUp, tea.KeyCtrlUp}, {"1", "B", tea.KeyDown, tea.KeyCtrlDown},
+		{"1", "C", tea.KeyRight, tea.KeyCtrlRight}, {"1", "D", tea.KeyLeft, tea.KeyCtrlLeft},
+		{"1", "H", tea.KeyHome, tea.KeyCtrlHome}, {"1", "F", tea.KeyEnd, tea.KeyCtrlEnd},
+		{"5", "~", tea.KeyPgUp, tea.KeyCtrlPgUp}, {"6", "~", tea.KeyPgDown, tea.KeyCtrlPgDown},
+		{"3", "~", tea.KeyDelete, tea.KeyDelete},
+	} {
+		for mod := 1; mod <= 8; mod++ {
+			key := tea.KeyMsg{Type: nav.plain, Alt: (mod-1)&2 != 0}
+			if (mod-1)&4 != 0 {
+				key.Type = nav.control
+			}
+			if nav.plain == tea.KeyDelete && (mod-1)&4 != 0 {
+				key = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}, Alt: true}
+			}
+			for _, locks := range []int{0, 64, 128, 192} {
+				add(fmt.Sprintf("%s;%d%s", nav.code, mod+locks, nav.end), key)
+			}
+		}
+	}
 	return keys
 }()
 
