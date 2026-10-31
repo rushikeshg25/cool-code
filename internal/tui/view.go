@@ -403,7 +403,7 @@ func (m *model) renderConfirmation() string {
 	offset := minInt(m.confirmOff, maxInt(0, len(lines)-limit))
 	end := minInt(len(lines), offset+limit)
 	preview := colorizeDiff(strings.Join(lines[offset:end], "\n"))
-	hint := "y approve  ·  n/Enter reject"
+	hint := "Y/Enter approve  ·  N decline  ·  Esc dismiss"
 	if len(lines) > limit {
 		hint = fmt.Sprintf("↑/↓ scroll %d-%d/%d  ·  %s", offset+1, end, len(lines), hint)
 	}
