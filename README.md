@@ -382,6 +382,26 @@ Requires Go 1.27.3+ (or a newer supported, patched Go release). External tools u
 
 ## Changelog
 
+### 2.4.0: Provider discovery, web tools, and conversation controls (2026-10-31)
+
+- Add OpenRouter support and live model selection across configured providers,
+  with model-aware reasoning effort choices.
+- Add `/plan`, `/ask`, `/impl`, and `--YOLO`; improve streamed Markdown and
+  reasoning activity indicators.
+- Add structured web reading with paging and an optional isolated headless
+  browser for page inspection and interaction. Browser use requires an installed
+  Playwright CLI and Chrome; no browser extension is required.
+- Add validated multi-file `apply_patch` edits and structured questions with
+  custom answers.
+- Add `/fork` for independent saved conversations and `/btw` for side questions
+  that leave the main conversation unchanged.
+- Add `background_process` to start, inspect, read logs, and stop owned commands
+  across turns on Linux/macOS, with cleanup on timeout and application exit.
+- Fix restored conversation state and browser cancellation/error handling.
+- Update dependencies and CI/security checks. Recover unsupported subscription
+  provider settings with a provider setup prompt; subscription proxy support
+  remains exclusive to dev releases.
+
 ### 2.3.2: Security fixes and accurate activity status (2026-09-15)
 
 **Upgrading.** Source builds now require Go 1.25.13 or a newer supported,
