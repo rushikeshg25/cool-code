@@ -16,7 +16,7 @@ Cool-Code combines large language models with a comprehensive set of development
 - **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
-- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the model's window, or as a token count when that window is unknown. Syntax-highlighted fenced code, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
+- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the model's window, or as a token count when that window is unknown. Syntax-highlighted fenced code, multiline input (Ctrl+Enter in enhanced terminals; Alt+Enter/Ctrl+J fallback), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
 - **Three agent modes** - Plan (read-only investigation → detailed plan), Agent (autonomous execution), Ask (read-only Q&A). After Plan mode produces a plan, choose **Start implementation** to jump straight into Agent mode.
 - **Project memory (`COOLCODE.md`)** - persistent project instructions loaded into every prompt.
 - **Skills** - discoverable, model-invoked instruction modules under `.coolcode/skills/` (compatible with Claude Code skills).
@@ -153,6 +153,28 @@ Type `/` to open the command palette; press Tab to complete the highlighted comm
 - `/exit` - exit
 
 You can also type new messages while the agent is working - they're queued and picked up after the current step.
+
+### Typing shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| Enter | Send the prompt (queue it while a turn is running) |
+| Ctrl+Enter or Shift+Enter | Insert a newline in Ghostty/Kitty and terminals with enhanced keyboard reporting |
+| Alt+Enter or Ctrl+J | Insert a newline with legacy terminal input |
+| Ctrl+Space, Ctrl+Backspace, Ctrl+W, Alt+Backspace | Delete the previous word |
+| Ctrl+Delete or Alt+D | Delete the next word |
+| Ctrl+Left/Right or Alt+B/F | Move by word |
+| Home/End or Ctrl+A/E | Move to the start/end of the current line |
+| Ctrl+U / Ctrl+K | Delete to the start/end of the current line |
+| Ctrl+Home/End | Move to the start/end of the whole prompt |
+| Up/Down | Recall earlier/later prompts at the first/last input line |
+
+Coolcode enables [enhanced keyboard reporting](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
+inside its terminal screen and restores the previous setting on exit. Ghostty
+needs no custom key binding. If a terminal, desktop shortcut, or multiplexer
+intercepts a key or sends ordinary Enter for Ctrl+Enter, use the fallback keys.
+Bracketed multiline paste stays in the composer and does not submit the prompt.
+These shortcuts also appear in `/help`.
 
 ### Model providers
 

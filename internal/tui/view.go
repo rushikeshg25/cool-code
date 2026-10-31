@@ -306,9 +306,9 @@ func (m *model) renderActivity() string {
 
 func (m *model) renderComposer() string {
 	box := composerStyle.Width(maxInt(12, m.width-2)).Render(m.ti.View())
-	hint := "Enter send  ·  Alt+Enter newline  ·  / commands  ·  @ files"
+	hint := "Enter send  ·  Ctrl+Enter newline  ·  / commands  ·  @ files"
 	if m.processing {
-		hint = "Enter queue follow-up  ·  Alt+Enter newline  ·  Esc cancel"
+		hint = "Enter queue follow-up  ·  Ctrl+Enter newline  ·  Esc cancel"
 	}
 	return box + "\n" + ansi.Truncate(faintStyle.Render(hint), maxInt(1, m.width), "…")
 }

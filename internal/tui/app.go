@@ -153,9 +153,12 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 	ti.ShowLineNumbers = false
 	ti.SetHeight(1)
 	ti.CharLimit = 0
-	// Enter submits; Alt+Enter or Ctrl+J inserts a newline (Shift+Enter is
-	// not distinguishable from Enter in classic terminal input).
+	// Enhanced Ctrl/Shift+Enter events are normalized to Ctrl+J. Legacy
+	// terminals can still use Alt+Enter or Ctrl+J.
 	ti.KeyMap.InsertNewline.SetKeys("alt+enter", "ctrl+j")
+	ti.KeyMap.WordBackward.SetKeys("ctrl+left", "alt+left", "alt+b")
+	ti.KeyMap.WordForward.SetKeys("ctrl+right", "alt+right", "alt+f")
+	ti.KeyMap.DeleteWordForward.SetKeys("ctrl+delete", "alt+delete", "alt+d")
 	ti.Focus()
 
 	sp := spinner.New()

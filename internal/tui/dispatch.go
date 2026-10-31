@@ -205,7 +205,10 @@ func (m *model) helpText() string {
 	}
 	b.WriteString("\n  Shift+Tab cycles mode (plan → agent → ask)")
 	b.WriteString("\nKeys:")
-	b.WriteString("\n  Enter submits · Alt+Enter or Ctrl+J inserts a newline (Shift+Enter is not detectable in terminals)")
+	b.WriteString("\n  Enter sends · Ctrl/Shift+Enter inserts a newline in enhanced terminals (Ghostty/Kitty)\n  Alt+Enter or Ctrl+J inserts a newline in legacy terminals")
+	b.WriteString("\n  Ctrl+Space / Ctrl+Backspace / Ctrl+W deletes the previous word · Ctrl+Delete / Alt+D deletes the next word")
+	b.WriteString("\n  Ctrl+Left/Right or Alt+B/F moves by word · Home/End or Ctrl+A/E moves to line ends")
+	b.WriteString("\n  Ctrl+U/K deletes to line start/end · Ctrl+Home/End moves to prompt start/end")
 	b.WriteString("\n  Esc or Ctrl+C cancels a running turn · Ctrl+C when idle quits")
 	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript")
 	return b.String()
