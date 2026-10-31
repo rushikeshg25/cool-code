@@ -197,6 +197,14 @@ Create a `COOLCODE.md` in your project root for persistent, project-specific ins
 
 Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md` (project) or `~/.coolcode/skills/<name>/SKILL.md` (global), each with optional `name`/`description` frontmatter. The agent sees a catalog and calls the `use_skill` tool to load one on demand. Install skills from a local path or git URL with `cool-code skill install` or `/install-skill`.
 
+### Web reading
+
+`web_search` finds pages; `web_fetch` reads HTTPS pages without running JavaScript.
+Fetch preserves headings, links, lists, and code blocks as Markdown. Use
+`format: "text"` for plain text and the returned `offset` to continue through
+long pages. Downloads are limited to 4 MiB and each result to 20,000 characters.
+Binary files are rejected. Existing network protections apply to every fetch.
+
 ## Configuration (`.coolcode.json`)
 
 ```json
