@@ -33,12 +33,12 @@ jobs:
 
       - name: Static security analysis
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.9
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
           make sec
 
       - name: Vulnerability scan
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./...
 
       - name: Build

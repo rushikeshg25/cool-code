@@ -20,7 +20,7 @@ Read these five source files in order; follow their calls into the other package
 
 ## Run it
 
-Use Go 1.25.13 or a compatible newer toolchain, as declared in [go.mod:3](../../go.mod#L3). From the repository root:
+Use Go 1.27.3 or a compatible newer toolchain, as declared in [go.mod:3](../../go.mod#L3). From the repository root:
 
 ```bash
 go mod download
