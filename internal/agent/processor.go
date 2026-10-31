@@ -154,6 +154,7 @@ func (p *Processor) buildToolDefs() {
 // ProcessQuery runs one user query to completion, returning the final assistant
 // text. Reporter may be nil.
 func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Reporter) (string, error) {
+	p.TraceInput("main", query)
 	if p.provider == nil {
 		if p.setupError != nil {
 			return "", fmt.Errorf("provider is not connected: %w", p.setupError)
@@ -235,6 +236,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		executed := make([]bool, n) // true when a real tool ran (fires reporter.Tool)
 		var readIdx, mutIdx, spawnIdx []int
 		for i, call := range resp.ToolCalls {
+			p.traceToolStart("main", requestID, i, call)
 			switch {
 			case call.Name == updateTaskListTool:
 				results[i] = &types.ToolResult{LLMResult: p.handleTaskList(call, reporter)}
@@ -297,8 +299,8 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				for k, i := range spawnIdx {
 					task, ok := parseSpawnTask(resp.ToolCalls[i].Arguments)
 					if !ok {
-						p.recordTool("main", requestID, i, spawnAgentTool, time.Now(), "failed")
 						results[i] = &types.ToolResult{Display: "Subagent failed", LLMResult: "Invalid arguments: spawn_agent requires a non-empty task."}
+						p.recordTool("main", requestID, i, resp.ToolCalls[i], results[i], time.Now(), "failed")
 						continue
 					}
 					label := "agent " + strconv.Itoa(k+1) + ": " + truncateTask(security.Redact(task))
@@ -321,7 +323,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 						if ctx.Err() != nil {
 							status = "cancelled"
 						}
-						p.recordTool("main", requestID, i, spawnAgentTool, start, status)
+						p.recordTool("main", requestID, i, resp.ToolCalls[i], &types.ToolResult{LLMResult: text}, start, status)
 						results[i] = &types.ToolResult{Display: "Subagent: " + truncateTask(task), LLMResult: text}
 						setLine(k, "done")
 					}(k, i, task)
@@ -363,7 +365,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		// closed by the deferred closeOpenToolCalls.
 		for i, call := range resp.ToolCalls {
 			if results[i] == nil {
-				p.recordTool("main", requestID, i, call.Name, time.Now(), "cancelled")
+				p.recordTool("main", requestID, i, call, nil, time.Now(), "cancelled")
 				continue
 			}
 			if !executed[i] {
@@ -371,7 +373,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				if call.Name == updateTaskListTool {
 					status = "handled"
 				}
-				p.recordTool("main", requestID, i, call.Name, time.Now(), status)
+				p.recordTool("main", requestID, i, call, results[i], time.Now(), status)
 			}
 			results[i].LLMResult = security.Redact(results[i].LLMResult)
 			p.ctxMgr.addToolResult(call, results[i].LLMResult)
@@ -495,6 +497,7 @@ func (p *Processor) Compact(ctx context.Context) string {
 
 func redactMessage(message llm.Message) llm.Message {
 	message.Text = security.Redact(message.Text)
+	message.Reasoning = security.Redact(message.Reasoning)
 	message.ToolCalls = append([]llm.ToolCall(nil), message.ToolCalls...)
 	for i := range message.ToolCalls {
 		message.ToolCalls[i].Arguments = json.RawMessage(security.Redact(string(message.ToolCalls[i].Arguments)))
@@ -629,6 +632,7 @@ func (p *Processor) SetConfirmHandlers(confirm func(string) bool, confirmEdit fu
 
 // EnqueueMessage queues a message to interrupt the running turn.
 func (p *Processor) EnqueueMessage(msg string) {
+	p.TraceInput("queued", msg)
 	p.mu.Lock()
 	p.queue = append(p.queue, security.Redact(msg))
 	p.mu.Unlock()

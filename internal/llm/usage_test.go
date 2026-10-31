@@ -52,3 +52,35 @@ func TestProxyUsageDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestProxyExposedReasoning(t *testing.T) {
+	isolateProviderEnv(t)
+	t.Setenv("TEST_PROXY_API_KEY", "test")
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprint(stream), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+					fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"answer\",\"reasoning_content\":\"exposed reasoning\"}}]}\n\ndata: [DONE]\n\n")
+				} else {
+					fmt.Fprint(w, `{"choices":[{"message":{"content":"answer","reasoning_content":"exposed reasoning"}}]}`)
+				}
+			}))
+			defer srv.Close()
+			p, err := New(config.LLM{Provider: "cliproxy", Model: "test", BaseURL: srv.URL, APIKeyEnv: "TEST_PROXY_API_KEY"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m Message
+			var visible string
+			if stream {
+				m, err = p.(Streamer).Stream(context.Background(), Request{}, func(s string) { visible += s })
+			} else {
+				m, err = p.Complete(context.Background(), Request{})
+			}
+			if err != nil || m.Text != "answer" || m.Reasoning != "exposed reasoning" || (stream && visible != "answer") {
+				t.Fatalf("reasoning separation failed: %+v %v", m, err)
+			}
+		})
+	}
+}

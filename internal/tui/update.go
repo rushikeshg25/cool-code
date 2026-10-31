@@ -584,6 +584,9 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	if value == "" {
 		return m, nil
 	}
+	if strings.HasPrefix(value, "/") {
+		m.proc.TraceInput("command", value)
+	}
 	m.inputHist = append(m.inputHist, value)
 	m.histIdx = len(m.inputHist)
 	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/fork") {

@@ -467,7 +467,7 @@ Requires Go 1.27.3+ (or a newer supported, patched Go release). External tools u
 
 ## Dev token metering
 
-On dev, each running instance writes metadata-only JSONL records to
+On dev, each running instance writes redacted JSONL records to
 `logs/token-usage-dev-<run-id>.jsonl` inside the project. Files are private (0600).
 Use `/usage` at any time for totals and the latest 20 events, including while the
 agent works. `--print --json` includes `usage_report`; `--verbose` prints it too.
@@ -478,8 +478,19 @@ The log retains all events across `/fork` and restored chats in that instance.
 - Requests are labelled `main`, `subagent`, `btw`, or `compaction`. Tool events
   record tool names, request IDs, call indices, timestamps, duration and outcome.
   Request records also list requested tools and tool results present in input.
-- Prompts, arguments, tool output, provider error text and credentials are not
-  logged. Unknown tool names are recorded as `unknown_tool`.
+- The trace includes submitted/queued messages, normalized model requests
+  (system prompt, conversation, tool definitions), responses, tool arguments,
+  tool results and redacted errors. Start events are written before model/tool
+  execution so unfinished operations remain visible. Completed requests retain
+  partial output returned after cancellation; individual streaming chunks and
+  raw HTTP traffic/headers are not logged.
+- Reasoning text is captured only when the provider returns it: OpenAI-compatible
+  `reasoning_content`/`reasoning`, Anthropic thinking, and Gemini thought text.
+  Hidden reasoning and encrypted reasoning payloads are not available.
+- Recognized secrets and sensitive environment values are redacted before disk
+  writes. Files can still contain private source code and conversation content;
+  redaction cannot identify every possible secret. Review logs before sharing.
+  Detailed payloads stay on disk; the in-memory recent-event list stores metadata.
 - Missing usage is **unavailable**, not zero. Cached input and reasoning are
   subsets of input/output. Counts are provider-reported, not measured locally.
   The proxy does not provide exact per-tool token allocations, hidden retry
@@ -497,7 +508,7 @@ The log retains all events across `/fork` and restored chats in that instance.
   `/send` for queued follow-ups, `/yolo`, readable tasks, and Enter/Y approvals.
 - Add dev-only `/usage` with provider-reported request tokens, timestamps,
   duration, model, cached-input/reasoning details, and tool timing.
-- Save metadata-only JSONL under the project `logs/` folder. Cover main chat,
+- Save redacted JSONL under the project `logs/` folder. Cover main chat,
   subagents, `/btw`, and compaction; mark missing usage as unavailable.
 - Keep CLI proxy integration and token metering exclusive to dev. Existing
   proxy configuration is unchanged; no subscription quota or cost is inferred.

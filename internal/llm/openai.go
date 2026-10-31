@@ -128,8 +128,10 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 		Error   json.RawMessage `json:"error"`
 		Choices []struct {
 			Message struct {
-				Content   string           `json:"content"`
-				ToolCalls []openaiToolCall `json:"tool_calls"`
+				Content          string           `json:"content"`
+				Reasoning        string           `json:"reasoning"`
+				ReasoningContent string           `json:"reasoning_content"`
+				ToolCalls        []openaiToolCall `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage *openaiUsage `json:"usage"`
@@ -145,7 +147,10 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 		return Message{Role: RoleAssistant, Usage: usage}, nil
 	}
 	msg := resp.Choices[0].Message
-	out := Message{Role: RoleAssistant, Text: msg.Content, Usage: usage}
+	out := Message{Role: RoleAssistant, Text: msg.Content, Usage: usage, Reasoning: msg.ReasoningContent}
+	if out.Reasoning == "" {
+		out.Reasoning = msg.Reasoning
+	}
 	for _, tc := range msg.ToolCalls {
 		args := tc.Function.Arguments
 		if args == "" {
@@ -182,8 +187,10 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			Error   json.RawMessage `json:"error"`
 			Choices []struct {
 				Delta struct {
-					Content   string `json:"content"`
-					ToolCalls []struct {
+					Content          string `json:"content"`
+					Reasoning        string `json:"reasoning"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`
 						Function struct {
@@ -212,6 +219,11 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			return
 		}
 		delta := chunk.Choices[0].Delta
+		if delta.ReasoningContent != "" {
+			out.Reasoning += delta.ReasoningContent
+		} else {
+			out.Reasoning += delta.Reasoning
+		}
 		if delta.Content != "" {
 			out.Text += delta.Content
 			onDelta(delta.Content)
@@ -232,12 +244,6 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			c.args = append(c.args, tc.Function.Arguments...)
 		}
 	})
-	if err != nil {
-		return out, err
-	}
-	if providerErr != nil {
-		return out, providerErr
-	}
 	for _, idx := range order {
 		c := calls[idx]
 		args := c.args
@@ -245,6 +251,12 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			args = []byte("{}")
 		}
 		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: c.id, Name: c.name, Arguments: json.RawMessage(args)})
+	}
+	if err != nil {
+		return out, err
+	}
+	if providerErr != nil {
+		return out, providerErr
 	}
 	return out, nil
 }

@@ -46,6 +46,7 @@ type Usage struct {
 type Message struct {
 	Role       Role       `json:"role"`
 	Text       string     `json:"text,omitempty"`
+	Reasoning  string     `json:"reasoning,omitempty"`
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	ToolName   string     `json:"toolName,omitempty"`

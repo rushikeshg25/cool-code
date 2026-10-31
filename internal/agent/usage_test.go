@@ -22,9 +22,7 @@ func usageEvents(t *testing.T, p *Processor) []usageEvent {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "PRIVATE_CONTENT") {
-		t.Fatal("content leaked into ledger")
-	}
+
 	stat, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +36,9 @@ func usageEvents(t *testing.T, p *Processor) []usageEvent {
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			t.Fatal(err)
 		}
-		events = append(events, e)
+		if e.Type == "request" || e.Type == "tool" {
+			events = append(events, e)
+		}
 	}
 	return events
 }
@@ -143,5 +143,63 @@ func TestUsageSubagentAndCompaction(t *testing.T) {
 	events := usageEvents(t, p)
 	if len(events) != 2 || events[0].Kind != "subagent" || events[1].Kind != "compaction" || p.totalUsage.Input != 15 || p.lastUsage.Input != 0 {
 		t.Fatalf("events=%+v total=%+v", events, p.totalUsage)
+	}
+}
+
+func TestTraceCapturesInputsOutputsAndRedactsSecrets(t *testing.T) {
+	t.Setenv("TEST_API_KEY", "trace-secret-value")
+	p := newTestProcessor(t, t.TempDir(), &fakeProvider{responses: []llm.Message{{Text: "answer trace-secret-value", Reasoning: "provider reasoning password=hiddenvalue", Usage: llm.Usage{Input: 2, Output: 1}}}}, types.ModeAgent)
+	_, _, err := p.completeMetered(context.Background(), "main", p.provider, llm.Request{System: "system instructions", Messages: []llm.Message{{Role: llm.RoleUser, Text: "user message trace-secret-value"}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := toolCall("call-1", "read_file", map[string]any{"absolutePath": "/test.txt", "api_key": "unusual-secret-format"})
+	p.traceToolStart("main", "request-1", 0, call)
+	p.recordTool("main", "request-1", 0, call, &types.ToolResult{LLMResult: "file output trace-secret-value", Failed: true}, time.Now(), "failed")
+	raw, err := os.ReadFile(filepath.Join(p.rootDir, "logs", p.meter.filename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"system instructions", "user message", "answer", "provider reasoning", "file output", "absolutePath", "request_start", "tool_start", "[REDACTED]"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("missing trace field %q", want)
+		}
+	}
+	for _, secret := range []string{"trace-secret-value", "hiddenvalue", "unusual-secret-format"} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatalf("secret leaked: %q", secret)
+		}
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if !json.Valid([]byte(line)) {
+			t.Fatal("invalid JSONL")
+		}
+	}
+	for _, e := range p.meter.recent {
+		if e.Payload != nil {
+			t.Fatal("unbounded trace payload retained in memory")
+		}
+	}
+}
+
+func TestTraceRecordsPendingAndSideInput(t *testing.T) {
+	p := newTestProcessor(t, t.TempDir(), &fakeProvider{}, types.ModeAgent)
+	p.EnqueueMessage("queued message")
+	if _, err := p.PrepareAside()(context.Background(), "side question"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(p.rootDir, "logs", p.meter.filename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "queued message") || !strings.Contains(string(raw), "side question") || !strings.Contains(string(raw), `"kind":"btw"`) {
+		t.Fatal("missing queued or side input")
+	}
+}
+
+func TestTraceIncompleteToolArguments(t *testing.T) {
+	data := traceJSON(llm.Message{Text: "partial answer", ToolCalls: []llm.ToolCall{{Name: "read_file", Arguments: json.RawMessage(`{"absolutePath":"unfinished`)}}})
+	if !json.Valid(data) || !strings.Contains(string(data), "partial answer") || !strings.Contains(string(data), "unfinished") {
+		t.Fatal("lost partial response")
 	}
 }

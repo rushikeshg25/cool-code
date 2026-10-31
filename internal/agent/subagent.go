@@ -77,6 +77,7 @@ func (p *Processor) runSubagent(ctx context.Context, task string, report func(st
 			return lastText
 		}
 		for i, call := range resp.ToolCalls {
+			p.traceToolStart("subagent", requestID, i, call)
 			result := p.runMeteredTool(toolCtx, "subagent", requestID, i, call, true)
 			messages = append(messages, llm.Message{
 				Role: llm.RoleTool,
