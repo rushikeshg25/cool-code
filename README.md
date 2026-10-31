@@ -197,6 +197,14 @@ Create a `COOLCODE.md` in your project root for persistent, project-specific ins
 
 Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md` (project) or `~/.coolcode/skills/<name>/SKILL.md` (global), each with optional `name`/`description` frontmatter. The agent sees a catalog and calls the `use_skill` tool to load one on demand. Install skills from a local path or git URL with `cool-code skill install` or `/install-skill`.
 
+### Fork a conversation
+
+`/fork` saves the current conversation, copies its messages, summary, pinned
+files, mode, and granted directories into a new chat, then switches to that
+copy in the same terminal. The original remains available through `/sessions`.
+Forking is available between turns; it does not open a new terminal or create a
+Git branch. Switching chats saves the conversation you are leaving.
+
 ### Questions from the agent
 
 The `question` tool opens a small prompt with suggested answers and an option
