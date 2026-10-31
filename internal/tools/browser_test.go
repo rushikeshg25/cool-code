@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBrowserCommandValidation(t *testing.T) {
@@ -53,6 +55,13 @@ func TestBrowserLive(t *testing.T) {
 		t.Skip("set COOLCODE_BROWSER_TEST=1 with Playwright CLI and Chrome installed")
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/slow" {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+		}
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte(`<main><h1>Browser fixture</h1><label>Name<input id="name"></label><button onclick="document.querySelector('#result').textContent=document.querySelector('#name').value; console.log('fixture clicked')">Apply</button><p id="result"></p><script>document.querySelector('h1').textContent='Rendered by JavaScript'</script></main>`))
 	}))
@@ -96,6 +105,13 @@ func TestBrowserLive(t *testing.T) {
 		t.Fatal("missing console output")
 	}
 	run(browserArgs{Action: "network"})
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	_, cancelErr := b.run(ctx, browserArgs{Action: "navigate", URL: server.URL + "/slow"})
+	cancel()
+	if !errors.Is(cancelErr, context.DeadlineExceeded) || b.started {
+		t.Fatalf("cancelled navigation kept browser alive: %v", cancelErr)
+	}
+	run(browserArgs{Action: "navigate", URL: server.URL})
 	directory := b.directory
 	raw, err := os.ReadFile(filepath.Join(directory, "config.json"))
 	if err != nil {
@@ -107,5 +123,12 @@ func TestBrowserLive(t *testing.T) {
 	run(browserArgs{Action: "close"})
 	if _, err := os.Stat(directory); !os.IsNotExist(err) {
 		t.Fatalf("temporary directory remains: %v", err)
+	}
+}
+
+func TestBrowserErrorsAreUntrusted(t *testing.T) {
+	result := Run(Context{Browser: &Browser{}}, "browser", json.RawMessage(`{"action":"snapshot"}`))
+	if !result.Failed || !strings.Contains(result.LLMResult, beginUntrusted) {
+		t.Fatal(result)
 	}
 }

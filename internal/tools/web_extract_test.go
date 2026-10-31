@@ -68,6 +68,11 @@ func TestWebFetchFormatsAndPaginates(t *testing.T) {
 	if !strings.Contains(run(0), "offset 20000") || !strings.Contains(run(webMaxChars), "tail") {
 		t.Fatal("pagination failed")
 	}
+	status, media, body = 403, "text/plain", "untrusted error"
+	result := webFetchTool.Execute(Context{}, json.RawMessage(`{"url":"https://8.8.8.8"}`))
+	if !result.Failed || !strings.Contains(result.LLMResult, beginUntrusted) {
+		t.Fatal("error content escaped untrusted boundary")
+	}
 	media = "image/png"
 	if !webFetchTool.Execute(Context{}, json.RawMessage(`{"url":"https://8.8.8.8"}`)).Failed {
 		t.Fatal("accepted binary")
