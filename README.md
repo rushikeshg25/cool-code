@@ -464,3 +464,7 @@ cross-provider selection; use provider-specific credentials to select across acc
 currently use provider-default reasoning, so their effort picker only offers that
 option. Other adapters offer the supported configuration levels; individual
 models may reject levels they do not support. The xhigh meter animates in the picker.
+
+Streaming responses render Markdown as lines arrive, including the active paragraph.
+Lists and fenced code blocks keep the same formatting when the response finishes.
+Unclosed inline syntax can remain literal until its closing delimiter arrives.
