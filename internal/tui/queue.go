@@ -2,9 +2,10 @@ package tui
 
 import (
 	"context"
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rushikeshg25/cool-code/internal/security"
-	"strings"
 )
 
 func (m *model) markQueuedSent(messages []string) {
