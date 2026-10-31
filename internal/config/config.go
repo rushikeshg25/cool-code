@@ -120,7 +120,13 @@ func mergeFile(base Config, path string) Config {
 
 // SetGlobalLLM persists model/provider defaults to the global settings file,
 // preserving any other settings already stored there.
-func SetGlobalLLM(llm LLM) error {
+func SetGlobalLLM(llm LLM) error { return setGlobalLLM(llm, false) }
+
+// SetGlobalModel replaces connection settings when a picker changes providers,
+// including empty endpoint/key overrides so the previous connection cannot leak.
+func SetGlobalModel(llm LLM) error { return setGlobalLLM(llm, true) }
+
+func setGlobalLLM(llm LLM, replaceConnection bool) error {
 	p := GlobalPath()
 	if p == "" {
 		return os.ErrNotExist
@@ -130,6 +136,12 @@ func SetGlobalLLM(llm LLM) error {
 		_ = json.Unmarshal(raw, &current)
 	}
 	current = merge(current, Config{LLM: llm})
+	if replaceConnection {
+		current.LLM.BaseURL = llm.BaseURL
+		current.LLM.APIKeyEnv = llm.APIKeyEnv
+		current.LLM.AllowInsecureHTTP = llm.AllowInsecureHTTP
+		current.LLM.ContextWindow = llm.ContextWindow
+	}
 	if err := rejectSymlink(p); err != nil {
 		return err
 	}
@@ -226,6 +238,9 @@ func merge(base, over Config) Config {
 	}
 	if over.LLM.ReasoningEffort != "" {
 		m.LLM.ReasoningEffort = over.LLM.ReasoningEffort
+		if m.LLM.ReasoningEffort == "default" {
+			m.LLM.ReasoningEffort = ""
+		}
 	}
 	if over.LLM.Temperature != nil {
 		m.LLM.Temperature = over.LLM.Temperature

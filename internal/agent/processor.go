@@ -37,6 +37,8 @@ type Options struct {
 	Mode           types.AgentMode
 	Quiet          bool
 	AllowDangerous bool
+	// YOLO skips action and edit approvals for this process only.
+	YOLO bool
 	// AllowMissingKey builds the Processor without a provider when no API key
 	// is configured or the saved provider is unsupported; ProcessQuery then
 	// directs the user to /connect. Endpoint validation errors still abort startup.
@@ -101,8 +103,8 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		setupError:     err,
 		ctxMgr:         cm,
 		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker},
-		allowDangerous: opts.AllowDangerous || cfg.AllowDangerous(),
-		confirmEdits:   cfg.ConfirmEdits(),
+		allowDangerous: opts.YOLO || opts.AllowDangerous || cfg.AllowDangerous(),
+		confirmEdits:   cfg.ConfirmEdits() && !opts.YOLO,
 		mode:           mode,
 		confirm:        opts.Confirm,
 		confirmEdit:    opts.ConfirmEdit,

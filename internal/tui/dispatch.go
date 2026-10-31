@@ -39,39 +39,21 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 	case "/connect":
 		m.connectMenu = true
 		m.connectIdx = 0
-	case "/mode":
-		if arg != "" && types.AgentMode(arg).Valid() {
-			m.proc.SetMode(types.AgentMode(arg))
-			m.mode = types.AgentMode(arg)
-			m.appendSystem("Mode switched to " + strings.ToUpper(arg))
-		} else {
-			m.appendSystem("Current mode: " + strings.ToUpper(string(m.mode)) + " (use /mode plan|agent|ask)")
+	case "/plan", "/ask", "/impl":
+		mode := types.AgentMode(strings.TrimPrefix(name, "/"))
+		if name == "/impl" {
+			mode = types.ModeAgent
 		}
+		m.proc.SetMode(mode)
+		m.mode = mode
+		m.appendSystem("Mode switched to " + strings.ToUpper(string(mode)))
 	case "/effort":
 		if arg == "" {
-			effort := m.proc.GetStatus().Effort
-			if effort == "" {
-				effort = "provider default"
-			}
-			m.appendSystem("Reasoning effort: " + effort + " (use /effort minimal|low|medium|high|xhigh)")
-			break
+			return m.openEffortPicker()
 		}
-		arg = strings.ToLower(arg)
-		if !config.ValidReasoningEffort(arg) || arg == "" {
-			m.appendSystem("Invalid effort. Use minimal, low, medium, high, or xhigh.")
-			break
+		if err := m.setEffort(strings.ToLower(arg)); err != nil {
+			m.appendError(err.Error())
 		}
-		cfg := config.Load(m.rootDir)
-		cfg.LLM.ReasoningEffort = arg
-		if err := m.proc.ConfigureLLM(cfg.LLM); err != nil {
-			m.appendSystem("Could not set effort: " + err.Error())
-			break
-		}
-		if _, err := config.Set(m.rootDir, "llm.reasoningEffort", arg); err != nil {
-			m.appendSystem("Effort changed for this session, but could not save it: " + err.Error())
-			break
-		}
-		m.appendSystem("Reasoning effort set to " + strings.ToUpper(arg) + ".")
 	case "/add-dir":
 		if arg == "" {
 			dirs := m.proc.ExtraDirs()
@@ -144,14 +126,7 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.appendSystem(line)
 	case "/model":
 		if arg == "" {
-			status := m.proc.GetStatus()
-			rate := "no published rate; cost is not tracked"
-			if price, ok := llm.PriceFor(status.Model); ok {
-				rate = fmt.Sprintf("$%g in / $%g out per million tokens", price.Input, price.Output)
-			}
-			m.appendSystem("Model: " + status.Model + "\n" + rate +
-				"\nSwitch with /model <id>, for example /model claude-sonnet-4-5 or /model google/gemini-2.5-flash")
-			break
+			return m.openModelPicker()
 		}
 		if err := m.switchModel(arg); err != nil {
 			m.appendError("Could not switch model: " + err.Error())

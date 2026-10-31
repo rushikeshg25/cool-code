@@ -21,6 +21,15 @@ import (
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case catalogMsg:
+		return m.receiveCatalog(msg)
+	case effortTickMsg:
+		if m.picker != nil && m.picker.kind == "effort" && msg.generation == m.pickerGeneration {
+			m.picker.frame++
+			return m, effortTick(m.pickerGeneration)
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		widthChanged := m.width != msg.Width
 		m.width = msg.Width
@@ -168,6 +177,10 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmOff += maxInt(3, m.height/2)
 		}
 		return m, nil
+	}
+
+	if m.picker != nil {
+		return m.handlePickerKey(msg)
 	}
 
 	// Post-plan action menu.
@@ -542,6 +555,7 @@ func (m *model) interruptTurn() {
 
 // quit persists the session before exiting so nothing is lost on Ctrl+C.
 func (m *model) quit() (tea.Model, tea.Cmd) {
+	m.closePicker()
 	m.persist()
 	return m, tea.Quit
 }
