@@ -23,6 +23,8 @@ import (
 
 // --- messages pushed from the processor goroutine ---
 
+type queueDeliveredMsg []string
+
 type statusMsg string
 type assistantMsg string
 type deltaMsg string
@@ -46,6 +48,8 @@ type confirmReqMsg struct {
 // bridge implements agent.Reporter and the confirm callbacks by forwarding to
 // the running tea.Program.
 type bridge struct{ prog *tea.Program }
+
+func (b *bridge) QueueDelivered(messages []string) { b.prog.Send(queueDeliveredMsg(messages)) }
 
 func (b *bridge) Status(t string)         { b.prog.Send(statusMsg(t)) }
 func (b *bridge) AssistantDelta(t string) { b.prog.Send(deltaMsg(t)) }
@@ -89,19 +93,20 @@ type model struct {
 	ready         bool
 	followOutput  bool
 
-	history     []entry
-	prefix      string // cached rendering of every entry but the last
-	prefixCount int
-	streamIdx   int // index of the in-progress streaming entry, -1 when none
-	inputHist   []string
-	histIdx     int
-	processing  bool
-	turnStart   time.Time // when the current turn began, for the elapsed figure
-	status      string
-	mode        types.AgentMode
-	tasks       *types.TaskList
-	subagents   []string
-	cancelTurn  context.CancelFunc
+	history         []entry
+	prefix          string // cached rendering of every entry but the last
+	prefixCount     int
+	streamIdx       int // index of the in-progress streaming entry, -1 when none
+	inputHist       []string
+	histIdx         int
+	processing      bool
+	turnStart       time.Time // when the current turn began, for the elapsed figure
+	status          string
+	mode            types.AgentMode
+	tasks           *types.TaskList
+	subagents       []string
+	cancelTurn      context.CancelFunc
+	sendNowMessages []string
 
 	suggestions []slashCommand
 	suggestIdx  int

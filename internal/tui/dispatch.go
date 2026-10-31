@@ -37,6 +37,8 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 	case "/help":
 		m.appendSystem(m.helpText())
+	case "/send":
+		return m.sendQueuedNow()
 	case "/tasks":
 		if m.tasks == nil || len(m.tasks.Items) == 0 {
 			m.appendSystem("No tasks yet.")
@@ -241,7 +243,7 @@ func (m *model) helpText() string {
 	b.WriteString("\n  Ctrl+Left/Right or Alt+B/F moves by word · Home/End or Ctrl+A/E moves to line ends")
 	b.WriteString("\n  Ctrl+U/K deletes to line start/end · Ctrl+Home/End moves to prompt start/end")
 	b.WriteString("\n  Esc or Ctrl+C cancels a running turn · Ctrl+C when idle quits")
-	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript\n  Alt+End jumps to the latest output and resumes auto-scroll")
+	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript\n  Alt+End jumps to the latest output and resumes auto-scroll\n  Alt+S or /send sends pending follow-ups now (cancels the active turn first)")
 	return b.String()
 }
 

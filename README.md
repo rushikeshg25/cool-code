@@ -177,12 +177,17 @@ while a turn is running.
 | Ctrl+Home/End | Move to the start/end of the whole prompt |
 | Up/Down | Recall earlier/later prompts at the first/last input line |
 | PgUp/PgDn or mouse wheel | Scroll the transcript; scrolling up pauses auto-scroll |
+| Alt+S or `/send` | Send queued follow-ups and the current draft now; cancel the active turn and wait for its cleanup first |
 | Alt+End | Jump to the latest output and resume auto-scroll |
 
 Coolcode enables [enhanced keyboard reporting](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
 inside its terminal screen and restores the previous setting on exit. Ghostty
 needs no custom key binding. If a terminal, desktop shortcut, or multiplexer
 intercepts a key or sends ordinary Enter for Ctrl+Enter, use the fallback keys.
+Queued follow-ups are delivered at the next model-request boundary, including
+after a text-only reply. The transcript changes `(queued)` to `(sent follow-up)`
+when a message enters the conversation. Cancelled turns retain pending messages
+for Alt+S or `/send`; send-now does not run two turns concurrently.
 Bracketed multiline paste stays in the composer and does not submit the prompt.
 These shortcuts also appear in `/help`.
 

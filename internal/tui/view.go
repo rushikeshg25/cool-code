@@ -235,6 +235,9 @@ func (m *model) renderStatusBar(l layout) string {
 	// Ordered by what a narrow terminal should keep. Mode governs what the
 	// agent may do, so it never sheds; the message count is the first to go.
 	parts := []string{statusValue.Render(project), modeStyle(m.mode).Render(string(m.mode))}
+	if count := m.proc.PendingMessageCount(); count > 0 {
+		parts = append(parts, statusValue.Render(fmt.Sprintf("%d queued · Alt+S send", count)))
+	}
 	if m.proc.YOLO() {
 		parts = append(parts, modeStyle(types.ModeAgent).Render("YOLO"))
 	}
