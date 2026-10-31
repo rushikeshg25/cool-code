@@ -422,6 +422,20 @@ Requires Go 1.27.3+ (or a newer supported, patched Go release). External tools u
 
 ## Changelog
 
+### 2.4.1: Terminal input, follow-ups, and approval fixes (2026-11-01)
+
+- Support Ghostty enhanced keyboard input: Ctrl+Enter newline, Ctrl+Space and
+  Ctrl+Backspace word deletion, Ctrl+Arrow navigation, and Ctrl+Delete.
+- Keep new output visible across composer and terminal resizes. Scrolling up
+  pauses follow mode; Alt+End returns to the latest output.
+- Send queued messages immediately with Alt+S or `/send`, after safely cancelling
+  the current turn. Deliver follow-ups after text-only replies and update labels.
+- Toggle approval bypass during a chat with `/yolo [on|off]`.
+- Wrap long task titles and show complete task details with `/tasks`.
+- Approve pending actions with Y or Enter; decline with N or Esc. Missing approval
+  handlers no longer claim that the user declined.
+
+
 ### 2.4.0: Provider discovery, web tools, and conversation controls (2026-10-31)
 
 - Add OpenRouter support and live model selection across configured providers,
