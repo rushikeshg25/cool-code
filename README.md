@@ -91,6 +91,7 @@ cool-code
 cool-code --yes               # start without the init prompt
 cool-code --no-init           # exit without initializing
 cool-code --allow-dangerous   # skip danger confirmations
+cool-code --YOLO              # skip action and edit approval prompts for this run
 cool-code --copy              # copy final responses to the clipboard
 cool-code --continue          # resume the most recent session for this dir
 cool-code --resume <id>       # resume a specific saved session
@@ -132,19 +133,19 @@ cool-code skill install https://github.com/user/some-skill.git --global
 2. **Agent** (default) - executes tasks autonomously, applying edits and running commands.
 3. **Ask** - read-only mode; mutating tools (edit, new file, shell, rename, replace) are blocked.
 
-Switch mid-session with **Shift+Tab** (cycles Plan → Agent → Ask) or `/mode plan|agent|ask`.
+Switch mid-session with **Shift+Tab** (cycles Plan → Agent → Ask) or `/plan`, `/impl`, and `/ask`.
 
 ### Interactive commands
 
 Type `/` to open the command palette; press Tab to complete the highlighted command.
 
 - `/help` - show available commands
-- `/mode` - show or switch mode
-- `/effort` - show or set reasoning effort (`minimal|low|medium|high|xhigh`)
+- `/plan`, `/ask`, `/impl` - select planning, read-only questions, or implementation
+- `/effort` - choose reasoning effort with a visual meter (`default|minimal|low|medium|high|xhigh`)
 - `/pin` / `/unpin` - pin a file's contents into context (or list/unpin)
 - `/context` - preview context, pinned files, and token usage
 - `/compact` - summarize the conversation and free up context
-- `/model` - show or switch the model (e.g. `/model claude-sonnet-4-5`)
+- `/model` - search live model lists from all connected providers; Enter selects and Esc cancels
 - `/cost` - show token usage and estimated spend for this session
 - `/sessions` - list saved sessions for this directory
 - `/install-skill` - install a skill from a local path or git URL (add `--global`)
@@ -500,3 +501,25 @@ instead of a fixed 30 seconds. `/model`, `/cost`, and a non-interactive
 ### 2.0 - Go rewrite
 
 - Full rewrite from TypeScript/Node to a single Go binary: native provider function-calling (Anthropic, OpenAI, Gemini), Bubble Tea/Lipgloss/Glamour TUI, cobra CLI, plan/agent/ask modes, sessions, skills, project memory, and 23 tools. The TypeScript version lives on the `node` branch.
+
+`--YOLO` (also `--yolo`) applies to interactive and print runs. It does not persist.
+Read-only modes, directory boundaries, and protected-file rules still apply.
+
+The model picker queries connected OpenAI, OpenRouter, Anthropic, and Google
+accounts concurrently. This dev branch also includes text models advertised by the
+existing CLI proxy, using its authenticated `/v1/models` API without changing
+proxy configuration. OpenRouter uses its account-filtered `/models/user` list.
+Google models must support `generateContent`; known image, audio, and embedding
+families are excluded. OpenAI's list API does not report endpoint compatibility,
+so known non-chat and Responses-only families are filtered by ID. Catalog access
+is not an inference probe: account quota and model/tool compatibility can still
+cause an inference request to fail. Failed providers appear as separate messages.
+
+Type in the model picker to filter by provider, ID, or display name. Manual
+`/model <id>` remains available. Generic `COOLCODE_API_KEY` / `COOLCODE_API_BASE_URL`
+overrides are confined to the active provider during discovery and prevent
+cross-provider selection; use provider-specific credentials to select across accounts.
+`/effort default` resets reasoning effort. The Google and Anthropic adapters
+currently use provider-default reasoning, so their effort picker only offers that
+option. Other adapters offer the supported configuration levels; individual
+models may reject levels they do not support. The xhigh meter animates in the picker.

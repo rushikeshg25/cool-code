@@ -124,6 +124,9 @@ type model struct {
 	sessionIdx  int
 	sessionList []session.Data
 
+	picker           *selectionPicker
+	pickerGeneration int
+
 	connectMenu bool
 	connectIdx  int
 	connectFor  int // index into connectOptions awaiting key entry, -1 = none

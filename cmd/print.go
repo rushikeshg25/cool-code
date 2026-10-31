@@ -58,6 +58,7 @@ func runPrint(flags rootFlags, args []string) error {
 	proc, err := agent.New(rootDir, cfg, agent.Options{
 		Mode:           mode,
 		AllowDangerous: cfg.AllowDangerous(),
+		YOLO:           flags.yolo,
 	})
 	if err != nil {
 		return handleProviderError(err)
