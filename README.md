@@ -158,6 +158,10 @@ is running. Use `/yolo on` or `/yolo off` explicitly; the status bar shows `YOLO
 when enabled. This is process-local and keeps mode and path restrictions intact.
 Turning it off restores your original approval settings.
 
+The task sidebar wraps long titles and grows on wide terminals. Use `/tasks`
+to show every full title, status, and detail in the scrollable transcript, even
+while a turn is running.
+
 ### Typing shortcuts
 
 | Shortcut | Action |

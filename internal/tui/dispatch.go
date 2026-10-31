@@ -11,6 +11,7 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/skills"
 	"github.com/rushikeshg25/cool-code/internal/types"
@@ -36,6 +37,21 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 	case "/help":
 		m.appendSystem(m.helpText())
+	case "/tasks":
+		if m.tasks == nil || len(m.tasks.Items) == 0 {
+			m.appendSystem("No tasks yet.")
+			break
+		}
+		var text strings.Builder
+		text.WriteString("Tasks: " + security.SanitizeTerminal(m.tasks.Goal))
+		for _, item := range m.tasks.Items {
+			fmt.Fprintf(&text, "\n\n[%s] %s", item.Status, security.SanitizeTerminal(item.Title))
+			if item.Detail != "" {
+				text.WriteString("\n" + security.SanitizeTerminal(item.Detail))
+			}
+		}
+		m.followOutput = true
+		m.appendSystem(text.String())
 	case "/yolo":
 		enabled := !m.proc.YOLO()
 		if len(parts) > 2 || (arg != "" && arg != "on" && arg != "off") {

@@ -135,7 +135,14 @@ func (m *model) renderSidebar(l layout) string {
 	if hasTasks {
 		for _, item := range m.tasks.Items {
 			glyph, style := taskGlyph(item.Status)
-			lines = append(lines, ansi.Truncate(style.Render(glyph+" ")+sidebarTodo.Render(security.SanitizeLine(item.Title)), maxInt(1, w), "…"))
+			wrapped := strings.Split(ansi.Wrap(security.SanitizeLine(item.Title), maxInt(1, w-2), ""), "\n")
+			for i, line := range wrapped {
+				prefix := "  "
+				if i == 0 {
+					prefix = style.Render(glyph + " ")
+				}
+				lines = append(lines, prefix+sidebarTodo.Render(line))
+			}
 		}
 	}
 
@@ -150,6 +157,13 @@ func (m *model) renderSidebar(l layout) string {
 		}
 	}
 
+	if hasTasks {
+		limit := maxInt(1, l.transcriptHeight)
+		if len(lines) >= limit {
+			lines = lines[:limit-1]
+		}
+		lines = append(lines, ansi.Truncate(sidebarTitle.Render("/tasks: full details"), w, "…"))
+	}
 	return strings.Join(lines, "\n")
 }
 
