@@ -202,9 +202,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Confirmation overlay takes priority.
 	if m.confirmMsg != "" {
 		switch strings.ToLower(msg.String()) {
-		case "y":
+		case "y", "enter":
 			m.respondConfirm(true)
-		case "n", "esc", "enter":
+		case "n", "esc":
 			m.respondConfirm(false)
 		case "up":
 			m.confirmOff = maxInt(0, m.confirmOff-1)

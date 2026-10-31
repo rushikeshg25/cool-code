@@ -387,12 +387,18 @@ func (p *Processor) gate(call llm.ToolCall) (bool, string) {
 	reason := tools.DangerReason(call.Name, call.Arguments)
 	preview := tools.EditPreview(call.Name, call.Arguments)
 	if reason != "" && !p.allowDangerous && !p.YOLO() {
-		if p.confirm == nil || !p.confirm("Allow potentially dangerous action ("+reason+")?") {
+		if p.confirm == nil {
+			return true, "Action requires approval, but no approval handler is available. No user decision was received."
+		}
+		if !p.confirm("Allow potentially dangerous action (" + reason + ")?") {
 			return true, "User declined to run a potentially dangerous tool."
 		}
 	}
 	if preview != "" && p.confirmEdits && !p.YOLO() {
-		if p.confirmEdit == nil || !p.confirmEdit("Apply this edit?", preview) {
+		if p.confirmEdit == nil {
+			return true, "Edit requires approval, but no approval handler is available. No user decision was received."
+		}
+		if !p.confirmEdit("Apply this edit?", preview) {
 			return true, "User declined to apply edits."
 		}
 	}

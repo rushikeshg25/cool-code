@@ -156,7 +156,9 @@ You can also type new messages while the agent is working - they're queued and p
 `/yolo` toggles action/edit approval bypass during a chat, including while a turn
 is running. Use `/yolo on` or `/yolo off` explicitly; the status bar shows `YOLO`
 when enabled. This is process-local and keeps mode and path restrictions intact.
-Turning it off restores your original approval settings.
+Turning it off restores your original approval settings. Implementation mode
+enables tools; it does not itself bypass approvals. At an approval prompt,
+**Y or Enter approves**, **N declines**, and **Esc dismisses without running**.
 
 The task sidebar wraps long titles and grows on wide terminals. Use `/tasks`
 to show every full title, status, and detail in the scrollable transcript, even
