@@ -15,6 +15,7 @@ import (
 var All = []Tool{
 	readFileTool,
 	editFileTool,
+	applyPatchTool,
 	newFileTool,
 	openFileAtTool,
 	renameFileTool,
@@ -76,6 +77,14 @@ func RunReadOnly(ctx Context, name string, args json.RawMessage) types.ToolResul
 // dangerous and should be confirmed, or "" otherwise.
 func DangerReason(name string, args json.RawMessage) string {
 	switch name {
+	case "apply_patch":
+		var a struct {
+			Patch string `json:"patch"`
+		}
+		_ = json.Unmarshal(args, &a)
+		if strings.Contains(a.Patch, "*** Delete File:") {
+			return "delete files in a multi-file patch"
+		}
 	case "browser":
 		return "browser access (can interact with websites and local apps): " + strconv.Quote(security.Redact(string(args)))
 	case "shell_command", "run_tests", "lint_fix":
@@ -153,6 +162,12 @@ func EditPreview(name string, args json.RawMessage) string {
 		return strings.Join(lines, "\n")
 	}
 	switch name {
+	case "apply_patch":
+		var a struct {
+			Patch string `json:"patch"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return security.Redact(a.Patch)
 	case "edit_file":
 		var a struct {
 			FilePath  string `json:"filePath"`
