@@ -529,7 +529,7 @@ func (p *Processor) GetStatus() Status {
 		s.TotalTokens = usage.Input
 		s.Estimated = false
 	}
-	if total.Input > 0 || total.Output > 0 {
+	if (total.Input > 0 || total.Output > 0) && llm.ResolveProvider(p.cfg.LLM) != "cliproxy" {
 		if cost, ok := llm.Cost(model, total.Input, total.Output); ok {
 			s.SessionCost = cost
 			s.CostKnown = true
@@ -552,6 +552,9 @@ func (p *Processor) contextWindow() int {
 	model := p.cfg.LLM.Model
 	if p.provider != nil {
 		model = p.provider.Model()
+	}
+	if llm.ResolveProvider(p.cfg.LLM) == "cliproxy" {
+		return 0
 	}
 	if window, ok := llm.ContextWindow(model); ok {
 		return window

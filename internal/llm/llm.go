@@ -87,6 +87,7 @@ type providerInfo struct {
 }
 
 var providers = map[string]providerInfo{
+	"cliproxy":   {"cliproxy", "CLIPROXY_API_KEY", "http://127.0.0.1:8317"},
 	"openrouter": {"openrouter", "OPENROUTER_API_KEY", "https://openrouter.ai/settings/keys"},
 	"google":     {"google", "GOOGLE_GENERATIVE_AI_API_KEY", "https://aistudio.google.com/app/apikey"},
 	"openai":     {"openai", "OPENAI_API_KEY", "https://platform.openai.com/api-keys"},
@@ -110,6 +111,9 @@ func InferProvider(model string) string {
 
 // ResolveProvider returns the configured provider or the inferred one.
 func ResolveProvider(cfg config.LLM) string {
+	if cfg.Provider == "openai-subscription" {
+		return "cliproxy"
+	}
 	if cfg.Provider != "" {
 		return cfg.Provider
 	}
@@ -124,7 +128,7 @@ func (e *UnsupportedProviderError) Error() string {
 	if strings.HasSuffix(e.Provider, "-subscription") {
 		return fmt.Sprintf("provider %q is unsupported: subscription sign-in is not available; run /connect and choose an API-key provider", e.Provider)
 	}
-	return fmt.Sprintf("unknown provider: %s (choose google, openai, anthropic, or openrouter with /connect)", e.Provider)
+	return fmt.Sprintf("unknown provider: %s (choose google, openai, anthropic, openrouter, or cliproxy with /connect)", e.Provider)
 }
 
 // MissingKeyError signals that the required API key env var is unset.
@@ -171,7 +175,7 @@ func New(cfg config.LLM) (Provider, error) {
 	switch name {
 	case "anthropic":
 		return &anthropicProvider{base}, nil
-	case "openai", "openrouter":
+	case "openai", "openrouter", "cliproxy":
 		return &openaiProvider{base}, nil
 	default:
 		return &googleProvider{base}, nil
@@ -233,6 +237,8 @@ func resolveBaseURL(cfg config.LLM, provider string) string {
 	}
 	var env string
 	switch provider {
+	case "cliproxy":
+		env = "CLIPROXY_BASE_URL"
 	case "openrouter":
 		env = "OPENROUTER_BASE_URL"
 	case "openai":

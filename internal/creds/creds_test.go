@@ -7,7 +7,7 @@ import (
 )
 
 func TestSetAndGetAPIKey(t *testing.T) {
-	tmp := filepath.Join(t.TempDir(), "credentials.json")
+	tmp := filepath.Join(t.TempDir(), "credentials-dev.json")
 	old := path
 	path = func() string { return tmp }
 	defer func() { path = old }()

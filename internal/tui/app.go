@@ -142,8 +142,7 @@ var connectOptions = []connectOption{
 	{"OpenAI API key", "openai", "gpt-5"},
 	{"Gemini API key (Google)", "google", "gemini-2.5-flash"},
 	{"OpenRouter API key", "openrouter", "google/gemini-2.5-flash"},
-	{"Claude Pro/Max subscription - coming soon", "", ""},
-	{"ChatGPT/Codex subscription - coming soon", "", ""},
+	{"Subscriptions via CLI proxy (dev)", "cliproxy", "gpt-6.1-sol"},
 }
 
 func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sessionID string) *model {

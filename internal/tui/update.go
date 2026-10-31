@@ -401,6 +401,10 @@ func (m *model) selectConnectOption() (tea.Model, tea.Cmd) {
 	}
 	m.connectFor = m.connectIdx
 	m.keyInput.Reset()
+	m.keyInput.Placeholder = "paste API key"
+	if opt.provider == "cliproxy" {
+		m.keyInput.Placeholder = "paste existing CLI proxy client key"
+	}
 	return m, m.keyInput.Focus()
 }
 

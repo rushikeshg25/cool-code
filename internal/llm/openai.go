@@ -8,8 +8,8 @@ import (
 type openaiProvider struct{ baseProvider }
 
 func (p *openaiProvider) Name() string {
-	if p.kind == "openrouter" {
-		return "openrouter"
+	if p.kind == "openrouter" || p.kind == "cliproxy" {
+		return p.kind
 	}
 	return "openai"
 }

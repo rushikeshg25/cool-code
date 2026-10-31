@@ -9,7 +9,7 @@ import (
 func TestUnsupportedProviderCanRecoverInteractively(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	cfg := config.Default()
-	cfg.LLM.Provider = "openai-subscription"
+	cfg.LLM.Provider = "retired-subscription"
 	if _, err := New(t.TempDir(), cfg, Options{}); err == nil {
 		t.Fatal("one-shot startup must reject unsupported provider")
 	}

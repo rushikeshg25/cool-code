@@ -1,5 +1,7 @@
 # Cool-Code: a fast, native CLI coding agent
 
+> **Dev branch / v2.4.0-dev.1.** Subscription access through an already-running CLIProxyAPI instance is available only on `dev`. Stable `main` is unchanged.
+
 An intelligent command-line coding agent - describe what you want, and it reads, plans, and edits your codebase using live tools. Similar in spirit to Claude Code and Gemini CLI, now rewritten in **Go** with a **Bubble Tea** TUI and **native provider tool-calling**.
 
 > **Rewritten in Go.** Cool-Code was previously a TypeScript/Node CLI. It is now a single statically-linked Go binary - no `node_modules`, faster start-up, real goroutine concurrency, and a polished Charm-stack terminal UI. The agent uses each provider's native function-calling API (Anthropic, OpenAI, Gemini) instead of parsing tool calls out of free text.
@@ -10,7 +12,7 @@ Cool-Code combines large language models with a comprehensive set of development
 
 ## Features
 
-- **Multiple model providers** - Google, OpenAI, Anthropic, or OpenRouter. Connect one with `/connect` (keys stored in `~/.coolcode/credentials.json`) or export the matching env var; the provider is inferred from the model id.
+- **Multiple model providers** - Google, OpenAI, Anthropic, or OpenRouter. Connect one with `/connect` (keys stored in `~/.coolcode/credentials-dev.json`) or export the matching env var; the provider is inferred from the model id.
 - **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
@@ -46,12 +48,11 @@ make build      # produces ./cool-code
 
 ### Connect a provider
 
-The easiest way: start `cool-code` and run **`/connect`** - pick a provider, paste your API key, and it is stored in `~/.coolcode/credentials.json` (mode 0600). The chosen provider and default model are saved in `~/.coolcode/settings.json`. Repository configuration cannot override provider identity, endpoints, credential selection, guardrails, or confirmation policy.
+The easiest way: start `cool-code` and run **`/connect`** - pick a provider, paste your API key, and it is stored in `~/.coolcode/credentials-dev.json` (mode 0600). The chosen provider and default model are saved in `~/.coolcode/settings-dev.json`. Repository configuration cannot override provider identity, endpoints, credential selection, guardrails, or confirmation policy.
 
-If saved settings name an unsupported provider such as `openai-subscription`,
-interactive startup still opens and directs you to `/connect`. Select a supported
-API-key provider to replace the saved choice. Subscription sign-in is not yet
-supported; one-shot commands report that limitation and exit.
+Unknown saved providers still open interactive mode with `/connect` recovery.
+On this dev branch, `openai-subscription` is a compatibility alias for `cliproxy`;
+it uses a proxy client key, never a subscription OAuth token.
 
 Env vars keep working as a fallback:
 
@@ -62,7 +63,7 @@ export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here   # Gemini (default)
 # export OPENROUTER_API_KEY=your_api_key_here           # OpenRouter
 ```
 
-OpenAI-compatible gateways and CLI proxies must be configured in trusted global settings. The CLI routes security-sensitive keys to `~/.coolcode/settings.json` automatically:
+OpenAI-compatible gateways and CLI proxies must be configured in trusted global settings. The CLI routes security-sensitive keys to `~/.coolcode/settings-dev.json` automatically:
 
 ```bash
 cool-code config set llm.provider openai
@@ -190,6 +191,50 @@ credential just like other custom endpoints.
 If the required key is missing, interactive mode offers `/connect`; one-shot
 commands print provider-specific setup guidance and exit.
 
+### Subscription access through CLI proxy (dev only)
+
+Keep your existing CLIProxyAPI instance running with its accounts already signed
+in. Cool-Code only calls its inference API and `GET /v1/models`; it does not
+change proxy settings, manage accounts, or start/restart the service.
+
+Start the dev binary, run `/connect`, and choose **Subscriptions via CLI proxy
+(dev)**. Paste an existing **proxy client API key**, not an OpenAI API key or an
+OAuth access/refresh token. The default endpoint is `http://127.0.0.1:8317/v1`
+and the initial model is `gpt-6.1-sol`. Choose a model your proxy actually lists:
+
+```bash
+cool-code models
+# Inside the TUI:
+# /model gpt-6-luna
+```
+
+For environment-based setup:
+
+```bash
+cool-code config set llm.provider cliproxy
+cool-code config set llm.model gpt-6.1-sol
+export CLIPROXY_API_KEY=your_existing_proxy_client_key
+cool-code models
+cool-code --print "Reply with hello."
+```
+
+`/model` preserves proxy routing even for IDs that resemble direct-provider
+models. To leave the proxy, choose another provider with `/connect`. Available
+models and subscription limits depend on the proxy's existing accounts. Proxy
+sessions show token usage without claiming direct-API pricing or a guessed
+context window; set `llm.contextWindow` explicitly if known.
+
+The dev build uses `~/.coolcode/settings-dev.json` and
+`~/.coolcode/credentials-dev.json`. It does not read or overwrite stable settings
+or credentials. Project preferences, skills, and session history remain shared.
+To use another endpoint, set trusted `llm.baseUrl` or `CLIPROXY_BASE_URL` and
+explicitly set `llm.apiKeyEnv` to your proxy-key variable. Stored default-proxy
+keys are not forwarded to endpoint overrides. Remote endpoints require HTTPS
+unless you explicitly enable the existing insecure-HTTP setting.
+
+Dev tags use `v<version>-dev.<number>`. Their release workflow publishes signed
+archives, checksums, and SBOMs as GitHub **prereleases**, with `latest=false`.
+
 ### Project memory & skills
 
 Create a `COOLCODE.md` in your project root for persistent, project-specific instructions (loaded every turn; global fallback `~/.coolcode/COOLCODE.md`).
@@ -280,12 +325,24 @@ Requires Go 1.27.3+ (or a newer supported, patched Go release). External tools u
 ## Future scope
 
 - **Semantic codebase index** - a local embedding index kept in sync via a Merkle tree of file hashes, exposed as a `codebase_search` tool.
-- **Subscription sign-in for `/connect`** (Claude Pro/Max, ChatGPT/Codex OAuth).
+- **Direct subscription sign-in for `/connect`** (the dev branch already supports existing CLI proxy sessions).
 - **Full-toolset subagents** (explore-only subagents shipped; write-capable ones need permission routing).
 - **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **hooks**, and **multimodal input**.
 - **`@file` mentions** - the composer already completes paths; it does not yet attach the file's contents.
 
 ## Changelog
+
+### 2.4.0-dev.1: Existing CLI proxy subscription access (2026-10-31)
+
+- Dev-only `cliproxy` provider and `/connect` choice for existing subscription
+  sessions exposed by CLIProxyAPI. The proxy service and configuration are not modified.
+- Live model discovery with `cool-code models`, streaming/tool calling, and
+  model switching that keeps requests on the proxy.
+- Separate dev settings and credentials; no direct-API billing estimates for proxy sessions.
+- Includes OpenRouter support, patched Go 1.27.3 and dependency upgrades, and
+  unsupported-provider startup recovery from main.
+- Dev releases are marked as prereleases and never replace the stable latest release.
+
 
 ### 2.3.2: Security fixes and accurate activity status (2026-09-15)
 

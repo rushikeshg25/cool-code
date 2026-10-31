@@ -77,13 +77,13 @@ func Path(rootDir string) string {
 	return filepath.Join(rootDir, ".coolcode.json")
 }
 
-// GlobalPath returns the user-level settings file (~/.coolcode/settings.json).
+// GlobalPath returns the user-level settings file (~/.coolcode/settings-dev.json).
 func GlobalPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".coolcode", "settings.json")
+	return filepath.Join(home, ".coolcode", "settings-dev.json")
 }
 
 // Load returns defaults merged with trusted user settings and then safe

@@ -146,7 +146,7 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		if arg == "" {
 			status := m.proc.GetStatus()
 			rate := "no published rate; cost is not tracked"
-			if price, ok := llm.PriceFor(status.Model); ok {
+			if price, ok := llm.PriceFor(status.Model); ok && llm.ResolveProvider(m.proc.LLMConfig()) != "cliproxy" {
 				rate = fmt.Sprintf("$%g in / $%g out per million tokens", price.Input, price.Output)
 			}
 			m.appendSystem("Model: " + status.Model + "\n" + rate +
@@ -238,8 +238,10 @@ func (m *model) helpText() string {
 func (m *model) switchModel(id string) error {
 	llmCfg := m.proc.LLMConfig()
 	llmCfg.Model = id
-	// The provider is inferred from the id, so clear any stale pin.
-	llmCfg.Provider = ""
+	// A proxy model ID must stay on the explicitly selected proxy.
+	if llm.ResolveProvider(llmCfg) != "cliproxy" {
+		llmCfg.Provider = ""
+	}
 	if err := m.proc.ConfigureLLM(llmCfg); err != nil {
 		return err
 	}

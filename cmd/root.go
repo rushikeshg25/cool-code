@@ -20,7 +20,7 @@ import (
 )
 
 // Version is the CLI version, overridable at build time via -ldflags.
-var Version = "2.3.2"
+var Version = "2.4.0-dev.1"
 
 type rootFlags struct {
 	yes            bool
@@ -69,7 +69,7 @@ func Execute() {
 	root.Flags().StringVar(&flags.mode, "mode", "", "Starting mode: plan, agent, or ask")
 
 	root.SetVersionTemplate("cool-code v{{.Version}}\n")
-	root.AddCommand(configCmd(), scanCmd(), skillCmd(), taskCmd())
+	root.AddCommand(configCmd(), scanCmd(), skillCmd(), taskCmd(), modelsCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

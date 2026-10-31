@@ -63,7 +63,7 @@ func TestConnectReplacesUnsupportedSavedProvider(t *testing.T) {
 	for _, key := range []string{"COOLCODE_API_KEY", "COOLCODE_API_BASE_URL", "OPENROUTER_BASE_URL"} {
 		t.Setenv(key, "")
 	}
-	if err := config.SetGlobalLLM(config.LLM{Provider: "openai-subscription", Model: "gpt-5"}); err != nil {
+	if err := config.SetGlobalLLM(config.LLM{Provider: "retired-subscription", Model: "gpt-5"}); err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()

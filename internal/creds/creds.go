@@ -1,4 +1,4 @@
-// Package creds stores provider API keys in ~/.coolcode/credentials.json so
+// Package creds stores provider API keys in ~/.coolcode/credentials-dev.json so
 // users can connect providers via /connect instead of exporting env vars.
 package creds
 
@@ -23,7 +23,7 @@ var path = func() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".coolcode", "credentials.json")
+	return filepath.Join(home, ".coolcode", "credentials-dev.json")
 }
 
 func load() file {
