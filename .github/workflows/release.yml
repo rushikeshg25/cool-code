@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "v*-dev.*"
 
 permissions:
   contents: write
@@ -68,6 +68,8 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           draft: true
+          prerelease: true
+          make_latest: false
           files: |
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
@@ -95,4 +97,4 @@ jobs:
             found { print }
           ' README.md > release-notes.md
           test -s release-notes.md
-          gh release edit "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --draft=false --latest
+          gh release edit "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --draft=false --prerelease --latest=false
