@@ -391,8 +391,18 @@ func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
 		m.appendSystem("Could not load that session.")
 		return m, nil
 	}
+	if data.ID == m.sessionID {
+		return m, nil
+	}
+	if err := m.saveSession(m.sessionID); err != nil {
+		m.appendError("Cannot switch chats: " + err.Error())
+		return m, nil
+	}
 	var messages []llm.Message
-	_ = json.Unmarshal(data.Messages, &messages)
+	if err := json.Unmarshal(data.Messages, &messages); err != nil {
+		m.appendError("Saved chat is invalid: " + err.Error())
+		return m, nil
+	}
 	m.proc.Restore(messages, data.Summary, data.PinnedFiles, types.AgentMode(data.Mode))
 	for _, d := range data.ExtraDirs {
 		_, _ = m.proc.AddDir(d) // dir may have been removed since; ignore
@@ -401,6 +411,8 @@ func (m *model) resumeSelectedSession() (tea.Model, tea.Cmd) {
 	m.sessionID = data.ID
 	m.mode = m.proc.Mode()
 	m.history = nil
+	m.invalidatePrefix()
+	m.streamIdx = -1
 	m.repopulateTranscript()
 	short := data.ID
 	if len(short) > 8 {

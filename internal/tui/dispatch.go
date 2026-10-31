@@ -148,6 +148,8 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		return m, func() tea.Msg {
 			return compactedMsg{summary: m.proc.Compact(context.Background())}
 		}
+	case "/fork":
+		return m.forkSession()
 	case "/sessions":
 		sessions := session.List(m.rootDir)
 		if len(sessions) == 0 {
