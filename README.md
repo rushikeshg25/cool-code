@@ -242,6 +242,14 @@ Create a `COOLCODE.md` in your project root for persistent, project-specific ins
 
 Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md` (project) or `~/.coolcode/skills/<name>/SKILL.md` (global), each with optional `name`/`description` frontmatter. The agent sees a catalog and calls the `use_skill` tool to load one on demand. Install skills from a local path or git URL with `cool-code skill install` or `/install-skill`.
 
+### Questions from the agent
+
+The `question` tool opens a small prompt with suggested answers and an option
+to type your own. Use arrows and Enter to answer, or Esc to dismiss. No option
+is submitted automatically, including in YOLO mode. Questions work in Plan,
+Ask, and implementation modes. Noninteractive runs return an explicit
+unavailable result; read-only subagents cannot prompt the user.
+
 ### Multi-file patches
 
 `apply_patch` adds, updates, or deletes several text files in one call. It uses

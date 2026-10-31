@@ -39,6 +39,7 @@ var All = []Tool{
 	webFetchTool,
 	webSearchTool,
 	browserTool,
+	questionTool,
 }
 
 var byName = func() map[string]Tool {

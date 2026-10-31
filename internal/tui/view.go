@@ -166,7 +166,7 @@ func (m *model) footer() string {
 }
 
 func (m *model) hasOverlay() bool {
-	return m.picker != nil || m.confirmMsg != "" || m.connectFor >= 0 || m.connectMenu || m.sessionMenu || m.planMenu
+	return m.question != nil || m.picker != nil || m.confirmMsg != "" || m.connectFor >= 0 || m.connectMenu || m.sessionMenu || m.planMenu
 }
 
 func (m *model) renderTasks() string {
@@ -242,6 +242,8 @@ func (m *model) renderInputRegion() string {
 	switch {
 	case m.confirmMsg != "":
 		return m.renderConfirmation()
+	case m.question != nil:
+		return m.renderQuestion()
 	case m.picker != nil:
 		return m.renderPicker()
 	case m.connectFor >= 0:
