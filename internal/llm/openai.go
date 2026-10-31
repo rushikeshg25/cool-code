@@ -14,6 +14,25 @@ func (p *openaiProvider) Name() string {
 	return "openai"
 }
 
+// Optional counts distinguish absent usage from a reported zero.
+type openaiUsage struct {
+	PromptTokens     *int `json:"prompt_tokens"`
+	CompletionTokens *int `json:"completion_tokens"`
+	PromptDetails    struct {
+		CachedTokens *int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+	CompletionDetails struct {
+		ReasoningTokens *int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
+}
+
+func (u *openaiUsage) usage() Usage {
+	if u == nil || u.PromptTokens == nil || u.CompletionTokens == nil {
+		return Usage{}
+	}
+	return Usage{Input: *u.PromptTokens, Output: *u.CompletionTokens, Reported: true, CachedInput: u.PromptDetails.CachedTokens, Reasoning: u.CompletionDetails.ReasoningTokens}
+}
+
 type openaiToolCall struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
@@ -113,10 +132,7 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 				ToolCalls []openaiToolCall `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-		} `json:"usage"`
+		Usage *openaiUsage `json:"usage"`
 	}
 	if err := postJSON(ctx, providerEndpoint(p.Name(), p.baseURL), headers, body, &resp); err != nil {
 		return Message{}, err
@@ -124,7 +140,7 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 	if err := completionError(resp.Error); err != nil {
 		return Message{}, err
 	}
-	usage := Usage{Input: resp.Usage.PromptTokens, Output: resp.Usage.CompletionTokens}
+	usage := resp.Usage.usage()
 	if len(resp.Choices) == 0 {
 		return Message{Role: RoleAssistant, Usage: usage}, nil
 	}
@@ -177,10 +193,7 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 					} `json:"tool_calls"`
 				} `json:"delta"`
 			} `json:"choices"`
-			Usage *struct {
-				PromptTokens     int `json:"prompt_tokens"`
-				CompletionTokens int `json:"completion_tokens"`
-			} `json:"usage"`
+			Usage *openaiUsage `json:"usage"`
 		}
 		if json.Unmarshal(data, &chunk) != nil {
 			return
@@ -193,7 +206,7 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			return
 		}
 		if chunk.Usage != nil {
-			out.Usage = Usage{Input: chunk.Usage.PromptTokens, Output: chunk.Usage.CompletionTokens}
+			out.Usage = chunk.Usage.usage()
 		}
 		if len(chunk.Choices) == 0 {
 			return
@@ -220,10 +233,10 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 		}
 	})
 	if err != nil {
-		return Message{}, err
+		return out, err
 	}
 	if providerErr != nil {
-		return Message{}, providerErr
+		return out, providerErr
 	}
 	for _, idx := range order {
 		c := calls[idx]
