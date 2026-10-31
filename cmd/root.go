@@ -119,7 +119,7 @@ func runInteractive(flags rootFlags) error {
 	// so there is no banner to hang these off.
 	var notices []string
 	if !proc.Connected() {
-		notices = append(notices, "No API key configured - run /connect to link a provider.")
+		notices = append(notices, fmt.Sprintf("Run /connect to choose an API-key provider.\nProvider setup: %v", proc.SetupError()))
 	}
 	// A repository cannot be allowed to set these, but discarding them in
 	// silence misleads whoever wrote the file into thinking they took effect.

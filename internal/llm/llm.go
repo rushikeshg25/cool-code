@@ -116,6 +116,17 @@ func ResolveProvider(cfg config.LLM) string {
 	return InferProvider(cfg.Model)
 }
 
+// UnsupportedProviderError identifies a saved provider this build cannot use.
+// Interactive callers can still open /connect to replace it.
+type UnsupportedProviderError struct{ Provider string }
+
+func (e *UnsupportedProviderError) Error() string {
+	if strings.HasSuffix(e.Provider, "-subscription") {
+		return fmt.Sprintf("provider %q is unsupported: subscription sign-in is not available; run /connect and choose an API-key provider", e.Provider)
+	}
+	return fmt.Sprintf("unknown provider: %s (choose google, openai, anthropic, or openrouter with /connect)", e.Provider)
+}
+
 // MissingKeyError signals that the required API key env var is unset.
 type MissingKeyError struct {
 	Provider string
@@ -134,7 +145,7 @@ func New(cfg config.LLM) (Provider, error) {
 	name := ResolveProvider(cfg)
 	info, ok := providers[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown provider: %s", name)
+		return nil, &UnsupportedProviderError{Provider: name}
 	}
 	baseURL := resolveBaseURL(cfg, name)
 	allowInsecureHTTP := cfg.AllowInsecureHTTP != nil && *cfg.AllowInsecureHTTP

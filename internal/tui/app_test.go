@@ -16,6 +16,7 @@ import (
 // agent.New succeed without any network calls (slash commands never hit the LLM).
 func newTestModel(t *testing.T) *model {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("GOOGLE_GENERATIVE_AI_API_KEY", "fake-key")
 	root := t.TempDir()
 	proc, err := agent.New(root, config.Default(), agent.Options{Mode: types.ModeAgent})

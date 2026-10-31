@@ -48,6 +48,11 @@ make build      # produces ./cool-code
 
 The easiest way: start `cool-code` and run **`/connect`** - pick a provider, paste your API key, and it is stored in `~/.coolcode/credentials.json` (mode 0600). The chosen provider and default model are saved in `~/.coolcode/settings.json`. Repository configuration cannot override provider identity, endpoints, credential selection, guardrails, or confirmation policy.
 
+If saved settings name an unsupported provider such as `openai-subscription`,
+interactive startup still opens and directs you to `/connect`. Select a supported
+API-key provider to replace the saved choice. Subscription sign-in is not yet
+supported; one-shot commands report that limitation and exit.
+
 Env vars keep working as a fallback:
 
 ```bash

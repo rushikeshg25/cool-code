@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"testing"
+
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/rushikeshg25/cool-code/internal/agent"
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/creds"
 	"github.com/rushikeshg25/cool-code/internal/llm"
-	"testing"
 )
 
 func TestConnectOpenRouterAndSwitchModels(t *testing.T) {
@@ -51,5 +54,41 @@ func TestConnectOpenRouterAndSwitchModels(t *testing.T) {
 		if err != nil || p.Name() != step.provider {
 			t.Fatalf("restart provider = %v, error = %v", p, err)
 		}
+	}
+}
+
+// An obsolete subscription selection must not prevent reaching /connect.
+func TestConnectReplacesUnsupportedSavedProvider(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for _, key := range []string{"COOLCODE_API_KEY", "COOLCODE_API_BASE_URL", "OPENROUTER_BASE_URL"} {
+		t.Setenv(key, "")
+	}
+	if err := config.SetGlobalLLM(config.LLM{Provider: "openai-subscription", Model: "gpt-5"}); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	proc, err := agent.New(root, config.Load(root), agent.Options{AllowMissingKey: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(proc, root, "test", false, "session")
+	for i, opt := range connectOptions {
+		if opt.provider == "openrouter" {
+			m.connectIdx = i
+			break
+		}
+	}
+	m.selectConnectOption()
+	m.keyInput.SetValue("fake-router-key")
+	m.handleConnectKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !proc.Connected() || proc.SetupError() != nil {
+		t.Fatal("/connect did not recover")
+	}
+	cfg := config.Load(root).LLM
+	if cfg.Provider != "openrouter" {
+		t.Fatalf("saved provider = %q", cfg.Provider)
+	}
+	if _, err := llm.New(cfg); err != nil {
+		t.Fatalf("restart failed: %v", err)
 	}
 }

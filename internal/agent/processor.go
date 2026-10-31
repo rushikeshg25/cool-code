@@ -38,7 +38,8 @@ type Options struct {
 	Quiet          bool
 	AllowDangerous bool
 	// AllowMissingKey builds the Processor without a provider when no API key
-	// is configured; ProcessQuery then directs the user to /connect.
+	// is configured or the saved provider is unsupported; ProcessQuery then
+	// directs the user to /connect. Endpoint validation errors still abort startup.
 	AllowMissingKey bool
 	// Confirm is called for dangerous actions; returns true to proceed.
 	Confirm func(message string) bool
@@ -51,6 +52,7 @@ type Processor struct {
 	rootDir        string
 	cfg            config.Config
 	provider       llm.Provider
+	setupError     error
 	ctxMgr         *contextManager
 	toolDefs       []llm.ToolDef
 	toolCtx        tools.Context
@@ -78,7 +80,8 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 	provider, err := llm.New(cfg.LLM)
 	if err != nil {
 		var mk *llm.MissingKeyError
-		if !(opts.AllowMissingKey && errors.As(err, &mk)) {
+		var unsupported *llm.UnsupportedProviderError
+		if !(opts.AllowMissingKey && (errors.As(err, &mk) || errors.As(err, &unsupported))) {
 			return nil, err
 		}
 		provider = nil
@@ -95,6 +98,7 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		rootDir:        rootDir,
 		cfg:            cfg,
 		provider:       provider,
+		setupError:     err,
 		ctxMgr:         cm,
 		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker},
 		allowDangerous: opts.AllowDangerous || cfg.AllowDangerous(),
@@ -145,6 +149,9 @@ func (p *Processor) buildToolDefs() {
 // text. Reporter may be nil.
 func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Reporter) (string, error) {
 	if p.provider == nil {
+		if p.setupError != nil {
+			return "", fmt.Errorf("provider is not connected: %w", p.setupError)
+		}
 		return "", errors.New("no API key configured - run /connect to set one up")
 	}
 	p.ctxMgr.addUser(query)
@@ -578,6 +585,7 @@ func (p *Processor) ConfigureLLM(llmCfg config.LLM) error {
 	}
 	p.cfg.LLM = llmCfg
 	p.provider = provider
+	p.setupError = nil
 	return nil
 }
 
@@ -764,3 +772,6 @@ func (s *streamSink) flush() bool {
 	}
 	return s.emitted
 }
+
+// SetupError reports why a disconnected processor needs /connect.
+func (p *Processor) SetupError() error { return p.setupError }
