@@ -28,7 +28,7 @@ func enhancedKey(msg tea.Msg) tea.Msg {
 var enhancedKeys = func() map[string]tea.Msg {
 	keys := map[string]tea.Msg{}
 	add := func(sequence string, key tea.Msg) { keys[fmt.Sprintf("?CSI%+v?", []byte(sequence))] = key }
-	for code := 9; code <= 127; code++ {
+	for code := rune(9); code <= 127; code++ {
 		for mod := 1; mod <= 8; mod++ {
 			key, ok := enhancedASCII(code, mod)
 			if !ok {
@@ -74,7 +74,7 @@ var enhancedKeys = func() map[string]tea.Msg {
 	return keys
 }()
 
-func enhancedASCII(code, mod int) (tea.KeyMsg, bool) {
+func enhancedASCII(code rune, mod int) (tea.KeyMsg, bool) {
 	bits := mod - 1
 	alt, ctrl := bits&2 != 0, bits&4 != 0
 	key := tea.KeyMsg{Alt: alt}
@@ -116,7 +116,7 @@ func enhancedASCII(code, mod int) (tea.KeyMsg, bool) {
 			}
 		} else {
 			key.Type = tea.KeyRunes
-			key.Runes = []rune{rune(code)}
+			key.Runes = []rune{code}
 		}
 	}
 	return key, true
