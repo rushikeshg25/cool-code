@@ -118,6 +118,7 @@ type model struct {
 	sessionIdx  int
 	sessionList []session.Data
 
+	question         *questionDialog
 	picker           *selectionPicker
 	pickerGeneration int
 

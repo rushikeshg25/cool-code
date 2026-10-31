@@ -780,3 +780,8 @@ func (p *Processor) SetupError() error { return p.setupError }
 
 // Close releases optional resources owned by this processor.
 func (p *Processor) Close() error { return p.toolCtx.Browser.Close() }
+
+// SetQuestionHandler connects interactive user input before a turn starts.
+func (p *Processor) SetQuestionHandler(handler tools.QuestionHandler) {
+	p.toolCtx.AskQuestion = handler
+}

@@ -21,6 +21,8 @@ import (
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case questionReqMsg:
+		return m.receiveQuestion(msg)
 	case catalogMsg:
 		return m.receiveCatalog(msg)
 	case effortTickMsg:
@@ -119,6 +121,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
+	m.answerQuestion("", context.Canceled)
 	m.processing = false
 	m.status = ""
 	m.turnStart = time.Time{}
@@ -179,6 +182,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.question != nil {
+		return m.handleQuestionKey(msg)
+	}
 	if m.picker != nil {
 		return m.handlePickerKey(msg)
 	}

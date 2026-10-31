@@ -23,10 +23,11 @@ type Context struct {
 	RootDir string
 	// ExtraDirs are additional directories (added via /add-dir) that path-jailed
 	// tools may read and write alongside RootDir.
-	ExtraDirs []string
-	Config    config.Config
-	GitIgnore project.GitIgnoreChecker
-	Browser   *Browser
+	ExtraDirs   []string
+	Config      config.Config
+	GitIgnore   project.GitIgnoreChecker
+	Browser     *Browser
+	AskQuestion QuestionHandler
 }
 
 // Roots returns every directory tools may operate in: RootDir plus ExtraDirs.
