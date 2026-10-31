@@ -63,6 +63,11 @@ func runPrint(flags rootFlags, args []string) error {
 	if err != nil {
 		return handleProviderError(err)
 	}
+	defer func() {
+		if err := proc.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "Browser cleanup:", err)
+		}
+	}()
 
 	// There is no one to answer a prompt in this mode. Without
 	// --allow-dangerous a confirmation is a refusal, which is the safe

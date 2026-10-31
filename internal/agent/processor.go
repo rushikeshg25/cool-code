@@ -102,7 +102,7 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		provider:       provider,
 		setupError:     err,
 		ctxMgr:         cm,
-		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker},
+		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker, Browser: &tools.Browser{}},
 		allowDangerous: opts.YOLO || opts.AllowDangerous || cfg.AllowDangerous(),
 		confirmEdits:   cfg.ConfirmEdits() && !opts.YOLO,
 		mode:           mode,
@@ -780,3 +780,6 @@ func (s *streamSink) flush() bool {
 
 // SetupError reports why a disconnected processor needs /connect.
 func (p *Processor) SetupError() error { return p.setupError }
+
+// Close releases optional resources owned by this processor.
+func (p *Processor) Close() error { return p.toolCtx.Browser.Close() }
