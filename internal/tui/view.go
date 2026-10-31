@@ -32,6 +32,9 @@ func (m *model) View() string {
 
 	m.vp.Height = l.transcriptHeight
 	m.vp.Width = l.transcriptWidth
+	if m.followOutput {
+		m.vp.GotoBottom()
+	}
 
 	body := m.vp.View()
 	if l.showSidebar {
@@ -132,7 +135,14 @@ func (m *model) renderSidebar(l layout) string {
 	if hasTasks {
 		for _, item := range m.tasks.Items {
 			glyph, style := taskGlyph(item.Status)
-			lines = append(lines, ansi.Truncate(style.Render(glyph+" ")+sidebarTodo.Render(security.SanitizeLine(item.Title)), maxInt(1, w), "…"))
+			wrapped := strings.Split(ansi.Wrap(security.SanitizeLine(item.Title), maxInt(1, w-2), ""), "\n")
+			for i, line := range wrapped {
+				prefix := "  "
+				if i == 0 {
+					prefix = style.Render(glyph + " ")
+				}
+				lines = append(lines, prefix+sidebarTodo.Render(line))
+			}
 		}
 	}
 
@@ -147,6 +157,13 @@ func (m *model) renderSidebar(l layout) string {
 		}
 	}
 
+	if hasTasks {
+		limit := maxInt(1, l.transcriptHeight)
+		if len(lines) >= limit {
+			lines = lines[:limit-1]
+		}
+		lines = append(lines, ansi.Truncate(sidebarTitle.Render("/tasks: full details"), w, "…"))
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -218,6 +235,12 @@ func (m *model) renderStatusBar(l layout) string {
 	// Ordered by what a narrow terminal should keep. Mode governs what the
 	// agent may do, so it never sheds; the message count is the first to go.
 	parts := []string{statusValue.Render(project), modeStyle(m.mode).Render(string(m.mode))}
+	if count := m.proc.PendingMessageCount(); count > 0 {
+		parts = append(parts, statusValue.Render(fmt.Sprintf("%d queued · Alt+S send", count)))
+	}
+	if m.proc.YOLO() {
+		parts = append(parts, modeStyle(types.ModeAgent).Render("YOLO"))
+	}
 	if m.width >= 60 {
 		parts = append(parts, statusValue.Render(status.Model))
 	}
@@ -306,9 +329,9 @@ func (m *model) renderActivity() string {
 
 func (m *model) renderComposer() string {
 	box := composerStyle.Width(maxInt(12, m.width-2)).Render(m.ti.View())
-	hint := "Enter send  ·  Alt+Enter newline  ·  / commands  ·  @ files"
+	hint := "Enter send  ·  Ctrl+Enter newline  ·  / commands  ·  @ files"
 	if m.processing {
-		hint = "Enter queue follow-up  ·  Alt+Enter newline  ·  Esc cancel"
+		hint = "Enter queue follow-up  ·  Ctrl+Enter newline  ·  Esc cancel"
 	}
 	return box + "\n" + ansi.Truncate(faintStyle.Render(hint), maxInt(1, m.width), "…")
 }
@@ -380,7 +403,7 @@ func (m *model) renderConfirmation() string {
 	offset := minInt(m.confirmOff, maxInt(0, len(lines)-limit))
 	end := minInt(len(lines), offset+limit)
 	preview := colorizeDiff(strings.Join(lines[offset:end], "\n"))
-	hint := "y approve  ·  n/Enter reject"
+	hint := "Y/Enter approve  ·  N decline  ·  Esc dismiss"
 	if len(lines) > limit {
 		hint = fmt.Sprintf("↑/↓ scroll %d-%d/%d  ·  %s", offset+1, end, len(lines), hint)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/skills"
 	"github.com/rushikeshg25/cool-code/internal/types"
@@ -36,6 +37,41 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 	case "/help":
 		m.appendSystem(m.helpText())
+	case "/send":
+		return m.sendQueuedNow()
+	case "/tasks":
+		if m.tasks == nil || len(m.tasks.Items) == 0 {
+			m.appendSystem("No tasks yet.")
+			break
+		}
+		var text strings.Builder
+		text.WriteString("Tasks: " + security.SanitizeTerminal(m.tasks.Goal))
+		for _, item := range m.tasks.Items {
+			fmt.Fprintf(&text, "\n\n[%s] %s", item.Status, security.SanitizeTerminal(item.Title))
+			if item.Detail != "" {
+				text.WriteString("\n" + security.SanitizeTerminal(item.Detail))
+			}
+		}
+		m.followOutput = true
+		m.appendSystem(text.String())
+	case "/yolo":
+		if len(parts) == 2 {
+			arg = strings.ToLower(parts[1])
+		}
+		enabled := !m.proc.YOLO()
+		if len(parts) > 2 || (arg != "" && arg != "on" && arg != "off") {
+			m.appendError("Usage: /yolo [on|off]")
+			break
+		}
+		if arg != "" {
+			enabled = arg == "on"
+		}
+		m.proc.SetYOLO(enabled)
+		if enabled {
+			m.appendSystem("YOLO enabled: action and edit approvals are skipped for this run.")
+		} else {
+			m.appendSystem("YOLO disabled: original approval settings restored.")
+		}
 	case "/connect":
 		m.connectMenu = true
 		m.connectIdx = 0
@@ -205,9 +241,13 @@ func (m *model) helpText() string {
 	}
 	b.WriteString("\n  Shift+Tab cycles mode (plan → agent → ask)")
 	b.WriteString("\nKeys:")
-	b.WriteString("\n  Enter submits · Alt+Enter or Ctrl+J inserts a newline (Shift+Enter is not detectable in terminals)")
+	b.WriteString("\n  Enter sends · Ctrl/Shift+Enter inserts a newline in enhanced terminals (Ghostty/Kitty)\n  Alt+Enter or Ctrl+J inserts a newline in legacy terminals")
+	b.WriteString("\n  Ctrl+Space / Ctrl+Backspace / Ctrl+W deletes the previous word · Ctrl+Delete / Alt+D deletes the next word")
+	b.WriteString("\n  Ctrl+Left/Right or Alt+B/F moves by word · Home/End or Ctrl+A/E moves to line ends")
+	b.WriteString("\n  Ctrl+U/K deletes to line start/end · Ctrl+Home/End moves to prompt start/end")
+	b.WriteString("\n  Approval prompts: Y/Enter approves · N declines · Esc dismisses")
 	b.WriteString("\n  Esc or Ctrl+C cancels a running turn · Ctrl+C when idle quits")
-	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript")
+	b.WriteString("\n  Up/Down recalls input history · PgUp/PgDn or mouse wheel scrolls the transcript\n  Alt+End jumps to the latest output and resumes auto-scroll\n  Alt+S or /send sends pending follow-ups now (cancels the active turn first)")
 	return b.String()
 }
 

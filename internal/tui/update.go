@@ -15,12 +15,17 @@ import (
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/creds"
 	"github.com/rushikeshg25/cool-code/internal/llm"
+	"github.com/rushikeshg25/cool-code/internal/security"
 	"github.com/rushikeshg25/cool-code/internal/session"
 	"github.com/rushikeshg25/cool-code/internal/types"
 )
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	msg = enhancedKey(msg)
 	switch msg := msg.(type) {
+	case queueDeliveredMsg:
+		m.markQueuedSent(msg)
+		return m, nil
 	case asideMsg:
 		return m.receiveAside(msg)
 	case questionReqMsg:
@@ -92,6 +97,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case confirmReqMsg:
+		if len(m.sendNowMessages) > 0 {
+			msg.resp <- false
+			return m, nil
+		}
 		m.status = ""
 		m.confirmMsg = msg.message
 		m.confirmResp = msg.resp
@@ -117,6 +126,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.ready {
 		var cmd tea.Cmd
 		m.vp, cmd = m.vp.Update(msg)
+		if mouse, ok := msg.(tea.MouseMsg); ok && (mouse.Button == tea.MouseButtonWheelUp || mouse.Button == tea.MouseButtonWheelDown) {
+			m.followOutput = m.vp.AtBottom()
+		}
 		return m, cmd
 	}
 	return m, nil
@@ -131,6 +143,20 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 	m.cancelTurn = nil
 	m.subagents = nil
 	m.streamIdx = -1
+	if len(m.sendNowMessages) > 0 {
+		messages := append(m.sendNowMessages, m.proc.TakeQueuedMessages()...)
+		m.sendNowMessages = nil
+		m.markQueuedSent(messages)
+		m.planMenu = false
+		return m.runQuery(strings.Join(messages, "\n"))
+	}
+	if msg.err == nil {
+		if messages := m.proc.TakeQueuedMessages(); len(messages) > 0 {
+			m.markQueuedSent(messages)
+			m.planMenu = false
+			return m.runQuery(strings.Join(messages, "\n"))
+		}
+	}
 	if errors.Is(msg.err, context.Canceled) {
 		m.appendSystem("Cancelled.")
 		m.persist()
@@ -160,17 +186,25 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Ctrl+Space is NUL in legacy terminals; keep word deletion consistent
+	// in the composer, side questions, and custom answer fields.
+	if msg.Type == tea.KeyCtrlAt && !msg.Alt {
+		msg.Type = tea.KeyCtrlW
+	}
 	// Some terminals answer foreground/background color capability probes with
 	// OSC 10/11 sequences. They are terminal metadata, never user input.
 	if isTerminalColorReply(msg) {
 		return m, nil
 	}
+	if msg.String() == "alt+s" {
+		return m.sendQueuedNow()
+	}
 	// Confirmation overlay takes priority.
 	if m.confirmMsg != "" {
 		switch strings.ToLower(msg.String()) {
-		case "y":
+		case "y", "enter":
 			m.respondConfirm(true)
-		case "n", "esc", "enter":
+		case "n", "esc":
 			m.respondConfirm(false)
 		case "up":
 			m.confirmOff = maxInt(0, m.confirmOff-1)
@@ -267,9 +301,16 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+	case tea.KeyEnd:
+		if msg.Alt {
+			m.followOutput = true
+			m.vp.GotoBottom()
+			return m, nil
+		}
 	case tea.KeyPgUp, tea.KeyPgDown:
 		var cmd tea.Cmd
 		m.vp, cmd = m.vp.Update(msg)
+		m.followOutput = m.vp.AtBottom()
 		return m, cmd
 	case tea.KeyEnter:
 		if !msg.Alt {
@@ -547,18 +588,26 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/btw") {
 		return m.openAside(strings.TrimSpace(strings.TrimPrefix(value, fields[0])))
 	}
+	if fields := strings.Fields(value); len(fields) > 0 && (strings.EqualFold(fields[0], "/yolo") || strings.EqualFold(fields[0], "/tasks") || strings.EqualFold(fields[0], "/send")) {
+		return m.dispatchCommand(value)
+	}
 	if m.processing {
 		m.proc.EnqueueMessage(value)
-		m.appendSystem("(queued) " + value)
+		m.appendSystem("(queued) " + security.Redact(value))
 		return m, nil
 	}
 	if strings.HasPrefix(value, "/") {
 		return m.dispatchCommand(value)
 	}
+	if queued := m.proc.TakeQueuedMessages(); len(queued) > 0 {
+		m.markQueuedSent(queued)
+		value = strings.Join(append(queued, value), "\n")
+	}
 	return m.runQuery(value)
 }
 
 func (m *model) runQuery(text string) (tea.Model, tea.Cmd) {
+	m.followOutput = true
 	m.processing = true
 	m.turnStart = time.Now()
 	m.ti.Placeholder = "Queue a follow-up…"

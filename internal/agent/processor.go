@@ -63,6 +63,7 @@ type Processor struct {
 
 	mu         sync.Mutex
 	mode       types.AgentMode
+	yolo       bool
 	taskList   *types.TaskList
 	queue      []string
 	lastUsage  llm.Usage
@@ -103,8 +104,9 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		setupError:     err,
 		ctxMgr:         cm,
 		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker, Browser: &tools.Browser{}, Processes: &tools.BackgroundProcesses{}},
-		allowDangerous: opts.YOLO || opts.AllowDangerous || cfg.AllowDangerous(),
-		confirmEdits:   cfg.ConfirmEdits() && !opts.YOLO,
+		allowDangerous: opts.AllowDangerous || cfg.AllowDangerous(),
+		confirmEdits:   cfg.ConfirmEdits(),
+		yolo:           opts.YOLO,
 		mode:           mode,
 		confirm:        opts.Confirm,
 		confirmEdit:    opts.ConfirmEdit,
@@ -169,6 +171,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if err := ctx.Err(); err != nil {
 			return finalText, err
 		}
+		p.deliverQueued(reporter)
 		req := llm.Request{
 			System:      p.ctxMgr.buildSystem(),
 			Messages:    p.ctxMgr.window(),
@@ -204,6 +207,9 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				reporter.Assistant(finalText)
 			} else if streamed && reporter != nil {
 				reporter.AssistantDiscard()
+			}
+			if ctx.Err() == nil && p.deliverQueued(reporter) {
+				continue
 			}
 			break
 		}
@@ -365,12 +371,6 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if cancelErr != nil {
 			return finalText, cancelErr
 		}
-		if msg := p.drainQueue(); msg != "" {
-			p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + msg)
-			if reporter != nil {
-				reporter.Status(waitingLabel())
-			}
-		}
 	}
 
 	// Compaction is destructive and used to happen with no signal at all, so
@@ -386,13 +386,19 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 func (p *Processor) gate(call llm.ToolCall) (bool, string) {
 	reason := tools.DangerReason(call.Name, call.Arguments)
 	preview := tools.EditPreview(call.Name, call.Arguments)
-	if reason != "" && !p.allowDangerous {
-		if p.confirm == nil || !p.confirm("Allow potentially dangerous action ("+reason+")?") {
+	if reason != "" && !p.allowDangerous && !p.YOLO() {
+		if p.confirm == nil {
+			return true, "Action requires approval, but no approval handler is available. No user decision was received."
+		}
+		if !p.confirm("Allow potentially dangerous action (" + reason + ")?") {
 			return true, "User declined to run a potentially dangerous tool."
 		}
 	}
-	if preview != "" && p.confirmEdits {
-		if p.confirmEdit == nil || !p.confirmEdit("Apply this edit?", preview) {
+	if preview != "" && p.confirmEdits && !p.YOLO() {
+		if p.confirmEdit == nil {
+			return true, "Edit requires approval, but no approval handler is available. No user decision was received."
+		}
+		if !p.confirmEdit("Apply this edit?", preview) {
 			return true, "User declined to apply edits."
 		}
 	}
@@ -610,15 +616,26 @@ func (p *Processor) EnqueueMessage(msg string) {
 	p.mu.Unlock()
 }
 
-func (p *Processor) drainQueue() string {
+// TakeQueuedMessages atomically transfers pending follow-ups to the caller.
+// The UI uses this before cancellation so send-now cannot race queue delivery.
+func (p *Processor) TakeQueuedMessages() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.queue) == 0 {
-		return ""
-	}
-	msg := strings.Join(p.queue, "\n")
+	messages := p.queue
 	p.queue = nil
-	return msg
+	return messages
+}
+func (p *Processor) PendingMessageCount() int { p.mu.Lock(); defer p.mu.Unlock(); return len(p.queue) }
+func (p *Processor) deliverQueued(reporter Reporter) bool {
+	messages := p.TakeQueuedMessages()
+	if len(messages) == 0 {
+		return false
+	}
+	p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + strings.Join(messages, "\n"))
+	if r, ok := reporter.(interface{ QueueDelivered([]string) }); ok {
+		r.QueueDelivered(messages)
+	}
+	return true
 }
 
 // TaskList returns the current task list (may be nil).
@@ -798,3 +815,8 @@ func (p *Processor) Close() error {
 func (p *Processor) SetQuestionHandler(handler tools.QuestionHandler) {
 	p.toolCtx.AskQuestion = handler
 }
+
+// SetYOLO changes approval bypass for this process only. Turning it off restores
+// the original approval policy; read-only modes and path guardrails still apply.
+func (p *Processor) SetYOLO(enabled bool) { p.mu.Lock(); p.yolo = enabled; p.mu.Unlock() }
+func (p *Processor) YOLO() bool           { p.mu.Lock(); defer p.mu.Unlock(); return p.yolo }
