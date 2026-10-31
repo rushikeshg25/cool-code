@@ -171,6 +171,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if err := ctx.Err(); err != nil {
 			return finalText, err
 		}
+		p.deliverQueued(reporter)
 		req := llm.Request{
 			System:      p.ctxMgr.buildSystem(),
 			Messages:    p.ctxMgr.window(),
@@ -206,6 +207,9 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				reporter.Assistant(finalText)
 			} else if streamed && reporter != nil {
 				reporter.AssistantDiscard()
+			}
+			if ctx.Err() == nil && p.deliverQueued(reporter) {
+				continue
 			}
 			break
 		}
@@ -367,12 +371,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if cancelErr != nil {
 			return finalText, cancelErr
 		}
-		if msg := p.drainQueue(); msg != "" {
-			p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + msg)
-			if reporter != nil {
-				reporter.Status(waitingLabel())
-			}
-		}
+
 	}
 
 	// Compaction is destructive and used to happen with no signal at all, so
@@ -615,15 +614,26 @@ func (p *Processor) EnqueueMessage(msg string) {
 	p.mu.Unlock()
 }
 
-func (p *Processor) drainQueue() string {
+// TakeQueuedMessages atomically transfers pending follow-ups to the caller.
+// The UI uses this before cancellation so send-now cannot race queue delivery.
+func (p *Processor) TakeQueuedMessages() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.queue) == 0 {
-		return ""
-	}
-	msg := strings.Join(p.queue, "\n")
+	messages := p.queue
 	p.queue = nil
-	return msg
+	return messages
+}
+func (p *Processor) PendingMessageCount() int { p.mu.Lock(); defer p.mu.Unlock(); return len(p.queue) }
+func (p *Processor) deliverQueued(reporter Reporter) bool {
+	messages := p.TakeQueuedMessages()
+	if len(messages) == 0 {
+		return false
+	}
+	p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + strings.Join(messages, "\n"))
+	if r, ok := reporter.(interface{ QueueDelivered([]string) }); ok {
+		r.QueueDelivered(messages)
+	}
+	return true
 }
 
 // TaskList returns the current task list (may be nil).

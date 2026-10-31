@@ -22,6 +22,9 @@ import (
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	msg = enhancedKey(msg)
 	switch msg := msg.(type) {
+	case queueDeliveredMsg:
+		m.markQueuedSent(msg)
+		return m, nil
 	case asideMsg:
 		return m.receiveAside(msg)
 	case questionReqMsg:
@@ -135,6 +138,20 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 	m.cancelTurn = nil
 	m.subagents = nil
 	m.streamIdx = -1
+	if len(m.sendNowMessages) > 0 {
+		messages := append(m.sendNowMessages, m.proc.TakeQueuedMessages()...)
+		m.sendNowMessages = nil
+		m.markQueuedSent(messages)
+		m.planMenu = false
+		return m.runQuery(strings.Join(messages, "\n"))
+	}
+	if msg.err == nil {
+		if messages := m.proc.TakeQueuedMessages(); len(messages) > 0 {
+			m.markQueuedSent(messages)
+			m.planMenu = false
+			return m.runQuery(strings.Join(messages, "\n"))
+		}
+	}
 	if errors.Is(msg.err, context.Canceled) {
 		m.appendSystem("Cancelled.")
 		m.persist()
@@ -173,6 +190,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// OSC 10/11 sequences. They are terminal metadata, never user input.
 	if isTerminalColorReply(msg) {
 		return m, nil
+	}
+	if msg.String() == "alt+s" {
+		return m.sendQueuedNow()
 	}
 	// Confirmation overlay takes priority.
 	if m.confirmMsg != "" {
@@ -567,7 +587,7 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/btw") {
 		return m.openAside(strings.TrimSpace(strings.TrimPrefix(value, fields[0])))
 	}
-	if fields := strings.Fields(value); len(fields) > 0 && (strings.EqualFold(fields[0], "/yolo") || strings.EqualFold(fields[0], "/tasks")) {
+	if fields := strings.Fields(value); len(fields) > 0 && (strings.EqualFold(fields[0], "/yolo") || strings.EqualFold(fields[0], "/tasks") || strings.EqualFold(fields[0], "/send")) {
 		return m.dispatchCommand(value)
 	}
 	if m.processing {
