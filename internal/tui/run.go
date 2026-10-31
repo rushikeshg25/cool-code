@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/rushikeshg25/cool-code/internal/agent"
@@ -31,7 +33,7 @@ func Run(opts RunOptions) error {
 	br := &bridge{}
 	m.bridge = br
 
-	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithOutput(keyboardOutput{os.Stdout}))
 	br.prog = prog
 	opts.Processor.SetConfirmHandlers(br.confirm, br.confirmEdit)
 	opts.Processor.SetQuestionHandler(br.askQuestion)

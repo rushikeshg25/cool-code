@@ -20,6 +20,7 @@ import (
 )
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	msg = enhancedKey(msg)
 	switch msg := msg.(type) {
 	case asideMsg:
 		return m.receiveAside(msg)
@@ -160,6 +161,11 @@ func (m *model) handleDone(msg doneMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Ctrl+Space is NUL in legacy terminals; keep word deletion consistent
+	// in the composer, side questions, and custom answer fields.
+	if msg.Type == tea.KeyCtrlAt && !msg.Alt {
+		msg.Type = tea.KeyCtrlW
+	}
 	// Some terminals answer foreground/background color capability probes with
 	// OSC 10/11 sequences. They are terminal metadata, never user input.
 	if isTerminalColorReply(msg) {
