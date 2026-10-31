@@ -39,6 +39,10 @@ var prices = map[string]Price{
 // PriceFor returns the rate for a model id and whether one is known.
 func PriceFor(model string) (Price, bool) {
 	id := strings.ToLower(strings.TrimSpace(model))
+	if strings.Contains(id, "/") {
+		p, ok := openrouterPrices[id]
+		return p, ok
+	}
 	best := ""
 	for prefix := range prices {
 		if strings.HasPrefix(id, prefix) && len(prefix) > len(best) {
@@ -60,4 +64,12 @@ func Cost(model string, input, output int) (float64, bool) {
 	}
 	const perMillion = 1_000_000
 	return float64(input)/perMillion*p.Input + float64(output)/perMillion*p.Output, true
+}
+
+// OpenRouter base text-token rates checked against /api/v1/models on 2026-10-31.
+// These are estimates; caching and long-context tiers can change the bill.
+var openrouterPrices = map[string]Price{
+	"google/gemini-2.5-flash":     {Input: 0.30, Output: 2.50},
+	"openai/gpt-4.1":              {Input: 2, Output: 8},
+	"anthropic/claude-sonnet-4.5": {Input: 3, Output: 15},
 }

@@ -1,5 +1,5 @@
 // Package llm provides a provider-agnostic chat interface with native
-// tool-calling over Anthropic, OpenAI, and Google (Gemini) REST APIs.
+// tool-calling over Anthropic, OpenAI, OpenRouter, and Google (Gemini) REST APIs.
 package llm
 
 import (
@@ -87,14 +87,18 @@ type providerInfo struct {
 }
 
 var providers = map[string]providerInfo{
-	"google":    {"google", "GOOGLE_GENERATIVE_AI_API_KEY", "https://aistudio.google.com/app/apikey"},
-	"openai":    {"openai", "OPENAI_API_KEY", "https://platform.openai.com/api-keys"},
-	"anthropic": {"anthropic", "ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys"},
+	"openrouter": {"openrouter", "OPENROUTER_API_KEY", "https://openrouter.ai/settings/keys"},
+	"google":     {"google", "GOOGLE_GENERATIVE_AI_API_KEY", "https://aistudio.google.com/app/apikey"},
+	"openai":     {"openai", "OPENAI_API_KEY", "https://platform.openai.com/api-keys"},
+	"anthropic":  {"anthropic", "ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys"},
 }
 
 // InferProvider guesses the provider from a model id.
 func InferProvider(model string) string {
 	m := strings.ToLower(model)
+	if strings.Contains(m, "/") {
+		return "openrouter"
+	}
 	if strings.Contains(m, "gpt") || strings.HasPrefix(m, "o1") || strings.HasPrefix(m, "o3") {
 		return "openai"
 	}
@@ -142,6 +146,7 @@ func New(cfg config.LLM) (Provider, error) {
 		return nil, &MissingKeyError{Provider: name, EnvKey: keyEnv, KeyURL: info.keyURL}
 	}
 	base := baseProvider{
+		kind:            info.kind,
 		model:           cfg.Model,
 		apiKey:          key,
 		baseURL:         baseURL,
@@ -155,7 +160,7 @@ func New(cfg config.LLM) (Provider, error) {
 	switch name {
 	case "anthropic":
 		return &anthropicProvider{base}, nil
-	case "openai":
+	case "openai", "openrouter":
 		return &openaiProvider{base}, nil
 	default:
 		return &googleProvider{base}, nil
@@ -217,6 +222,8 @@ func resolveBaseURL(cfg config.LLM, provider string) string {
 	}
 	var env string
 	switch provider {
+	case "openrouter":
+		env = "OPENROUTER_BASE_URL"
 	case "openai":
 		env = "OPENAI_BASE_URL"
 	case "anthropic":
@@ -228,6 +235,7 @@ func resolveBaseURL(cfg config.LLM, provider string) string {
 }
 
 type baseProvider struct {
+	kind            string
 	model           string
 	apiKey          string
 	baseURL         string

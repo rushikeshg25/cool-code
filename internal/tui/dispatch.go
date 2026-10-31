@@ -150,7 +150,7 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 				rate = fmt.Sprintf("$%g in / $%g out per million tokens", price.Input, price.Output)
 			}
 			m.appendSystem("Model: " + status.Model + "\n" + rate +
-				"\nSwitch with /model <id>, for example /model claude-sonnet-4-5")
+				"\nSwitch with /model <id>, for example /model claude-sonnet-4-5 or /model google/gemini-2.5-flash")
 			break
 		}
 		if err := m.switchModel(arg); err != nil {
@@ -243,5 +243,5 @@ func (m *model) switchModel(id string) error {
 	if err := m.proc.ConfigureLLM(llmCfg); err != nil {
 		return err
 	}
-	return config.SetGlobalLLM(config.LLM{Model: id})
+	return config.SetGlobalLLM(config.LLM{Model: id, Provider: llm.ResolveProvider(llmCfg)})
 }

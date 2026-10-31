@@ -37,6 +37,10 @@ var contextWindows = map[string]int{
 // known.
 func ContextWindow(model string) (int, bool) {
 	id := strings.ToLower(strings.TrimSpace(model))
+	if strings.Contains(id, "/") {
+		window, ok := openrouterContextWindows[id]
+		return window, ok
+	}
 	best := ""
 	for prefix := range contextWindows {
 		if strings.HasPrefix(id, prefix) && len(prefix) > len(best) {
@@ -47,4 +51,11 @@ func ContextWindow(model string) (int, bool) {
 		return 0, false
 	}
 	return contextWindows[best], true
+}
+
+// OpenRouter metadata checked against /api/v1/models on 2026-10-31.
+var openrouterContextWindows = map[string]int{
+	"google/gemini-2.5-flash":     1_048_576,
+	"openai/gpt-4.1":              1_047_576,
+	"anthropic/claude-sonnet-4.5": 1_000_000,
 }

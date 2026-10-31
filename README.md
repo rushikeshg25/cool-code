@@ -6,11 +6,11 @@ An intelligent command-line coding agent - describe what you want, and it reads,
 
 ## Overview
 
-Cool-Code combines large language models with a comprehensive set of development tools for an interactive development experience. It works with multiple model providers (Google, OpenAI, Anthropic) and finds context live through search and read tools - no vector database required.
+Cool-Code combines large language models with a comprehensive set of development tools for an interactive development experience. It works with multiple model providers (Google, OpenAI, Anthropic, OpenRouter) and finds context live through search and read tools - no vector database required.
 
 ## Features
 
-- **Multiple model providers** - Google, OpenAI, or Anthropic. Connect one with `/connect` (keys stored in `~/.coolcode/credentials.json`) or export the matching env var; the provider is inferred from the model id.
+- **Multiple model providers** - Google, OpenAI, Anthropic, or OpenRouter. Connect one with `/connect` (keys stored in `~/.coolcode/credentials.json`) or export the matching env var; the provider is inferred from the model id.
 - **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
@@ -54,6 +54,7 @@ Env vars keep working as a fallback:
 export GOOGLE_GENERATIVE_AI_API_KEY=your_api_key_here   # Gemini (default)
 # export OPENAI_API_KEY=your_api_key_here               # OpenAI
 # export ANTHROPIC_API_KEY=your_api_key_here            # Anthropic
+# export OPENROUTER_API_KEY=your_api_key_here           # OpenRouter
 ```
 
 OpenAI-compatible gateways and CLI proxies must be configured in trusted global settings. The CLI routes security-sensitive keys to `~/.coolcode/settings.json` automatically:
@@ -150,6 +151,7 @@ You can also type new messages while the agent is working - they're queued and p
 
 The provider is inferred from the model id when `llm.provider` is unset:
 
+- Namespaced IDs such as `google/gemini-2.5-flash`, `openai/gpt-4.1`, or `anthropic/claude-sonnet-4.5` → OpenRouter
 - `gpt-*`, `o1*`, `o3*` → OpenAI
 - `claude-*` → Anthropic
 - everything else (e.g. `gemini-*`) → Google
@@ -160,7 +162,28 @@ cool-code config set llm.model "claude-sonnet-5"  # inferred as Anthropic
 cool-code config set llm.provider "openai"        # or set it explicitly
 ```
 
-If the required key is missing, the CLI prints provider-specific setup guidance and exits.
+Choose **OpenRouter API key** in `/connect` to save your key and start with
+`google/gemini-2.5-flash`. Switch with `/model <id>` using the exact ID from the
+[OpenRouter model catalog](https://openrouter.ai/models). For example:
+
+```bash
+cool-code config set llm.provider openrouter
+cool-code config set llm.model anthropic/claude-sonnet-4.5
+export OPENROUTER_API_KEY=your_api_key_here
+```
+
+OpenRouter uses its own key and `https://openrouter.ai/api/v1/chat/completions`,
+with streaming, tool calls, token usage, and reasoning effort. Choose a model
+that supports tools for coding-agent work. The three example IDs above have
+context-window metadata and estimated base token rates; other IDs and routing
+variants show token counts without invented prices. Rates are estimates and
+exclude caching, long-context tiers, and other charges. See the
+[OpenRouter API reference](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion).
+`OPENROUTER_BASE_URL` can override the endpoint, but requires an explicit proxy
+credential just like other custom endpoints.
+
+If the required key is missing, interactive mode offers `/connect`; one-shot
+commands print provider-specific setup guidance and exit.
 
 ### Project memory & skills
 

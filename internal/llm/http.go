@@ -28,6 +28,7 @@ var httpClient = &http.Client{
 // Provider endpoints, as vars so tests can point them at a local server.
 var (
 	anthropicURL  = "https://api.anthropic.com/v1/messages"
+	openrouterURL = "https://openrouter.ai/api/v1/chat/completions"
 	openaiURL     = "https://api.openai.com/v1/chat/completions"
 	googleBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/"
 )
@@ -40,6 +41,8 @@ func providerEndpoint(provider, base string) string {
 		switch provider {
 		case "anthropic":
 			return anthropicURL
+		case "openrouter":
+			return openrouterURL
 		case "openai":
 			return openaiURL
 		default:
@@ -55,7 +58,7 @@ func providerEndpoint(provider, base string) string {
 			return base
 		}
 		suffix = "messages"
-	case "openai":
+	case "openai", "openrouter":
 		if strings.HasSuffix(base, "/chat/completions") {
 			return base
 		}

@@ -7,7 +7,12 @@ import (
 
 type openaiProvider struct{ baseProvider }
 
-func (p *openaiProvider) Name() string { return "openai" }
+func (p *openaiProvider) Name() string {
+	if p.kind == "openrouter" {
+		return "openrouter"
+	}
+	return "openai"
+}
 
 type openaiToolCall struct {
 	ID       string `json:"id"`
@@ -82,6 +87,17 @@ func (p *openaiProvider) buildBody(req Request) (map[string]any, map[string]stri
 		body["reasoning_effort"] = p.reasoningEffort
 	}
 
+	if p.Name() == "openrouter" {
+		delete(body, "max_completion_tokens")
+		delete(body, "reasoning_effort")
+		if p.maxTokens > 0 {
+			body["max_tokens"] = p.maxTokens
+		}
+		if p.reasoningEffort != "" {
+			body["reasoning"] = map[string]any{"effort": p.reasoningEffort}
+		}
+	}
+
 	headers := map[string]string{"Authorization": "Bearer " + p.apiKey}
 	return body, headers
 }
@@ -90,6 +106,7 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 	body, headers := p.buildBody(req)
 
 	var resp struct {
+		Error   json.RawMessage `json:"error"`
 		Choices []struct {
 			Message struct {
 				Content   string           `json:"content"`
@@ -101,7 +118,10 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 			CompletionTokens int `json:"completion_tokens"`
 		} `json:"usage"`
 	}
-	if err := postJSON(ctx, providerEndpoint("openai", p.baseURL), headers, body, &resp); err != nil {
+	if err := postJSON(ctx, providerEndpoint(p.Name(), p.baseURL), headers, body, &resp); err != nil {
+		return Message{}, err
+	}
+	if err := completionError(resp.Error); err != nil {
 		return Message{}, err
 	}
 	usage := Usage{Input: resp.Usage.PromptTokens, Output: resp.Usage.CompletionTokens}
@@ -140,8 +160,10 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 	calls := map[int]*callState{}
 	var order []int
 
-	err := streamSSE(ctx, providerEndpoint("openai", p.baseURL), headers, body, func(_ string, data []byte) {
+	var providerErr error
+	err := streamSSE(ctx, providerEndpoint(p.Name(), p.baseURL), headers, body, func(_ string, data []byte) {
 		var chunk struct {
+			Error   json.RawMessage `json:"error"`
 			Choices []struct {
 				Delta struct {
 					Content   string `json:"content"`
@@ -161,6 +183,13 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			} `json:"usage"`
 		}
 		if json.Unmarshal(data, &chunk) != nil {
+			return
+		}
+		if err := completionError(chunk.Error); err != nil {
+			providerErr = err
+			return
+		}
+		if providerErr != nil {
 			return
 		}
 		if chunk.Usage != nil {
@@ -193,6 +222,9 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 	if err != nil {
 		return Message{}, err
 	}
+	if providerErr != nil {
+		return Message{}, providerErr
+	}
 	for _, idx := range order {
 		c := calls[idx]
 		args := c.args
@@ -202,4 +234,17 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: c.id, Name: c.name, Arguments: json.RawMessage(args)})
 	}
 	return out, nil
+}
+
+// OpenRouter may report an upstream failure inside an HTTP 200 response or SSE
+// event. Treat it as a failure instead of accepting an empty/partial answer.
+func completionError(raw json.RawMessage) error {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var detail struct {
+		Code int `json:"code"`
+	}
+	_ = json.Unmarshal(raw, &detail)
+	return httpStatusError(detail.Code, append(append([]byte(`{"error":`), raw...), '}'))
 }

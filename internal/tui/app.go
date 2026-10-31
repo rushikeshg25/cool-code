@@ -141,6 +141,7 @@ var connectOptions = []connectOption{
 	{"Claude API key (Anthropic)", "anthropic", "claude-sonnet-4-5"},
 	{"OpenAI API key", "openai", "gpt-5"},
 	{"Gemini API key (Google)", "google", "gemini-2.5-flash"},
+	{"OpenRouter API key", "openrouter", "google/gemini-2.5-flash"},
 	{"Claude Pro/Max subscription - coming soon", "", ""},
 	{"ChatGPT/Codex subscription - coming soon", "", ""},
 }
