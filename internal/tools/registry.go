@@ -40,6 +40,7 @@ var All = []Tool{
 	webSearchTool,
 	browserTool,
 	questionTool,
+	backgroundProcessTool,
 }
 
 var byName = func() map[string]Tool {
@@ -78,6 +79,15 @@ func RunReadOnly(ctx Context, name string, args json.RawMessage) types.ToolResul
 // dangerous and should be confirmed, or "" otherwise.
 func DangerReason(name string, args json.RawMessage) string {
 	switch name {
+	case "background_process":
+		var a backgroundArgs
+		_ = json.Unmarshal(args, &a)
+		if a.Action == "start" {
+			return "start background " + DangerReason("shell_command", args)
+		}
+		if a.Action == "stop" {
+			return "stop owned background process " + strconv.Quote(a.ID)
+		}
 	case "apply_patch":
 		var a struct {
 			Patch string `json:"patch"`
@@ -215,7 +225,16 @@ func ReadOnlyTools() []Tool {
 // approval. Execution consumes these same arguments, even if project markers
 // change while the user is reading the confirmation.
 func PrepareCommand(ctx Context, name string, args json.RawMessage) (json.RawMessage, error) {
-	if name != "shell_command" && name != "run_tests" && name != "lint_fix" {
+	if name == "background_process" {
+		var a backgroundArgs
+		if err := json.Unmarshal(args, &a); err != nil {
+			return nil, err
+		}
+		if a.Action != "start" {
+			return args, nil
+		}
+	}
+	if name != "shell_command" && name != "run_tests" && name != "lint_fix" && name != "background_process" {
 		return args, nil
 	}
 	var command struct {
@@ -243,7 +262,7 @@ func PrepareCommand(ctx Context, name string, args json.RawMessage) (json.RawMes
 		return nil, fmt.Errorf("no command found; provide a command explicitly")
 	}
 	directory := ctx.RootDir
-	if name == "shell_command" && command.Directory != "" {
+	if (name == "shell_command" || name == "background_process") && command.Directory != "" {
 		directory = command.Directory
 		if !filepath.IsAbs(directory) {
 			directory = ctx.RootDir + string(filepath.Separator) + directory
