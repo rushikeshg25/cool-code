@@ -25,10 +25,14 @@ const (
 )
 
 var commands = []slashCommand{
+	{"/send", "Send queued follow-ups now, cancelling the active turn first"},
+	{"/usage", "Show dev token usage, request/tool timing, and log path"},
+	{"/tasks", "Show full task titles, status, and details"},
 	{"/help", "Show available commands"},
 	{"/connect", "Connect a model provider (API key)"},
 	{"/plan", "Plan changes without editing files"},
 	{"/ask", "Ask read-only questions"},
+	{"/yolo", "Toggle action/edit approval bypass for this run: /yolo [on|off]"},
 	{"/impl", "Implement changes using tools"},
 	{"/effort", "Choose reasoning effort"},
 	{"/add-dir", "Grant access to an additional directory (e.g. /add-dir ../other)"},

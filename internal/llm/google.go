@@ -11,6 +11,7 @@ type googleProvider struct{ baseProvider }
 func (p *googleProvider) Name() string { return "google" }
 
 type geminiPart struct {
+	Thought      bool            `json:"thought,omitempty"`
 	Text         string          `json:"text,omitempty"`
 	FunctionCall *geminiFuncCall `json:"functionCall,omitempty"`
 	FunctionResp *geminiFuncResp `json:"functionResponse,omitempty"`
@@ -117,6 +118,10 @@ func (p *googleProvider) Complete(ctx context.Context, req Request) (Message, er
 		return out, nil
 	}
 	for _, part := range resp.Candidates[0].Content.Parts {
+		if part.Thought {
+			out.Reasoning += part.Text
+			continue
+		}
 		if part.Text != "" {
 			out.Text += part.Text
 		}
@@ -162,6 +167,10 @@ func (p *googleProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			return
 		}
 		for _, part := range chunk.Candidates[0].Content.Parts {
+			if part.Thought {
+				out.Reasoning += part.Text
+				continue
+			}
 			if part.Text != "" {
 				out.Text += part.Text
 				onDelta(part.Text)
@@ -180,7 +189,7 @@ func (p *googleProvider) Stream(ctx context.Context, req Request, onDelta func(s
 		}
 	})
 	if err != nil {
-		return Message{}, err
+		return out, err
 	}
 	return out, nil
 }

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rushikeshg25/cool-code/internal/config"
 	"github.com/rushikeshg25/cool-code/internal/llm"
@@ -51,6 +52,7 @@ type Options struct {
 
 // Processor drives the agentic loop.
 type Processor struct {
+	meter          usageMeter
 	rootDir        string
 	cfg            config.Config
 	provider       llm.Provider
@@ -63,6 +65,7 @@ type Processor struct {
 
 	mu         sync.Mutex
 	mode       types.AgentMode
+	yolo       bool
 	taskList   *types.TaskList
 	queue      []string
 	lastUsage  llm.Usage
@@ -103,8 +106,9 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		setupError:     err,
 		ctxMgr:         cm,
 		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker, Browser: &tools.Browser{}, Processes: &tools.BackgroundProcesses{}},
-		allowDangerous: opts.YOLO || opts.AllowDangerous || cfg.AllowDangerous(),
-		confirmEdits:   cfg.ConfirmEdits() && !opts.YOLO,
+		allowDangerous: opts.AllowDangerous || cfg.AllowDangerous(),
+		confirmEdits:   cfg.ConfirmEdits(),
+		yolo:           opts.YOLO,
 		mode:           mode,
 		confirm:        opts.Confirm,
 		confirmEdit:    opts.ConfirmEdit,
@@ -150,6 +154,7 @@ func (p *Processor) buildToolDefs() {
 // ProcessQuery runs one user query to completion, returning the final assistant
 // text. Reporter may be nil.
 func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Reporter) (string, error) {
+	p.TraceInput("main", query)
 	if p.provider == nil {
 		if p.setupError != nil {
 			return "", fmt.Errorf("provider is not connected: %w", p.setupError)
@@ -169,6 +174,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		if err := ctx.Err(); err != nil {
 			return finalText, err
 		}
+		p.deliverQueued(reporter)
 		req := llm.Request{
 			System:      p.ctxMgr.buildSystem(),
 			Messages:    p.ctxMgr.window(),
@@ -177,24 +183,19 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		}
 		var resp llm.Message
 		var err error
+		var requestID string
 		streamed := false
-		if streamer, ok := p.provider.(llm.Streamer); ok && reporter != nil {
+		if _, ok := p.provider.(llm.Streamer); ok && reporter != nil {
 			sink := newStreamSink(reporter)
-			resp, err = streamer.Stream(ctx, req, sink.write)
+			resp, requestID, err = p.completeMetered(ctx, "main", p.provider, req, sink.write)
 			streamed = sink.flush()
 		} else {
-			resp, err = p.provider.Complete(ctx, req)
+			resp, requestID, err = p.completeMetered(ctx, "main", p.provider, req, nil)
 		}
 		if err != nil {
 			return finalText, err
 		}
-		if resp.Usage.Input > 0 || resp.Usage.Output > 0 {
-			p.mu.Lock()
-			p.lastUsage = resp.Usage
-			p.totalUsage.Input += resp.Usage.Input
-			p.totalUsage.Output += resp.Usage.Output
-			p.mu.Unlock()
-		}
+
 		p.ctxMgr.addAssistant(redactMessage(resp))
 
 		if len(resp.ToolCalls) == 0 {
@@ -204,6 +205,9 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				reporter.Assistant(finalText)
 			} else if streamed && reporter != nil {
 				reporter.AssistantDiscard()
+			}
+			if ctx.Err() == nil && p.deliverQueued(reporter) {
+				continue
 			}
 			break
 		}
@@ -232,6 +236,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		executed := make([]bool, n) // true when a real tool ran (fires reporter.Tool)
 		var readIdx, mutIdx, spawnIdx []int
 		for i, call := range resp.ToolCalls {
+			p.traceToolStart("main", requestID, i, call)
 			switch {
 			case call.Name == updateTaskListTool:
 				results[i] = &types.ToolResult{LLMResult: p.handleTaskList(call, reporter)}
@@ -275,7 +280,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 				wg.Add(1)
 				go func(i int, call llm.ToolCall) {
 					defer wg.Done()
-					r := tools.RunReadOnly(toolCtx, call.Name, call.Arguments)
+					r := p.runMeteredTool(toolCtx, "main", requestID, i, call, true)
 					results[i] = &r
 				}(i, resp.ToolCalls[i])
 			}
@@ -295,6 +300,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 					task, ok := parseSpawnTask(resp.ToolCalls[i].Arguments)
 					if !ok {
 						results[i] = &types.ToolResult{Display: "Subagent failed", LLMResult: "Invalid arguments: spawn_agent requires a non-empty task."}
+						p.recordTool("main", requestID, i, resp.ToolCalls[i], results[i], time.Now(), "failed")
 						continue
 					}
 					label := "agent " + strconv.Itoa(k+1) + ": " + truncateTask(security.Redact(task))
@@ -308,7 +314,16 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 					wg.Add(1)
 					go func(k, i int, task string) {
 						defer wg.Done()
+						start := time.Now()
 						text := p.runSubagent(ctx, task, func(state string) { setLine(k, state) })
+						status := "completed"
+						if strings.HasPrefix(text, "[subagent error]") || strings.HasPrefix(text, "[subagent hit") {
+							status = "failed"
+						}
+						if ctx.Err() != nil {
+							status = "cancelled"
+						}
+						p.recordTool("main", requestID, i, resp.ToolCalls[i], &types.ToolResult{LLMResult: text}, start, status)
 						results[i] = &types.ToolResult{Display: "Subagent: " + truncateTask(task), LLMResult: text}
 						setLine(k, "done")
 					}(k, i, task)
@@ -337,7 +352,7 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 			if reporter != nil {
 				reporter.Status(toolStatus(call.Name))
 			}
-			r := tools.Run(toolCtx, call.Name, call.Arguments)
+			r := p.runMeteredTool(toolCtx, "main", requestID, i, call, false)
 			results[i] = &r
 			executed[i] = true
 			if structuralTools[call.Name] {
@@ -350,7 +365,15 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		// closed by the deferred closeOpenToolCalls.
 		for i, call := range resp.ToolCalls {
 			if results[i] == nil {
+				p.recordTool("main", requestID, i, call, nil, time.Now(), "cancelled")
 				continue
+			}
+			if !executed[i] {
+				status := "blocked"
+				if call.Name == updateTaskListTool {
+					status = "handled"
+				}
+				p.recordTool("main", requestID, i, call, results[i], time.Now(), status)
 			}
 			results[i].LLMResult = security.Redact(results[i].LLMResult)
 			p.ctxMgr.addToolResult(call, results[i].LLMResult)
@@ -364,12 +387,6 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 		}
 		if cancelErr != nil {
 			return finalText, cancelErr
-		}
-		if msg := p.drainQueue(); msg != "" {
-			p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + msg)
-			if reporter != nil {
-				reporter.Status(waitingLabel())
-			}
 		}
 	}
 
@@ -386,13 +403,19 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 func (p *Processor) gate(call llm.ToolCall) (bool, string) {
 	reason := tools.DangerReason(call.Name, call.Arguments)
 	preview := tools.EditPreview(call.Name, call.Arguments)
-	if reason != "" && !p.allowDangerous {
-		if p.confirm == nil || !p.confirm("Allow potentially dangerous action ("+reason+")?") {
+	if reason != "" && !p.allowDangerous && !p.YOLO() {
+		if p.confirm == nil {
+			return true, "Action requires approval, but no approval handler is available. No user decision was received."
+		}
+		if !p.confirm("Allow potentially dangerous action (" + reason + ")?") {
 			return true, "User declined to run a potentially dangerous tool."
 		}
 	}
-	if preview != "" && p.confirmEdits {
-		if p.confirmEdit == nil || !p.confirmEdit("Apply this edit?", preview) {
+	if preview != "" && p.confirmEdits && !p.YOLO() {
+		if p.confirmEdit == nil {
+			return true, "Edit requires approval, but no approval handler is available. No user decision was received."
+		}
+		if !p.confirmEdit("Apply this edit?", preview) {
 			return true, "User declined to apply edits."
 		}
 	}
@@ -447,9 +470,9 @@ func (p *Processor) compact(ctx context.Context, manual bool) string {
 	}
 	b.WriteString(p.ctxMgr.transcriptForSummary(summaryInputBudget))
 
-	resp, err := p.provider.Complete(ctx, llm.Request{
+	resp, _, err := p.completeMetered(ctx, "compaction", p.provider, llm.Request{
 		Messages: []llm.Message{{Role: llm.RoleUser, Text: b.String()}},
-	})
+	}, nil)
 	if err != nil {
 		if manual {
 			return "Compaction failed: " + err.Error()
@@ -474,6 +497,7 @@ func (p *Processor) Compact(ctx context.Context) string {
 
 func redactMessage(message llm.Message) llm.Message {
 	message.Text = security.Redact(message.Text)
+	message.Reasoning = security.Redact(message.Reasoning)
 	message.ToolCalls = append([]llm.ToolCall(nil), message.ToolCalls...)
 	for i := range message.ToolCalls {
 		message.ToolCalls[i].Arguments = json.RawMessage(security.Redact(string(message.ToolCalls[i].Arguments)))
@@ -608,20 +632,32 @@ func (p *Processor) SetConfirmHandlers(confirm func(string) bool, confirmEdit fu
 
 // EnqueueMessage queues a message to interrupt the running turn.
 func (p *Processor) EnqueueMessage(msg string) {
+	p.TraceInput("queued", msg)
 	p.mu.Lock()
 	p.queue = append(p.queue, security.Redact(msg))
 	p.mu.Unlock()
 }
 
-func (p *Processor) drainQueue() string {
+// TakeQueuedMessages atomically transfers pending follow-ups to the caller.
+// The UI uses this before cancellation so send-now cannot race queue delivery.
+func (p *Processor) TakeQueuedMessages() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.queue) == 0 {
-		return ""
-	}
-	msg := strings.Join(p.queue, "\n")
+	messages := p.queue
 	p.queue = nil
-	return msg
+	return messages
+}
+func (p *Processor) PendingMessageCount() int { p.mu.Lock(); defer p.mu.Unlock(); return len(p.queue) }
+func (p *Processor) deliverQueued(reporter Reporter) bool {
+	messages := p.TakeQueuedMessages()
+	if len(messages) == 0 {
+		return false
+	}
+	p.ctxMgr.addUser("[SYSTEM: USER INTERRUPTED WITH NEW MESSAGE]\n" + strings.Join(messages, "\n"))
+	if r, ok := reporter.(interface{ QueueDelivered([]string) }); ok {
+		r.QueueDelivered(messages)
+	}
+	return true
 }
 
 // TaskList returns the current task list (may be nil).
@@ -801,3 +837,8 @@ func (p *Processor) Close() error {
 func (p *Processor) SetQuestionHandler(handler tools.QuestionHandler) {
 	p.toolCtx.AskQuestion = handler
 }
+
+// SetYOLO changes approval bypass for this process only. Turning it off restores
+// the original approval policy; read-only modes and path guardrails still apply.
+func (p *Processor) SetYOLO(enabled bool) { p.mu.Lock(); p.yolo = enabled; p.mu.Unlock() }
+func (p *Processor) YOLO() bool           { p.mu.Lock(); defer p.mu.Unlock(); return p.yolo }

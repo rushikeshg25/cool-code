@@ -34,8 +34,11 @@ type ToolCall struct {
 
 // Usage reports token counts from the provider for one completion.
 type Usage struct {
-	Input  int `json:"input,omitempty"`
-	Output int `json:"output,omitempty"`
+	Input       int  `json:"input,omitempty"`
+	Output      int  `json:"output,omitempty"`
+	Reported    bool `json:"reported,omitempty"`
+	CachedInput *int `json:"cached_input,omitempty"`
+	Reasoning   *int `json:"reasoning,omitempty"`
 }
 
 // Message is one turn in the conversation. Assistant turns may carry ToolCalls;
@@ -43,6 +46,7 @@ type Usage struct {
 type Message struct {
 	Role       Role       `json:"role"`
 	Text       string     `json:"text,omitempty"`
+	Reasoning  string     `json:"reasoning,omitempty"`
 	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
 	ToolCallID string     `json:"toolCallId,omitempty"`
 	ToolName   string     `json:"toolName,omitempty"`

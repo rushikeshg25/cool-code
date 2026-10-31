@@ -28,3 +28,24 @@ func TestYOLOSkipsBothApprovalGates(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeYOLOIsReversible(t *testing.T) {
+	cfg := config.Default()
+	enabled := true
+	cfg.Features.ConfirmEdits = &enabled
+	p, err := New(t.TempDir(), cfg, Options{AllowMissingKey: true, YOLO: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	calls := []llm.ToolCall{{Name: "shell_command", Arguments: []byte(`{"command":"echo hello"}`)}, {Name: "edit_file", Arguments: []byte(`{"filePath":"a.go","oldString":"a","newString":"b"}`)}}
+	for _, on := range []bool{true, false, true, false} {
+		p.SetYOLO(on)
+		for _, call := range calls {
+			declined, _ := p.gate(call)
+			if declined == on {
+				t.Fatalf("YOLO=%v: declined=%v", on, declined)
+			}
+		}
+	}
+}

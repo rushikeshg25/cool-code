@@ -1,6 +1,6 @@
 # Cool-Code: a fast, native CLI coding agent
 
-> **Dev branch / v2.4.0-dev.1.** Subscription access through an already-running CLIProxyAPI instance is available only on `dev`. Stable `main` is unchanged.
+> **Dev branch / v2.4.1-dev.1.** Subscription access through an already-running CLIProxyAPI instance is available only on `dev`. Stable `main` is unchanged.
 
 An intelligent command-line coding agent - describe what you want, and it reads, plans, and edits your codebase using live tools. Similar in spirit to Claude Code and Gemini CLI, now rewritten in **Go** with a **Bubble Tea** TUI and **native provider tool-calling**.
 
@@ -16,7 +16,7 @@ Cool-Code combines large language models with a comprehensive set of development
 - **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
-- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the model's window, or as a token count when that window is unknown. Syntax-highlighted fenced code, multiline input (Alt+Enter), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
+- **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the model's window, or as a token count when that window is unknown. Syntax-highlighted fenced code, multiline input (Ctrl+Enter in enhanced terminals; Alt+Enter/Ctrl+J fallback), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
 - **Three agent modes** - Plan (read-only investigation → detailed plan), Agent (autonomous execution), Ask (read-only Q&A). After Plan mode produces a plan, choose **Start implementation** to jump straight into Agent mode.
 - **Project memory (`COOLCODE.md`)** - persistent project instructions loaded into every prompt.
 - **Skills** - discoverable, model-invoked instruction modules under `.coolcode/skills/` (compatible with Claude Code skills).
@@ -153,6 +153,46 @@ Type `/` to open the command palette; press Tab to complete the highlighted comm
 - `/exit` - exit
 
 You can also type new messages while the agent is working - they're queued and picked up after the current step.
+
+`/yolo` toggles action/edit approval bypass during a chat, including while a turn
+is running. Use `/yolo on` or `/yolo off` explicitly; the status bar shows `YOLO`
+when enabled. This is process-local and keeps mode and path restrictions intact.
+Turning it off restores your original approval settings. Implementation mode
+enables tools; it does not itself bypass approvals. At an approval prompt,
+**Y or Enter approves**, **N declines**, and **Esc dismisses without running**.
+
+The task sidebar wraps long titles and grows on wide terminals. Use `/tasks`
+to show every full title, status, and detail in the scrollable transcript, even
+while a turn is running.
+
+### Typing shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| Enter | Send the prompt (queue it while a turn is running) |
+| Ctrl+Enter or Shift+Enter | Insert a newline in Ghostty/Kitty and terminals with enhanced keyboard reporting |
+| Alt+Enter or Ctrl+J | Insert a newline with legacy terminal input |
+| Ctrl+Space, Ctrl+Backspace, Ctrl+W, Alt+Backspace | Delete the previous word |
+| Ctrl+Delete or Alt+D | Delete the next word |
+| Ctrl+Left/Right or Alt+B/F | Move by word |
+| Home/End or Ctrl+A/E | Move to the start/end of the current line |
+| Ctrl+U / Ctrl+K | Delete to the start/end of the current line |
+| Ctrl+Home/End | Move to the start/end of the whole prompt |
+| Up/Down | Recall earlier/later prompts at the first/last input line |
+| PgUp/PgDn or mouse wheel | Scroll the transcript; scrolling up pauses auto-scroll |
+| Alt+S or `/send` | Send queued follow-ups and the current draft now; cancel the active turn and wait for its cleanup first |
+| Alt+End | Jump to the latest output and resume auto-scroll |
+
+Coolcode enables [enhanced keyboard reporting](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
+inside its terminal screen and restores the previous setting on exit. Ghostty
+needs no custom key binding. If a terminal, desktop shortcut, or multiplexer
+intercepts a key or sends ordinary Enter for Ctrl+Enter, use the fallback keys.
+Queued follow-ups are delivered at the next model-request boundary, including
+after a text-only reply. The transcript changes `(queued)` to `(sent follow-up)`
+when a message enters the conversation. Cancelled turns retain pending messages
+for Alt+S or `/send`; send-now does not run two turns concurrently.
+Bracketed multiline paste stays in the composer and does not submit the prompt.
+These shortcuts also appear in `/help`.
 
 ### Model providers
 
@@ -425,7 +465,54 @@ Requires Go 1.27.3+ (or a newer supported, patched Go release). External tools u
 - **Edit checkpoints and `/undo`**, **granular permission allowlists**, **custom slash commands**, **MCP support**, **hooks**, and **multimodal input**.
 - **`@file` mentions** - the composer already completes paths; it does not yet attach the file's contents.
 
+## Dev token metering
+
+On dev, each running instance writes redacted JSONL records to
+`logs/token-usage-dev-<run-id>.jsonl` inside the project. Files are private (0600).
+Use `/usage` at any time for totals and the latest 20 events, including while the
+agent works. `--print --json` includes `usage_report`; `--verbose` prints it too.
+The log retains all events across `/fork` and restored chats in that instance.
+
+- Model requests record UTC start/end timestamps, duration, provider/model,
+  outcome, input/output tokens, cached input and reasoning counts when supplied.
+- Requests are labelled `main`, `subagent`, `btw`, or `compaction`. Tool events
+  record tool names, request IDs, call indices, timestamps, duration and outcome.
+  Request records also list requested tools and tool results present in input.
+- The trace includes submitted/queued messages, normalized model requests
+  (system prompt, conversation, tool definitions), responses, tool arguments,
+  tool results and redacted errors. Start events are written before model/tool
+  execution so unfinished operations remain visible. Completed requests retain
+  partial output returned after cancellation; individual streaming chunks and
+  raw HTTP traffic/headers are not logged.
+- Reasoning text is captured only when the provider returns it: OpenAI-compatible
+  `reasoning_content`/`reasoning`, Anthropic thinking, and Gemini thought text.
+  Hidden reasoning and encrypted reasoning payloads are not available.
+- Recognized secrets and sensitive environment values are redacted before disk
+  writes. Files can still contain private source code and conversation content;
+  redaction cannot identify every possible secret. Review logs before sharing.
+  Detailed payloads stay on disk; the in-memory recent-event list stores metadata.
+- Missing usage is **unavailable**, not zero. Cached input and reasoning are
+  subsets of input/output. Counts are provider-reported, not measured locally.
+  The proxy does not provide exact per-tool token allocations, hidden retry
+  costs, remaining subscription quota, or billing information. Request duration
+  includes transport retries; only returned usage can be counted.
+- A log write failure leaves the agent running; `/usage` displays the error.
+  Totals remain in memory, with the latest 20 events. Logs are not uploaded or
+  automatically removed. Keep generated logs out of commits.
+
 ## Changelog
+
+### 2.4.1-dev.1: Token metering and terminal fixes (2026-11-01)
+
+- Include stable 2.4.1 fixes: Ghostty typing shortcuts, auto-scroll, Alt+S and
+  `/send` for queued follow-ups, `/yolo`, readable tasks, and Enter/Y approvals.
+- Add dev-only `/usage` with provider-reported request tokens, timestamps,
+  duration, model, cached-input/reasoning details, and tool timing.
+- Save redacted JSONL under the project `logs/` folder. Cover main chat,
+  subagents, `/btw`, and compaction; mark missing usage as unavailable.
+- Keep CLI proxy integration and token metering exclusive to dev. Existing
+  proxy configuration is unchanged; no subscription quota or cost is inferred.
+
 
 ### 2.4.0-dev.2: Web tools, background processes, and conversation controls (2026-10-31)
 

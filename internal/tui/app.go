@@ -23,6 +23,8 @@ import (
 
 // --- messages pushed from the processor goroutine ---
 
+type queueDeliveredMsg []string
+
 type statusMsg string
 type assistantMsg string
 type deltaMsg string
@@ -46,6 +48,8 @@ type confirmReqMsg struct {
 // bridge implements agent.Reporter and the confirm callbacks by forwarding to
 // the running tea.Program.
 type bridge struct{ prog *tea.Program }
+
+func (b *bridge) QueueDelivered(messages []string) { b.prog.Send(queueDeliveredMsg(messages)) }
 
 func (b *bridge) Status(t string)         { b.prog.Send(statusMsg(t)) }
 func (b *bridge) AssistantDelta(t string) { b.prog.Send(deltaMsg(t)) }
@@ -87,20 +91,22 @@ type model struct {
 	ti            textarea.Model
 	sp            spinner.Model
 	ready         bool
+	followOutput  bool
 
-	history     []entry
-	prefix      string // cached rendering of every entry but the last
-	prefixCount int
-	streamIdx   int // index of the in-progress streaming entry, -1 when none
-	inputHist   []string
-	histIdx     int
-	processing  bool
-	turnStart   time.Time // when the current turn began, for the elapsed figure
-	status      string
-	mode        types.AgentMode
-	tasks       *types.TaskList
-	subagents   []string
-	cancelTurn  context.CancelFunc
+	history         []entry
+	prefix          string // cached rendering of every entry but the last
+	prefixCount     int
+	streamIdx       int // index of the in-progress streaming entry, -1 when none
+	inputHist       []string
+	histIdx         int
+	processing      bool
+	turnStart       time.Time // when the current turn began, for the elapsed figure
+	status          string
+	mode            types.AgentMode
+	tasks           *types.TaskList
+	subagents       []string
+	cancelTurn      context.CancelFunc
+	sendNowMessages []string
 
 	suggestions []slashCommand
 	suggestIdx  int
@@ -153,9 +159,12 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 	ti.ShowLineNumbers = false
 	ti.SetHeight(1)
 	ti.CharLimit = 0
-	// Enter submits; Alt+Enter or Ctrl+J inserts a newline (Shift+Enter is
-	// not distinguishable from Enter in classic terminal input).
+	// Enhanced Ctrl/Shift+Enter events are normalized to Ctrl+J. Legacy
+	// terminals can still use Alt+Enter or Ctrl+J.
 	ti.KeyMap.InsertNewline.SetKeys("alt+enter", "ctrl+j")
+	ti.KeyMap.WordBackward.SetKeys("ctrl+left", "alt+left", "alt+b")
+	ti.KeyMap.WordForward.SetKeys("ctrl+right", "alt+right", "alt+f")
+	ti.KeyMap.DeleteWordForward.SetKeys("ctrl+delete", "alt+delete", "alt+d")
 	ti.Focus()
 
 	sp := spinner.New()
@@ -168,18 +177,19 @@ func newModel(proc *agent.Processor, rootDir, version string, copyOut bool, sess
 	ki.EchoMode = textinput.EchoPassword
 
 	return &model{
-		proc:       proc,
-		rootDir:    rootDir,
-		version:    version,
-		copy:       copyOut,
-		sessionID:  sessionID,
-		ti:         ti,
-		sp:         sp,
-		mode:       proc.Mode(),
-		tasks:      proc.TaskList(),
-		streamIdx:  -1,
-		connectFor: -1,
-		keyInput:   ki,
+		proc:         proc,
+		rootDir:      rootDir,
+		version:      version,
+		copy:         copyOut,
+		sessionID:    sessionID,
+		followOutput: true,
+		ti:           ti,
+		sp:           sp,
+		mode:         proc.Mode(),
+		tasks:        proc.TaskList(),
+		streamIdx:    -1,
+		connectFor:   -1,
+		keyInput:     ki,
 	}
 }
 
@@ -374,7 +384,6 @@ func (m *model) syncViewport() {
 	if !m.ready {
 		return
 	}
-	atBottom := m.vp.AtBottom()
 
 	if m.prefixCount > len(m.history)-1 {
 		// History shrank or was rewritten; drop the cache.
@@ -390,7 +399,7 @@ func (m *model) syncViewport() {
 		b.WriteString(m.history[i].rendered)
 	}
 	m.vp.SetContent(b.String())
-	if atBottom {
+	if m.followOutput {
 		m.vp.GotoBottom()
 	}
 }

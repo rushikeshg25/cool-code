@@ -12,7 +12,8 @@ func (p *anthropicProvider) Name() string { return "anthropic" }
 type anthropicContentBlock struct {
 	Type string `json:"type"`
 	// text block
-	Text string `json:"text,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Thinking string `json:"thinking,omitempty"`
 	// tool_use block
 	ID    string          `json:"id,omitempty"`
 	Name  string          `json:"name,omitempty"`
@@ -111,6 +112,8 @@ func (p *anthropicProvider) Complete(ctx context.Context, req Request) (Message,
 		switch block.Type {
 		case "text":
 			out.Text += block.Text
+		case "thinking":
+			out.Reasoning += block.Thinking
 		case "tool_use":
 			args := block.Input
 			if len(args) == 0 {
@@ -157,6 +160,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req Request, onDelta fun
 				Type        string `json:"type"`
 				Text        string `json:"text"`
 				PartialJSON string `json:"partial_json"`
+				Thinking    string `json:"thinking"`
 			} `json:"delta"`
 			// message_delta
 			Usage struct {
@@ -180,6 +184,8 @@ func (p *anthropicProvider) Stream(ctx context.Context, req Request, onDelta fun
 			case "text_delta":
 				out.Text += ev.Delta.Text
 				onDelta(ev.Delta.Text)
+			case "thinking_delta":
+				out.Reasoning += ev.Delta.Thinking
 			case "input_json_delta":
 				b.args = append(b.args, ev.Delta.PartialJSON...)
 			}
@@ -197,7 +203,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req Request, onDelta fun
 		}
 	})
 	if err != nil {
-		return Message{}, err
+		return out, err
 	}
 	return out, nil
 }

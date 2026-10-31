@@ -14,6 +14,25 @@ func (p *openaiProvider) Name() string {
 	return "openai"
 }
 
+// Optional counts distinguish absent usage from a reported zero.
+type openaiUsage struct {
+	PromptTokens     *int `json:"prompt_tokens"`
+	CompletionTokens *int `json:"completion_tokens"`
+	PromptDetails    struct {
+		CachedTokens *int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+	CompletionDetails struct {
+		ReasoningTokens *int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
+}
+
+func (u *openaiUsage) usage() Usage {
+	if u == nil || u.PromptTokens == nil || u.CompletionTokens == nil {
+		return Usage{}
+	}
+	return Usage{Input: *u.PromptTokens, Output: *u.CompletionTokens, Reported: true, CachedInput: u.PromptDetails.CachedTokens, Reasoning: u.CompletionDetails.ReasoningTokens}
+}
+
 type openaiToolCall struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
@@ -109,14 +128,13 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 		Error   json.RawMessage `json:"error"`
 		Choices []struct {
 			Message struct {
-				Content   string           `json:"content"`
-				ToolCalls []openaiToolCall `json:"tool_calls"`
+				Content          string           `json:"content"`
+				Reasoning        string           `json:"reasoning"`
+				ReasoningContent string           `json:"reasoning_content"`
+				ToolCalls        []openaiToolCall `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-		} `json:"usage"`
+		Usage *openaiUsage `json:"usage"`
 	}
 	if err := postJSON(ctx, providerEndpoint(p.Name(), p.baseURL), headers, body, &resp); err != nil {
 		return Message{}, err
@@ -124,12 +142,15 @@ func (p *openaiProvider) Complete(ctx context.Context, req Request) (Message, er
 	if err := completionError(resp.Error); err != nil {
 		return Message{}, err
 	}
-	usage := Usage{Input: resp.Usage.PromptTokens, Output: resp.Usage.CompletionTokens}
+	usage := resp.Usage.usage()
 	if len(resp.Choices) == 0 {
 		return Message{Role: RoleAssistant, Usage: usage}, nil
 	}
 	msg := resp.Choices[0].Message
-	out := Message{Role: RoleAssistant, Text: msg.Content, Usage: usage}
+	out := Message{Role: RoleAssistant, Text: msg.Content, Usage: usage, Reasoning: msg.ReasoningContent}
+	if out.Reasoning == "" {
+		out.Reasoning = msg.Reasoning
+	}
 	for _, tc := range msg.ToolCalls {
 		args := tc.Function.Arguments
 		if args == "" {
@@ -166,8 +187,10 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			Error   json.RawMessage `json:"error"`
 			Choices []struct {
 				Delta struct {
-					Content   string `json:"content"`
-					ToolCalls []struct {
+					Content          string `json:"content"`
+					Reasoning        string `json:"reasoning"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`
 						Function struct {
@@ -177,10 +200,7 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 					} `json:"tool_calls"`
 				} `json:"delta"`
 			} `json:"choices"`
-			Usage *struct {
-				PromptTokens     int `json:"prompt_tokens"`
-				CompletionTokens int `json:"completion_tokens"`
-			} `json:"usage"`
+			Usage *openaiUsage `json:"usage"`
 		}
 		if json.Unmarshal(data, &chunk) != nil {
 			return
@@ -193,12 +213,17 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			return
 		}
 		if chunk.Usage != nil {
-			out.Usage = Usage{Input: chunk.Usage.PromptTokens, Output: chunk.Usage.CompletionTokens}
+			out.Usage = chunk.Usage.usage()
 		}
 		if len(chunk.Choices) == 0 {
 			return
 		}
 		delta := chunk.Choices[0].Delta
+		if delta.ReasoningContent != "" {
+			out.Reasoning += delta.ReasoningContent
+		} else {
+			out.Reasoning += delta.Reasoning
+		}
 		if delta.Content != "" {
 			out.Text += delta.Content
 			onDelta(delta.Content)
@@ -219,12 +244,6 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			c.args = append(c.args, tc.Function.Arguments...)
 		}
 	})
-	if err != nil {
-		return Message{}, err
-	}
-	if providerErr != nil {
-		return Message{}, providerErr
-	}
 	for _, idx := range order {
 		c := calls[idx]
 		args := c.args
@@ -232,6 +251,12 @@ func (p *openaiProvider) Stream(ctx context.Context, req Request, onDelta func(s
 			args = []byte("{}")
 		}
 		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: c.id, Name: c.name, Arguments: json.RawMessage(args)})
+	}
+	if err != nil {
+		return out, err
+	}
+	if providerErr != nil {
+		return out, providerErr
 	}
 	return out, nil
 }
