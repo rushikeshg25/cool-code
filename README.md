@@ -1,4 +1,4 @@
-# Cool-Code: a fast, native CLI coding agent
+# Cool-Code: a fast, CLI coding agent
 
 An intelligent command-line coding agent - describe what you want, and it reads, plans, and edits your codebase using live tools. Similar in spirit to Claude Code and Gemini CLI, now rewritten in **Go** with a **Bubble Tea** TUI and **native provider tool-calling**.
 
