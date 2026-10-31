@@ -242,6 +242,100 @@ Create a `COOLCODE.md` in your project root for persistent, project-specific ins
 
 Skills are reusable instruction modules under `.coolcode/skills/<name>/SKILL.md` (project) or `~/.coolcode/skills/<name>/SKILL.md` (global), each with optional `name`/`description` frontmatter. The agent sees a catalog and calls the `use_skill` tool to load one on demand. Install skills from a local path or git URL with `cool-code skill install` or `/install-skill`.
 
+### Background processes
+
+Use `background_process` for a dev server, watcher, or long-running build while
+the agent continues other work. `start` accepts a command, working directory,
+and optional timeout, then returns an opaque job ID. `list` shows this instance's
+jobs; `status` reports state and exit code; `logs` returns recent output; `stop`
+terminates the job's process group; `forget` removes a completed job record.
+A started process is not necessarily ready: check logs and the application's
+health before using it.
+
+Jobs survive the originating turn, including turn cancellation, and stop on
+explicit stop, timeout, or Coolcode exit. The default lifetime is 30 minutes;
+`timeout` can extend it up to 24 hours. Run the server command in the foreground
+without `nohup`, `&`, or daemonization. Detached processes are outside the
+manager's lifecycle. Process state and logs are kept only in memory, with up to
+64 tracked jobs and 64 KiB of recent complete log lines per job. `logs` accepts
+`tail` (default 100, maximum 500); oversized lines are omitted and incomplete
+lines appear after completion or process exit.
+
+This tool currently supports Linux and macOS. It uses the same working-directory
+jail, command approval, and restricted child environment as shell commands.
+Start and stop require normal action approval, and all operations are restricted
+to implementation mode. It cannot adopt or stop an arbitrary PID, another
+Coolcode instance's jobs, or an existing service such as CLIProxyAPI.
+
+### Side questions
+
+`/btw` opens a small question window; `/btw what does this term mean?` submits
+immediately. It also works while the main agent is running. Answers use a
+bounded excerpt of the conversation captured when the window opens, with no
+tools. Each question is independent; side questions and answers are not added
+to the main conversation or saved session. Token usage still counts toward
+session spend. Esc closes the window and cancels its request while the main
+turn continues. Use PgUp/PgDn to scroll long answers.
+
+### Fork a conversation
+
+`/fork` saves the current conversation, copies its messages, summary, pinned
+files, mode, and granted directories into a new chat, then switches to that
+copy in the same terminal. The original remains available through `/sessions`.
+Forking is available between turns; it does not open a new terminal or create a
+Git branch. Switching chats saves the conversation you are leaving.
+
+### Questions from the agent
+
+The `question` tool opens a small prompt with suggested answers and an option
+to type your own. Use arrows and Enter to answer, or Esc to dismiss. No option
+is submitted automatically, including in YOLO mode. Questions work in Plan,
+Ask, and implementation modes. Noninteractive runs return an explicit
+unavailable result; read-only subagents cannot prompt the user.
+
+### Multi-file patches
+
+`apply_patch` adds, updates, or deletes several text files in one call. It uses
+`*** Begin Patch` / `*** End Patch` markers, file headers, and exact `@@` context
+hunks. All targets and hunks are checked before writes; ambiguous matches fail.
+Writes preserve existing file permissions, and write failures trigger rollback
+of completed files. Delete operations require action approval; edit previews
+follow `confirmEdits`. The usual path jail and read/write guardrails apply.
+
+### Web reading
+
+`web_search` finds pages; `web_fetch` reads HTTPS pages without running JavaScript.
+Fetch preserves headings, links, lists, and code blocks as Markdown. Use
+`format: "text"` for plain text and the returned `offset` to continue through
+long pages. Downloads are limited to 4 MiB and each result to 20,000 characters.
+Binary files are rejected. Existing network protections apply to every fetch.
+
+### Optional browser
+
+Install Node.js 18+, Google Chrome, and the tested Playwright CLI version:
+
+```sh
+npm install -g @playwright/cli@0.1.23
+```
+
+The agent's `browser` tool starts a separate headless Chrome session on its first
+`navigate` call. No extension, Chrome login profile, or automatic download is
+used. Each Coolcode process owns its session and closes it on exit; idle sessions
+also expire after five minutes. After an idle timeout, use `close`, then `navigate` to restart.
+
+Actions: `navigate`, `snapshot`, `find`, `click`, `fill`, `select`, `press`,
+`console`, `network`, and `close`. Snapshots expose accessible page text and
+numbered element refs; interaction uses those refs. Ask the agent to test a
+local application or inspect a page that needs JavaScript. Use `web_fetch` for
+ordinary documentation. Arbitrary JavaScript, file uploads, screenshots, and
+access to an existing browser session are not part of this tool.
+
+Browser actions require the normal action approval in implementation mode.
+They are blocked in Ask/Plan and unavailable to read-only subagents. Unlike
+`web_fetch`, the browser can access local applications and website subresources;
+it is not a network sandbox. Page content is marked as untrusted. Downloads are
+disabled, output is bounded, and temporary browser files are removed on close.
+
 ## Configuration (`.coolcode.json`)
 
 ```json
@@ -300,7 +394,7 @@ cmd/                         # cobra CLI: root + config / scan / skill / task
 internal/
   llm/        provider-agnostic tool-calling over Anthropic / OpenAI / Gemini
   agent/      processor (agentic loop), context, prompts, danger gating, task plan
-  tools/      24 tools + JSON-schema defs, path safety, registry
+  tools/      registered tools + JSON-schema defs, path safety, registry
   config/     .coolcode.json load/save + dotted get/set
   session/    ~/.coolcode/sessions persistence
   skills/     SKILL.md discovery + install (local path / git URL)

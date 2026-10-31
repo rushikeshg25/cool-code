@@ -118,6 +118,9 @@ type model struct {
 	sessionIdx  int
 	sessionList []session.Data
 
+	aside            *asideDialog
+	asideGeneration  int
+	question         *questionDialog
 	picker           *selectionPicker
 	pickerGeneration int
 
@@ -420,14 +423,16 @@ func entrySeparator(kind, prev entryKind) string {
 	return "\n\n"
 }
 
-func (m *model) persist() {
+func (m *model) persist() { _ = m.saveSession(m.sessionID) }
+
+func (m *model) saveSession(id string) error {
 	messages, summary, pinned, mode, count := m.proc.Snapshot()
 	raw, err := json.Marshal(messages)
 	if err != nil {
-		return
+		return err
 	}
-	_ = session.Save(session.Data{
-		ID:           m.sessionID,
+	return session.Save(session.Data{
+		ID:           id,
 		Cwd:          m.rootDir,
 		UpdatedAt:    time.Now().UTC().Format(time.RFC3339Nano),
 		Mode:         string(mode),

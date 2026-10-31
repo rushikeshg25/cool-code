@@ -34,6 +34,7 @@ func Run(opts RunOptions) error {
 	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	br.prog = prog
 	opts.Processor.SetConfirmHandlers(br.confirm, br.confirmEdit)
+	opts.Processor.SetQuestionHandler(br.askQuestion)
 
 	_, err := prog.Run()
 	return err
