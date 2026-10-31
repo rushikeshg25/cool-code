@@ -63,6 +63,7 @@ type Processor struct {
 
 	mu         sync.Mutex
 	mode       types.AgentMode
+	yolo       bool
 	taskList   *types.TaskList
 	queue      []string
 	lastUsage  llm.Usage
@@ -103,8 +104,9 @@ func New(rootDir string, cfg config.Config, opts Options) (*Processor, error) {
 		setupError:     err,
 		ctxMgr:         cm,
 		toolCtx:        tools.Context{RootDir: rootDir, Config: cfg, GitIgnore: checker, Browser: &tools.Browser{}, Processes: &tools.BackgroundProcesses{}},
-		allowDangerous: opts.YOLO || opts.AllowDangerous || cfg.AllowDangerous(),
-		confirmEdits:   cfg.ConfirmEdits() && !opts.YOLO,
+		allowDangerous: opts.AllowDangerous || cfg.AllowDangerous(),
+		confirmEdits:   cfg.ConfirmEdits(),
+		yolo:           opts.YOLO,
 		mode:           mode,
 		confirm:        opts.Confirm,
 		confirmEdit:    opts.ConfirmEdit,
@@ -386,12 +388,12 @@ func (p *Processor) ProcessQuery(ctx context.Context, query string, reporter Rep
 func (p *Processor) gate(call llm.ToolCall) (bool, string) {
 	reason := tools.DangerReason(call.Name, call.Arguments)
 	preview := tools.EditPreview(call.Name, call.Arguments)
-	if reason != "" && !p.allowDangerous {
+	if reason != "" && !p.allowDangerous && !p.YOLO() {
 		if p.confirm == nil || !p.confirm("Allow potentially dangerous action ("+reason+")?") {
 			return true, "User declined to run a potentially dangerous tool."
 		}
 	}
-	if preview != "" && p.confirmEdits {
+	if preview != "" && p.confirmEdits && !p.YOLO() {
 		if p.confirmEdit == nil || !p.confirmEdit("Apply this edit?", preview) {
 			return true, "User declined to apply edits."
 		}
@@ -801,3 +803,8 @@ func (p *Processor) Close() error {
 func (p *Processor) SetQuestionHandler(handler tools.QuestionHandler) {
 	p.toolCtx.AskQuestion = handler
 }
+
+// SetYOLO changes approval bypass for this process only. Turning it off restores
+// the original approval policy; read-only modes and path guardrails still apply.
+func (p *Processor) SetYOLO(enabled bool) { p.mu.Lock(); p.yolo = enabled; p.mu.Unlock() }
+func (p *Processor) YOLO() bool           { p.mu.Lock(); defer p.mu.Unlock(); return p.yolo }

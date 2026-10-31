@@ -154,6 +154,11 @@ Type `/` to open the command palette; press Tab to complete the highlighted comm
 
 You can also type new messages while the agent is working - they're queued and picked up after the current step.
 
+`/yolo` toggles action/edit approval bypass during a chat, including while a turn
+is running. Use `/yolo on` or `/yolo off` explicitly; the status bar shows `YOLO`
+when enabled. This is process-local and keeps mode and path restrictions intact.
+Turning it off restores your original approval settings.
+
 ### Typing shortcuts
 
 | Shortcut | Action |

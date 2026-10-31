@@ -567,6 +567,9 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/btw") {
 		return m.openAside(strings.TrimSpace(strings.TrimPrefix(value, fields[0])))
 	}
+	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/yolo") {
+		return m.dispatchCommand(value)
+	}
 	if m.processing {
 		m.proc.EnqueueMessage(value)
 		m.appendSystem("(queued) " + value)

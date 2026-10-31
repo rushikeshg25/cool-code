@@ -36,6 +36,21 @@ func (m *model) dispatchCommand(raw string) (tea.Model, tea.Cmd) {
 		m.syncViewport()
 	case "/help":
 		m.appendSystem(m.helpText())
+	case "/yolo":
+		enabled := !m.proc.YOLO()
+		if len(parts) > 2 || (arg != "" && arg != "on" && arg != "off") {
+			m.appendError("Usage: /yolo [on|off]")
+			break
+		}
+		if arg != "" {
+			enabled = arg == "on"
+		}
+		m.proc.SetYOLO(enabled)
+		if enabled {
+			m.appendSystem("YOLO enabled: action and edit approvals are skipped for this run.")
+		} else {
+			m.appendSystem("YOLO disabled: original approval settings restored.")
+		}
 	case "/connect":
 		m.connectMenu = true
 		m.connectIdx = 0
