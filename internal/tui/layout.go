@@ -55,8 +55,8 @@ func computeLayout(width, height, footerHeight int, hasOverlay, hasSidebarConten
 	switch {
 	case width >= sidebarMinWidth && !hasOverlay && hasSidebarContent:
 		l.showSidebar = true
-		l.sidebarWidth = sidebarWidth
-		l.transcriptWidth = width - sidebarWidth - sidebarGutter
+		l.sidebarWidth = maxInt(sidebarWidth, minInt(48, width/4))
+		l.transcriptWidth = width - l.sidebarWidth - sidebarGutter
 	case width >= taskListMinWidth:
 		l.showTaskList = true
 		l.transcriptWidth = width

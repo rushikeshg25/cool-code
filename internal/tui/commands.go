@@ -25,6 +25,7 @@ const (
 )
 
 var commands = []slashCommand{
+	{"/tasks", "Show full task titles, status, and details"},
 	{"/help", "Show available commands"},
 	{"/connect", "Connect a model provider (API key)"},
 	{"/plan", "Plan changes without editing files"},
