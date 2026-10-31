@@ -21,6 +21,8 @@ import (
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case asideMsg:
+		return m.receiveAside(msg)
 	case questionReqMsg:
 		return m.receiveQuestion(msg)
 	case catalogMsg:
@@ -184,6 +186,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.question != nil {
 		return m.handleQuestionKey(msg)
+	}
+	if m.aside != nil {
+		return m.handleAsideKey(msg)
 	}
 	if m.picker != nil {
 		return m.handlePickerKey(msg)
@@ -535,6 +540,9 @@ func (m *model) submit() (tea.Model, tea.Cmd) {
 	}
 	m.inputHist = append(m.inputHist, value)
 	m.histIdx = len(m.inputHist)
+	if fields := strings.Fields(value); len(fields) > 0 && strings.EqualFold(fields[0], "/btw") {
+		return m.openAside(strings.TrimSpace(strings.TrimPrefix(value, fields[0])))
+	}
 	if m.processing {
 		m.proc.EnqueueMessage(value)
 		m.appendSystem("(queued) " + value)
@@ -573,6 +581,7 @@ func (m *model) interruptTurn() {
 
 // quit persists the session before exiting so nothing is lost on Ctrl+C.
 func (m *model) quit() (tea.Model, tea.Cmd) {
+	m.closeAside()
 	m.closePicker()
 	m.persist()
 	return m, tea.Quit
