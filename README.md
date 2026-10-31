@@ -427,6 +427,21 @@ Requires Go 1.27.3+ (or a newer supported, patched Go release). External tools u
 
 ## Changelog
 
+### 2.4.0-dev.2: Web tools, background processes, and conversation controls (2026-10-31)
+
+- Include the shared 2.4.0 improvements: configured-provider model and effort
+  pickers, `/plan`, `/ask`, `/impl`, `--YOLO`, streaming Markdown, and activity
+  indicators.
+- Add structured paged web reading, optional isolated headless browser tools,
+  validated multi-file patches, and questions with custom answers.
+- Add `/fork` for independent saved chats and `/btw` for isolated side questions.
+- Add `background_process` with status, logs, stop, lifetime limits, and exit
+  cleanup on Linux/macOS.
+- Fix restored conversation state and browser cancellation/error handling.
+- Preserve dev-only CLI proxy subscription access, live model discovery, and
+  separate dev credentials/settings. The existing proxy configuration is not
+  modified. Browser tools require an installed Playwright CLI and Chrome.
+
 ### 2.4.0-dev.1: Existing CLI proxy subscription access (2026-10-31)
 
 - Dev-only `cliproxy` provider and `/connect` choice for existing subscription
