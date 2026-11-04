@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -291,7 +292,7 @@ func (c *contextManager) transcriptForSummary(budget int) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	end := len(c.messages) - keepRecentMessages
+	end := c.summaryEndLocked()
 	if end <= 0 {
 		end = len(c.messages)
 	}
@@ -299,13 +300,19 @@ func (c *contextManager) transcriptForSummary(budget int) string {
 	used := 0
 	for i := end - 1; i >= 0; i-- {
 		m := c.messages[i]
-		if m.Text == "" {
+		raw, err := json.Marshal(m)
+		if err != nil {
 			continue
 		}
-		line := string(m.Role) + ": " + m.Text
-		t := estimateTokens(line)
+		line := string(raw)
+		// A large tool result must not hide every earlier user requirement.
+		const entryLimit = 8000
+		if len(line) > entryLimit {
+			line = line[:entryLimit] + " [TRUNCATED transcript entry]"
+		}
+		t := estimateTokens(line + "\n")
 		if used+t > budget {
-			break
+			continue
 		}
 		used += t
 		picked = append(picked, line)
@@ -316,20 +323,28 @@ func (c *contextManager) transcriptForSummary(budget int) string {
 	return strings.Join(picked, "\n")
 }
 
+// Use the same user-turn boundary for summarizing and discarding history.
+func (c *contextManager) summaryEndLocked() int {
+	end := len(c.messages) - keepRecentMessages
+	if end <= 0 {
+		return 0
+	}
+	for end < len(c.messages) && c.messages[end].Role != llm.RoleUser {
+		end++
+	}
+	if end == len(c.messages) {
+		// No complete recent user turn can be retained.
+		return 0
+	}
+	return end
+}
+
 func (c *contextManager) applySummary(summary string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.summary = summary
-	const keepRecent = keepRecentMessages
-	if len(c.messages) > keepRecent {
-		// Trim to a suffix beginning at a real user message.
-		trimmed := c.messages[len(c.messages)-keepRecent:]
-		for len(trimmed) > 0 && trimmed[0].Role != llm.RoleUser {
-			trimmed = trimmed[1:]
-		}
-		if len(trimmed) > 0 {
-			c.messages = trimmed
-		}
+	if end := c.summaryEndLocked(); end > 0 && end < len(c.messages) {
+		c.messages = c.messages[end:]
 	}
 }
 

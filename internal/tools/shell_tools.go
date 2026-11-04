@@ -44,10 +44,6 @@ var shellCommandTool = Tool{
 			dir = resolved
 		}
 		res := execCommand(ctx.Context(), a.Command, dir, commandTimeout(a.Timeout))
-		llm := res.stdout
-		if res.stderr != "" {
-			llm += "\nSTDERR:\n" + res.stderr
-		}
 		display := "Command executed successfully (exit code: " + itoa(res.exitCode) + ")"
 		if !res.success {
 			display = "Command failed (exit code: " + itoa(res.exitCode) + ")"
@@ -55,7 +51,7 @@ var shellCommandTool = Tool{
 				display += ": " + res.errMsg
 			}
 		}
-		return types.ToolResult{Display: display, LLMResult: llm, Failed: !res.success}
+		return types.ToolResult{Display: display, LLMResult: res.evidence(a.Command, dir), Failed: !res.success}
 	},
 }
 
@@ -72,7 +68,9 @@ var runTestsTool = Tool{
 			Command string `json:"command"`
 			Timeout int    `json:"timeout"`
 		}
-		_ = json.Unmarshal(args, &a)
+		if err := json.Unmarshal(args, &a); err != nil {
+			return fail("Invalid arguments", err.Error())
+		}
 		command := a.Command
 		if command == "" {
 			command = defaultTestCommand(ctx.RootDir)
@@ -85,7 +83,7 @@ var runTestsTool = Tool{
 		if !res.success {
 			display = "Tests failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
+		return types.ToolResult{Display: display, LLMResult: res.evidence(command, ctx.RootDir), Failed: !res.success}
 	},
 }
 
@@ -102,7 +100,9 @@ var lintFixTool = Tool{
 			Command string `json:"command"`
 			Timeout int    `json:"timeout"`
 		}
-		_ = json.Unmarshal(args, &a)
+		if err := json.Unmarshal(args, &a); err != nil {
+			return fail("Invalid arguments", err.Error())
+		}
 		command := a.Command
 		if command == "" {
 			command = defaultLintFixCommand(ctx.RootDir)
@@ -115,7 +115,7 @@ var lintFixTool = Tool{
 		if !res.success {
 			display = "Lint/format failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
+		return types.ToolResult{Display: display, LLMResult: res.evidence(command, ctx.RootDir), Failed: !res.success}
 	},
 }
 
@@ -144,7 +144,7 @@ var formatFileTool = Tool{
 		if !res.success {
 			display = "Formatting failed"
 		}
-		return types.ToolResult{Display: display, LLMResult: res.combined(), Failed: !res.success}
+		return types.ToolResult{Display: display, LLMResult: res.evidence(strings.Join(argv, " "), ctx.RootDir), Failed: !res.success}
 	},
 }
 

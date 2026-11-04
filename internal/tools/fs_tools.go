@@ -118,7 +118,10 @@ var editFileTool = Tool{
 			return fail("Invalid arguments", err.Error())
 		}
 		expected := 1
-		if a.ExpectedReplacements != nil && *a.ExpectedReplacements > 0 {
+		if a.ExpectedReplacements != nil {
+			if *a.ExpectedReplacements <= 0 {
+				return fail("Invalid arguments", "expected_replacements must be positive.")
+			}
 			expected = *a.ExpectedReplacements
 		}
 		resolved, v := ResolveWritePath(a.FilePath, ctx)
@@ -140,24 +143,11 @@ var editFileTool = Tool{
 			return fail("Edit failed", err.Error())
 		}
 		content := string(raw)
-		count := 0
-		var b strings.Builder
-		idx := 0
-		for count < expected {
-			pos := strings.Index(content[idx:], a.OldString)
-			if pos == -1 {
-				break
-			}
-			b.WriteString(content[idx : idx+pos])
-			b.WriteString(a.NewString)
-			idx += pos + len(a.OldString)
-			count++
+		count := strings.Count(content, a.OldString)
+		if count != expected {
+			return fail("Edit match count mismatch", "Expected "+itoa(expected)+" occurrence(s), found "+itoa(count)+". No changes made. Read the file and provide unique surrounding context or the exact expected count.")
 		}
-		if count == 0 {
-			return fail("No replacements made", "No occurrences of the old string were found.")
-		}
-		b.WriteString(content[idx:])
-		newContent := b.String()
+		newContent := strings.ReplaceAll(content, a.OldString, a.NewString)
 		if err := os.WriteFile(resolved, []byte(newContent), info.Mode().Perm()); err != nil {
 			return fail("Edit failed", err.Error())
 		}

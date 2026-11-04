@@ -490,3 +490,23 @@ func TestProcessQueryTaskList(t *testing.T) {
 		t.Fatal("reporter did not receive task update")
 	}
 }
+
+func TestSilentCommandFailureReachesModel(t *testing.T) {
+	provider := &fakeProvider{responses: []llm.Message{
+		{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{toolCall("failure", "shell_command", map[string]any{"command": "exit 7"})}},
+		{Role: llm.RoleAssistant, Text: "Command failed."},
+	}}
+	p := newTestProcessor(t, t.TempDir(), provider, types.ModeAgent)
+	if _, err := p.ProcessQuery(context.Background(), "run the command", &captureReporter{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range provider.lastReq.Messages {
+		if m.ToolCallID == "failure" {
+			if !strings.Contains(m.Text, `"exit_code":7`) || !strings.Contains(m.Text, `"success":false`) {
+				t.Fatalf("lost command failure: %s", m.Text)
+			}
+			return
+		}
+	}
+	t.Fatal("model did not receive the tool result")
+}
