@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,11 +14,13 @@ import (
 )
 
 type shellResult struct {
-	stdout   string
-	stderr   string
-	exitCode int
-	success  bool
-	errMsg   string
+	stdout    string
+	stderr    string
+	exitCode  int
+	success   bool
+	errMsg    string
+	timedOut  bool
+	cancelled bool
 }
 
 // execCommand runs a shell command via `bash -c` in dir (or root) with a
@@ -73,12 +76,14 @@ func runCommandRaw(parent context.Context, dir string, timeout time.Duration, na
 	if ctx.Err() == context.DeadlineExceeded {
 		res.exitCode = -1
 		res.success = false
+		res.timedOut = true
 		res.errMsg = "Command timed out after " + timeout.String()
 		return res
 	}
 	if ctx.Err() == context.Canceled {
 		res.exitCode = -1
 		res.success = false
+		res.cancelled = true
 		res.errMsg = "Command cancelled"
 		return res
 	}
@@ -146,4 +151,32 @@ func commandTimeout(seconds int) time.Duration {
 		return maxCommandTimeout
 	}
 	return d
+}
+
+// evidence is the model-facing execution record. The host label describes where
+// the command was launched; a command may itself invoke Docker or a remote host.
+func (r shellResult) evidence(command, dir string) string {
+	const limit = 24000
+	out, errOut := r.stdout, r.stderr
+	truncated := len(out) > limit || len(errOut) > limit
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	if len(errOut) > limit {
+		errOut = errOut[:limit]
+	}
+	raw, _ := json.Marshal(struct {
+		Command     string `json:"command"`
+		CWD         string `json:"cwd"`
+		Environment string `json:"execution_environment"`
+		Success     bool   `json:"success"`
+		ExitCode    int    `json:"exit_code"`
+		TimedOut    bool   `json:"timed_out"`
+		Cancelled   bool   `json:"cancelled"`
+		Truncated   bool   `json:"output_truncated"`
+		Error       string `json:"error,omitempty"`
+		Stdout      string `json:"stdout"`
+		Stderr      string `json:"stderr"`
+	}{security.Redact(command), security.Redact(dir), "harness host", r.success, r.exitCode, r.timedOut, r.cancelled, truncated, security.Redact(r.errMsg), security.Redact(out), security.Redact(errOut)})
+	return string(raw)
 }

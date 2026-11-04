@@ -464,14 +464,15 @@ func (p *Processor) compact(ctx context.Context, manual bool) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("Summarize the key technical objectives and progress in the following conversation in under 200 words. Focus on specific code changes and design decisions. Avoid filler.\n\n")
 	if prior := p.ctxMgr.currentSummary(); prior != "" {
 		b.WriteString("Summary of the conversation before this excerpt:\n" + prior + "\n\n")
 	}
 	b.WriteString(p.ctxMgr.transcriptForSummary(summaryInputBudget))
 
 	resp, _, err := p.completeMetered(ctx, "compaction", p.provider, llm.Request{
-		Messages: []llm.Message{{Role: llm.RoleUser, Text: b.String()}},
+		System:    compactionPrompt,
+		MaxTokens: 2048,
+		Messages:  []llm.Message{{Role: llm.RoleUser, Text: b.String()}},
 	}, nil)
 	if err != nil {
 		if manual {

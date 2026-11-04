@@ -167,3 +167,39 @@ func TestReplaceInFilesDryRunDefault(t *testing.T) {
 		t.Fatalf("write replace failed: %s", raw)
 	}
 }
+
+func TestEditRequiresExactMatchCount(t *testing.T) {
+	for _, tc := range []struct {
+		name, old string
+		count     int
+		failed    bool
+	}{
+		{"ambiguous", "same", 1, true}, {"tooFew", "same", 3, true},
+		{"missing", "absent", 1, true}, {"invalid", "same", 0, true},
+		{"exact", "same", 2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "a.txt")
+			original := "same\nsame\n"
+			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			result := editFileTool.Execute(testCtx(root), args(t, map[string]any{"filePath": path, "oldString": tc.old, "newString": "changed", "expected_replacements": tc.count}))
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Failed != tc.failed {
+				t.Fatalf("unexpected result: %+v", result)
+			}
+			want := original
+			if !tc.failed {
+				want = "changed\nchanged\n"
+			}
+			if string(got) != want {
+				t.Fatalf("unexpected mutation: %q", got)
+			}
+		})
+	}
+}
