@@ -16,7 +16,7 @@ import (
 var readFileTool = Tool{
 	Name: "read_file",
 	Description: "Reads and returns the content of a specified file from the local filesystem. " +
-		"For text files, it can read specific line ranges.",
+		"Returns at most 2000 lines or 64 KiB with continuation hints. Supports specific line ranges.",
 	ReadOnly: true,
 	Schema: obj(map[string]any{
 		"absolutePath": strProp("The absolute path to the file to read. Relative paths are not supported."),
@@ -41,11 +41,8 @@ var readFileTool = Tool{
 		}
 		rel := toRelative(resolved, ctx.RootDir)
 		if a.StartLine == nil && a.EndLine == nil {
-			content, err := os.ReadFile(resolved)
-			if err != nil {
-				return fail("Read failed", err.Error())
-			}
-			return types.ToolResult{Display: "Reading " + rel, LLMResult: string(content)}
+			start, end := 1, int(^uint(0)>>1)
+			a.StartLine, a.EndLine = &start, &end
 		}
 		if a.StartLine == nil || a.EndLine == nil {
 			return fail("Invalid arguments", "Both startLine and endLine must be provided.")
@@ -64,23 +61,35 @@ var readFileTool = Tool{
 		scanner := bufio.NewScanner(f)
 		scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 		var selected []string
-		cur := 0
-		for scanner.Scan() {
+		cur, size := 0, 0
+		next := 0
+		for cur < *a.EndLine && scanner.Scan() {
 			cur++
-			if cur >= *a.StartLine && cur <= *a.EndLine {
-				selected = append(selected, scanner.Text())
+			if cur < *a.StartLine {
+				continue
 			}
-			if cur > *a.EndLine {
+			line := scanner.Text()
+			if len(line) > 64*1024 {
+				return fail("Read failed", "Line exceeds the 64 KiB read limit; use a targeted extraction command.")
+			}
+			if len(selected) == 2000 || size+len(line)+1 > 64*1024 {
+				next = cur
 				break
 			}
+			selected = append(selected, line)
+			size += len(line) + 1
 		}
-		if cur < *a.StartLine {
+		if err := scanner.Err(); err != nil {
+			return fail("Read failed", err.Error())
+		}
+		if cur < *a.StartLine && !(cur == 0 && *a.StartLine == 1) {
 			return fail("Read failed", "File only has fewer lines than startLine.")
 		}
-		return types.ToolResult{
-			Display:   "Reading lines from " + rel,
-			LLMResult: strings.Join(selected, "\n"),
+		text := strings.Join(selected, "\n")
+		if next > 0 {
+			text += "\n[Read truncated; continue with startLine=" + itoa(next) + " and endLine=" + itoa(next+1999) + ".]"
 		}
+		return types.ToolResult{Display: "Reading " + rel, LLMResult: text}
 	},
 }
 
