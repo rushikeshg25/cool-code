@@ -45,6 +45,11 @@ type patchChange struct {
 }
 
 func preparePatch(ctx Context, patch string) ([]patchChange, error) {
+	return preparePatchChecked(ctx, patch, false)
+}
+
+// Read-only validation must enforce read permissions before inspecting content.
+func preparePatchChecked(ctx Context, patch string, readOnly bool) ([]patchChange, error) {
 	if len(patch) > 4*1024*1024 {
 		return nil, errors.New("patch exceeds 4 MiB")
 	}
@@ -67,6 +72,11 @@ func preparePatch(ctx Context, patch string) ([]patchChange, error) {
 		path, reason := ResolveWritePath(path, ctx)
 		if reason != "" {
 			return nil, fmt.Errorf("patch path blocked: %s", reason)
+		}
+		if readOnly && kind != "*** Add File" {
+			if reason := ValidateReadPath(path, ctx); reason != "" {
+				return nil, fmt.Errorf("patch read blocked: %s", reason)
+			}
 		}
 		if seen[path] {
 			return nil, fmt.Errorf("duplicate patch target: %s", path)

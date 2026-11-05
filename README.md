@@ -335,6 +335,11 @@ unavailable result; read-only subagents cannot prompt the user.
 
 ### Multi-file patches
 
+Use `validate_patch` with the same patch document to check paths and hunks
+without writing files or creating directories. It is available in plan/ask modes,
+enforces read and path guards, and lists proposed operations. Validation does not
+grant approval or reserve the files; applying later revalidates current content.
+
 `apply_patch` adds, updates, or deletes several text files in one call. It uses
 `*** Begin Patch` / `*** End Patch` markers, file headers, and exact `@@` context
 hunks. All targets and hunks are checked before writes; ambiguous matches fail.
