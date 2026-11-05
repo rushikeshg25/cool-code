@@ -14,7 +14,7 @@ import (
 
 var applyPatchTool = Tool{
 	Name: "apply_patch", Mutating: true,
-	Description: "Apply a multi-file text patch. Format: *** Begin Patch, then *** Add File: path (lines prefixed +), *** Delete File: path, or *** Update File: path (one or more @@ hunks with space/context, -/removed, +/added lines), then *** End Patch. Paths are relative to the project or absolute within granted roots. Context must match exactly and uniquely; no fuzzy matching. All files are validated before writing. Use edit_file for individual replacements. Move/rename headers and binary files are unsupported.",
+	Description: "Apply a multi-file text patch. Format: *** Begin Patch, then *** Add File: path (lines prefixed +), *** Delete File: path, or *** Update File: path (one or more @@ hunks with space/context, -/removed, +/added lines), then *** End Patch. Paths are relative to the project or absolute within granted roots. Context must match exactly and uniquely; no fuzzy matching. All files are validated before writing. Use edit_file for individual replacements. LF and CRLF line endings are preserved; mixed line endings are rejected. Move/rename headers and binary files are unsupported.",
 	Schema:      obj(map[string]any{"patch": strProp("Complete patch in the documented format.")}, "patch"),
 	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
@@ -156,6 +156,13 @@ func applyPatchHunks(before []byte, body []string) ([]byte, error) {
 		return nil, errors.New("update requires an @@ hunk")
 	}
 	text := string(before)
+	crlf := strings.Contains(text, "\r\n")
+	if crlf {
+		if strings.Contains(strings.ReplaceAll(text, "\r\n", ""), "\n") {
+			return nil, errors.New("mixed CRLF/LF line endings are unsupported; use edit_file")
+		}
+		text = strings.ReplaceAll(text, "\r\n", "\n")
+	}
 	newline := strings.HasSuffix(text, "\n")
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	if len(before) == 0 {
@@ -217,6 +224,9 @@ func applyPatchHunks(before []byte, body []string) ([]byte, error) {
 	result := strings.Join(lines, "\n")
 	if newline && len(lines) > 0 {
 		result += "\n"
+	}
+	if crlf {
+		result = strings.ReplaceAll(result, "\n", "\r\n")
 	}
 	return []byte(result), nil
 }
