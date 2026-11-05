@@ -1,6 +1,6 @@
 # Cool-Code: a fast, native CLI coding agent
 
-> **Dev branch / v2.4.1-dev.1.** Subscription access through an already-running CLIProxyAPI instance is available only on `dev`. Stable `main` is unchanged.
+> **Development branch.** This README describes the current `dev` source. Tagged releases may not include every feature below. CLI proxy subscription access and detailed token tracing are dev-only; use the [main README](https://github.com/rushikeshg25/cool-code/blob/main/README.md) for stable setup.
 
 An intelligent command-line coding agent - describe what you want, and it reads, plans, and edits your codebase using live tools. Similar in spirit to Claude Code and Gemini CLI, now rewritten in **Go** with a **Bubble Tea** TUI and **native provider tool-calling**.
 
@@ -13,7 +13,7 @@ Cool-Code combines large language models with a comprehensive set of development
 ## Features
 
 - **Multiple model providers** - Google, OpenAI, Anthropic, or OpenRouter. Connect one with `/connect` (keys stored in `~/.coolcode/credentials-dev.json`) or export the matching env var; the provider is inferred from the model id.
-- **Native tool-calling with streaming** - structured function-calling against each provider's API. Transport responses stream internally, while only completed final answers enter the transcript.
+- **Native tool-calling with streaming** - structured function-calling against each provider's API. Assistant text and tool activity stream into the terminal.
 - **Explore subagents** - the agent can fan out several read-only `spawn_agent` explorers concurrently to investigate independent areas of a codebase, with live per-agent status in the TUI.
 - **Concurrent tools + cancellation** - independent read-only tool calls run in parallel; Esc or Ctrl+C cancels a running turn without quitting.
 - **Two-pane TUI** - a Bubble Tea terminal UI with a persistent header and, above 100 columns and while there is work to show, a sidebar carrying the live task list and running subagents. Context is reported as a percentage of the model's window, or as a token count when that window is unknown. Syntax-highlighted fenced code, multiline input (Ctrl+Enter in enhanced terminals; Alt+Enter/Ctrl+J fallback), mouse-wheel scrolling, input-history recall, colored diff previews for edits, a `/` slash-command palette with Tab autocomplete, and Shift+Tab to switch modes. Errors and failed tool calls are visually distinct from ordinary output.
@@ -29,18 +29,22 @@ Cool-Code combines large language models with a comprehensive set of development
 
 ## Install
 
-### Go install (recommended)
+### Install the dev branch
 
 ```bash
-go install github.com/rushikeshg25/cool-code@latest
+go install github.com/rushikeshg25/cool-code@dev
 ```
+
+For the latest stable tagged version instead, use
+`go install github.com/rushikeshg25/cool-code@latest`. Both install the same binary
+name, so installing one replaces the other in your Go binary directory.
 
 This places a `cool-code` binary in your `$GOBIN` (usually `~/go/bin` - make sure it's on your `PATH`).
 
 ### Build from source
 
 ```bash
-git clone https://github.com/rushikeshg25/cool-code.git
+git clone --branch dev https://github.com/rushikeshg25/cool-code.git
 cd cool-code
 make build      # produces ./cool-code
 # or: go build -o cool-code .
@@ -333,6 +337,60 @@ is submitted automatically, including in YOLO mode. Questions work in Plan,
 Ask, and implementation modes. Noninteractive runs return an explicit
 unavailable result; read-only subagents cannot prompt the user.
 
+### Reading and searching code
+
+These are tools the agent calls, not slash commands. Ask for the outcome you
+want, such as “find literal uses of user[id]” or “read the next page.”
+
+| Tool | Controls and limits | Continuing |
+| --- | --- | --- |
+| `read_file` / `open_file_at` | Up to 2,000 lines or 64 KiB. Optional `startLine` and `endLine` are 1-based and must be supplied together. | Follow the returned line-range hint. A single line above 64 KiB returns an explicit error. |
+| `glob` | Sorted paths; `limit` defaults to 200, range 1–500. `offset` is zero-based. | Use the returned next offset. File changes between pages can shift results. |
+| `grep` | Regex by default; `literal: true` searches exact text, and `ignoreCase: true` ignores case. `limit` defaults to 100, range 1–200. | Narrow `path`, `include`, or `pattern` when results are truncated. |
+
+Grep's `include` is a regex over file basenames, while glob's `pattern` uses glob
+syntax. Matching line previews are limited to 1,000 UTF-8-safe bytes, with explicit
+truncation notices. Glob pagination bounds the response, not the underlying scan
+or its memory use. Existing privacy and ignore filters still apply.
+
+Example agent tool arguments:
+
+```json
+{"pattern":"user[id]","literal":true,"ignoreCase":true,"limit":20}
+```
+
+```json
+{"pattern":"**/*.go","offset":200,"limit":200}
+```
+
+See [grep controls](docs/grep-controls.md) and [glob pages](docs/glob-pages.md)
+for details.
+
+### Creating and editing files
+
+`new_file` only creates files. If the target already exists, it fails without
+overwriting it. Use `edit_file` for existing content.
+
+`edit_file` requires exactly `expected_replacements` matches (default 1).
+Missing, ambiguous, or unexpected match counts leave the file unchanged. Read
+the current file and include enough surrounding text to identify the intended
+location. Exact matching is not a concurrent-edit version guard.
+
+### Command results and compaction
+
+Shell, test, lint and formatter tools return explicit success, exit code,
+working directory, timeout, cancellation and output-truncation fields. Each
+output stream is limited to 24,000 bytes. A silent nonzero exit is still a
+failure. The execution-environment label identifies the harness host; it does
+not infer where nested Docker or SSH commands ran. Command timeouts default to
+30 seconds and clamp to 30 minutes, including oversized input values.
+
+Compaction includes tool calls and results, preserves incomplete streamed
+arguments as text, and summarizes the same message boundary it removes. Its
+handoff asks the model to retain pending requirements, verification, blockers
+and Git state. Summaries remain model-generated and can omit information;
+this is not a deterministic requirements ledger.
+
 ### Multi-file patches
 
 Use `validate_patch` with the same patch document to check paths and hunks
@@ -343,6 +401,8 @@ grant approval or reserve the files; applying later revalidates current content.
 `apply_patch` adds, updates, or deletes several text files in one call. It uses
 `*** Begin Patch` / `*** End Patch` markers, file headers, and exact `@@` context
 hunks. All targets and hunks are checked before writes; ambiguous matches fail.
+LF and CRLF line endings are preserved, including the final-newline state.
+Mixed LF/CRLF files are rejected; use `edit_file` for those.
 Writes preserve existing file permissions, and write failures trigger rollback
 of completed files. Delete operations require action approval; edit previews
 follow `confirmEdits`. The usual path jail and read/write guardrails apply.
@@ -506,6 +566,15 @@ The log retains all events across `/fork` and restored chats in that instance.
   automatically removed. Keep generated logs out of commits.
 
 ## Changelog
+
+### Development branch updates (2026-11-05)
+
+- Add literal/case-insensitive grep, bounded results, and paginated glob output.
+- Bound file reads and provide continuation ranges; report scanner errors.
+- Prevent `new_file` from overwriting existing work.
+- Add read-only `validate_patch` and preserve CRLF files when applying patches.
+- Clamp large timeout inputs before duration conversion.
+- Preserve interrupted tool-call evidence during compaction.
 
 ### 2.4.1-dev.1: Token metering and terminal fixes (2026-11-01)
 
