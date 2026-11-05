@@ -164,7 +164,7 @@ var editFileTool = Tool{
 
 var newFileTool = Tool{
 	Name:        "new_file",
-	Description: "Creates a new file at the given absolute path with the provided content.",
+	Description: "Creates a new file at the given absolute path. Fails if it already exists; use edit_file to change existing files.",
 	Mutating:    true,
 	Schema: obj(map[string]any{
 		"filePath": strProp("The absolute path (including filename) of the file to create."),
@@ -185,8 +185,17 @@ var newFileTool = Tool{
 		if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
 			return fail("Error creating file "+a.FilePath, err.Error())
 		}
-		if err := os.WriteFile(resolved, []byte(a.Content), 0o644); err != nil {
-			return fail("Error creating file "+a.FilePath, err.Error())
+		f, err := os.OpenFile(resolved, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err != nil {
+			return fail("Create failed", err.Error()+". Use edit_file for existing files.")
+		}
+		_, writeErr := f.WriteString(a.Content)
+		closeErr := f.Close()
+		if writeErr != nil {
+			return fail("Create failed", writeErr.Error())
+		}
+		if closeErr != nil {
+			return fail("Create failed", closeErr.Error())
 		}
 		msg := "File " + toRelative(resolved, ctx.RootDir) + " created successfully"
 		return types.ToolResult{Display: msg, LLMResult: msg}
