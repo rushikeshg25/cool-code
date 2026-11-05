@@ -302,6 +302,15 @@ func (c *contextManager) transcriptForSummary(budget int) string {
 		m := c.messages[i]
 		// Reasoning is neither necessary nor authoritative execution evidence.
 		m.Reasoning = ""
+		// Cancelled streams can leave incomplete JSON. Preserve it as a JSON
+		// string in the transcript rather than dropping the entire message.
+		m.ToolCalls = append([]llm.ToolCall(nil), m.ToolCalls...)
+		for j := range m.ToolCalls {
+			if !json.Valid(m.ToolCalls[j].Arguments) {
+				encoded, _ := json.Marshal(string(m.ToolCalls[j].Arguments))
+				m.ToolCalls[j].Arguments = encoded
+			}
+		}
 		raw, err := json.Marshal(m)
 		if err != nil {
 			continue
