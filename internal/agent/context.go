@@ -300,6 +300,15 @@ func (c *contextManager) transcriptForSummary(budget int) string {
 	used := 0
 	for i := end - 1; i >= 0; i-- {
 		m := c.messages[i]
+		// Cancelled streams can leave incomplete JSON. Preserve it as a JSON
+		// string in the transcript rather than dropping the entire message.
+		m.ToolCalls = append([]llm.ToolCall(nil), m.ToolCalls...)
+		for j := range m.ToolCalls {
+			if !json.Valid(m.ToolCalls[j].Arguments) {
+				encoded, _ := json.Marshal(string(m.ToolCalls[j].Arguments))
+				m.ToolCalls[j].Arguments = encoded
+			}
+		}
 		raw, err := json.Marshal(m)
 		if err != nil {
 			continue
