@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -18,17 +19,31 @@ const maxGrepFileSize = 5 * 1024 * 1024
 var globTool = Tool{
 	Name: "glob",
 	Description: "Finds files matching a glob pattern (e.g. src/**/*.go, **/*.md), returning absolute paths. " +
-		"Respects .gitignore and skips node_modules.",
+		"Respects .gitignore and skips node_modules. Returns sorted pages; use offset and limit to continue.",
 	ReadOnly: true,
 	Schema: obj(map[string]any{
+		"offset":  numProp("Zero-based result offset (default 0)."),
+		"limit":   numProp("Page size, 1-500 (default 200)."),
 		"pattern": strProp("The glob pattern to match against (e.g. **/*.py, docs/*.md)."),
 	}, "pattern"),
 	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
 			Pattern string `json:"pattern"`
+			Offset  int    `json:"offset"`
+			Limit   *int   `json:"limit"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
+		}
+		if a.Offset < 0 {
+			return fail("Invalid offset", "offset must be nonnegative.")
+		}
+		limit := 200
+		if a.Limit != nil {
+			if *a.Limit < 1 || *a.Limit > 500 {
+				return fail("Invalid limit", "limit must be between 1 and 500.")
+			}
+			limit = *a.Limit
 		}
 		fsys := os.DirFS(ctx.RootDir)
 		matches, err := doublestar.Glob(fsys, a.Pattern)
@@ -57,9 +72,24 @@ var globTool = Tool{
 				out = append(out, abs)
 			}
 		}
+		sort.Strings(out)
+		total := len(out)
+		start := a.Offset
+		if start > total {
+			start = total
+		}
+		count := total - start
+		if count > limit {
+			count = limit
+		}
+		end := start + count
+		text := strings.Join(out[start:end], "\n")
+		if end < total {
+			text += "\n[More files available; continue with offset=" + itoa(end) + ".]"
+		}
 		return types.ToolResult{
-			Display:   "Found " + itoa(len(out)) + " file(s)",
-			LLMResult: strings.Join(out, "\n"),
+			Display:   "Showing " + itoa(count) + " of " + itoa(total) + " file(s)",
+			LLMResult: text,
 		}
 	},
 }
