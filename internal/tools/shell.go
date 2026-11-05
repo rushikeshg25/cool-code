@@ -146,11 +146,10 @@ func commandTimeout(seconds int) time.Duration {
 	if seconds <= 0 {
 		return defaultCommandTimeout
 	}
-	d := time.Duration(seconds) * time.Second
-	if d > maxCommandTimeout {
+	if seconds > int(maxCommandTimeout/time.Second) {
 		return maxCommandTimeout
 	}
-	return d
+	return time.Duration(seconds) * time.Second
 }
 
 // evidence is the model-facing execution record. The host label describes where
