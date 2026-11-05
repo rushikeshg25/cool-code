@@ -67,23 +67,46 @@ var globTool = Tool{
 var grepTool = Tool{
 	Name: "grep",
 	Description: "Searches for a regular expression within file contents under a directory. " +
-		"Optionally filter files by an include regex. Returns matching lines with file paths and line numbers.",
+		"Optionally filter files by an include regex. Supports literal and case-insensitive matching. Returns bounded line previews with paths and line numbers.",
 	ReadOnly: true,
 	Schema: obj(map[string]any{
-		"pattern": strProp("The regular expression to search for within file contents."),
-		"path":    strProp("Optional absolute path to a directory or file to search. Defaults to project root."),
-		"include": strProp("Optional regex to filter which file basenames are searched."),
+		"pattern":    strProp("The regular expression to search for within file contents."),
+		"path":       strProp("Optional absolute path to a directory or file to search. Defaults to project root."),
+		"literal":    boolProp("Treat pattern as literal text instead of a regular expression."),
+		"ignoreCase": boolProp("Match without case sensitivity (default false)."),
+		"limit":      numProp("Maximum matching lines to return, 1-200 (default 100). Long lines are shortened."),
+		"include":    strProp("Optional regex to filter which file basenames are searched."),
 	}, "pattern"),
 	Execute: func(ctx Context, args json.RawMessage) types.ToolResult {
 		var a struct {
-			Pattern string `json:"pattern"`
-			Path    string `json:"path"`
-			Include string `json:"include"`
+			Pattern    string `json:"pattern"`
+			Path       string `json:"path"`
+			Include    string `json:"include"`
+			Literal    bool   `json:"literal"`
+			IgnoreCase bool   `json:"ignoreCase"`
+			Limit      *int   `json:"limit"`
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fail("Invalid arguments", err.Error())
 		}
-		re, err := regexp.Compile(a.Pattern)
+		if a.Pattern == "" {
+			return fail("Invalid pattern", "pattern must not be empty.")
+		}
+		limit := 100
+		if a.Limit != nil {
+			if *a.Limit < 1 || *a.Limit > 200 {
+				return fail("Invalid limit", "limit must be between 1 and 200.")
+			}
+			limit = *a.Limit
+		}
+		pattern := a.Pattern
+		if a.Literal {
+			pattern = regexp.QuoteMeta(pattern)
+		}
+		if a.IgnoreCase {
+			pattern = "(?i)" + pattern
+		}
+		re, err := regexp.Compile(pattern)
 		if err != nil {
 			return fail("Invalid pattern", "Invalid search pattern: "+err.Error())
 		}
@@ -107,7 +130,11 @@ var grepTool = Tool{
 			}
 		}
 		var matches []string
+		truncated := false
 		search := func(file string) {
+			if truncated || ctx.Context().Err() != nil {
+				return
+			}
 			if ValidateReadPath(file, ctx) != "" {
 				return
 			}
@@ -124,7 +151,16 @@ var grepTool = Tool{
 			}
 			for i, line := range strings.Split(string(raw), "\n") {
 				if re.MatchString(line) {
-					matches = append(matches, file+":"+itoa(i+1)+": "+line)
+					if len(matches) == limit {
+						truncated = true
+						return
+					}
+					line = security.Redact(line)
+					preview := truncateRunes(line, 1000)
+					if len(preview) < len(line) {
+						preview += " [line truncated]"
+					}
+					matches = append(matches, file+":"+itoa(i+1)+": "+preview)
 				}
 			}
 		}
@@ -143,12 +179,19 @@ var grepTool = Tool{
 				search(searchPath)
 			}
 		}
+		if err := ctx.Context().Err(); err != nil {
+			return fail("Search cancelled", err.Error())
+		}
 		if len(matches) == 0 {
 			return types.ToolResult{Display: "No matches found", LLMResult: "No matches found."}
 		}
+		text := strings.Join(matches, "\n")
+		if truncated {
+			text += "\n[Results truncated; narrow path, include, or pattern.]"
+		}
 		return types.ToolResult{
 			Display:   "Found " + itoa(len(matches)) + " match(es)",
-			LLMResult: strings.Join(matches, "\n"),
+			LLMResult: text,
 		}
 	},
 }
