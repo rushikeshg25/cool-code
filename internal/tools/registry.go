@@ -16,6 +16,7 @@ var All = []Tool{
 	readFileTool,
 	editFileTool,
 	applyPatchTool,
+	validatePatchTool,
 	newFileTool,
 	openFileAtTool,
 	renameFileTool,
